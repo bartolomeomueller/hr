@@ -1,9 +1,9 @@
 import { pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { createSelectSchema } from "drizzle-zod";
 
-export const interviews = pgTable("interviews", {
+export const roles = pgTable("roles", {
   uuid: uuid().defaultRandom().primaryKey(),
   roleName: text("role_name").notNull(),
 });
 
-export const interviewSelectSchema = createSelectSchema(interviews);
+export const roleSelectSchema = createSelectSchema(roles);

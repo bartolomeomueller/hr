@@ -7,7 +7,7 @@ import { onError } from "@orpc/server";
 import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { createFileRoute } from "@tanstack/react-router";
 import router from "@/orpc/router";
-import { InterviewSchema } from "@/orpc/schema";
+import { RoleSchema } from "@/orpc/schema";
 
 const handler = new OpenAPIHandler(router, {
   interceptors: [
@@ -27,7 +27,7 @@ const handler = new OpenAPIHandler(router, {
           version: "1.0.0",
         },
         commonSchemas: {
-          Interview: { schema: InterviewSchema },
+          Role: { schema: RoleSchema },
           UndefinedError: { error: "UndefinedError" },
         },
         security: [{ bearerAuth: [] }],

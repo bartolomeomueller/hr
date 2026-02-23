@@ -1,66 +1,62 @@
 import { config } from "dotenv";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { Effect } from "effect";
 import { Pool } from "pg";
 
 import * as schema from "./schema";
-import { interviews } from "./schema";
+import { roles } from "./schema";
 
 config({ path: [".env.local", ".env"] });
 
-const seed = Effect.gen(function* () {
-	const databaseUrl = process.env.DATABASE_URL;
+async function seed() {
+  const databaseUrl = process.env.DATABASE_URL;
 
-	if (!databaseUrl) {
-		yield* Effect.fail(new Error("DATABASE_URL is not set"));
-	}
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL is not set");
+  }
 
-	const pool = yield* Effect.acquireRelease(
-		Effect.sync(
-			() =>
-				new Pool({
-					connectionString: databaseUrl,
-				}),
-		),
-		(pool) =>
-			Effect.promise(() => pool.end()).pipe(
-				Effect.mapError(
-					(error) =>
-						new Error(`Failed to close database pool: ${String(error)}`),
-				),
-				Effect.orDie,
-			),
-	);
+  const pool = new Pool({
+    connectionString: databaseUrl,
+  });
 
-	const db = drizzle(pool, { schema });
+  let closeError: Error | undefined;
 
-	yield* Effect.promise(() => db.delete(interviews)).pipe(
-		Effect.mapError(
-			(error) =>
-				new Error(`Failed to clear interviews table: ${String(error)}`),
-		),
-	);
+  try {
+    const db = drizzle(pool, { schema });
 
-	const [interview] = yield* Effect.promise(() =>
-		db
-			.insert(interviews)
-			.values({
-				uuid: "ddd4073f-a508-4535-8315-c7924b9a95c9",
-				roleName: "Senior Frontend Engineer at funpany",
-			})
-			.returning({ uuid: interviews.uuid, roleName: interviews.roleName }),
-	).pipe(
-		Effect.mapError(
-			(error) => new Error(`Failed to seed interview row: ${String(error)}`),
-		),
-	);
+    try {
+      await db.delete(roles);
+    } catch (error) {
+      throw new Error(`Failed to clear roles table: ${String(error)}`);
+    }
 
-	yield* Effect.sync(() => {
-		console.log("Seeded interview:", interview);
-	});
-});
+    let role: { uuid: string; roleName: string } | undefined;
+    try {
+      [role] = await db
+        .insert(roles)
+        .values({
+          uuid: "ddd4073f-a508-4535-8315-c7924b9a95c9",
+          roleName: "Senior Frontend Engineer at funpany",
+        })
+        .returning({ uuid: roles.uuid, roleName: roles.roleName });
+    } catch (error) {
+      throw new Error(`Failed to seed role row: ${String(error)}`);
+    }
 
-Effect.runPromise(Effect.scoped(seed)).catch((error) => {
-	console.error("Failed to seed interview:", error);
-	process.exit(1);
+    console.log("Seeded role:", role);
+  } finally {
+    try {
+      await pool.end();
+    } catch (error) {
+      closeError = new Error(`Failed to close database pool: ${String(error)}`);
+    }
+  }
+
+  if (closeError) {
+    throw closeError;
+  }
+}
+
+seed().catch((error) => {
+  console.error("Failed to seed role:", error);
+  process.exit(1);
 });

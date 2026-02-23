@@ -1,11 +1,11 @@
 {
-  "id": "7fd395dc-4206-474d-9600-8a518a842276",
+  "id": "6dbc8c58-2be3-435b-90b4-1ac90ff7c0ab",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.interviews": {
-      "name": "interviews",
+    "public.roles": {
+      "name": "roles",
       "schema": "",
       "columns": {
         "uuid": {

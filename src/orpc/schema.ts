@@ -1,9 +1,9 @@
-import { interviewSelectSchema } from "@/db/schema";
+import { roleSelectSchema } from "@/db/schema";
 
-export const InterviewSchema = interviewSelectSchema;
+export const RoleSchema = roleSelectSchema;
 
-export const GetInterviewByUuidInputSchema = InterviewSchema.pick({
+export const GetRoleByUuidInputSchema = RoleSchema.pick({
   uuid: true,
 });
 
-export const NullableInterviewSchema = InterviewSchema.nullable();
+export const NullableRoleSchema = RoleSchema.nullable();

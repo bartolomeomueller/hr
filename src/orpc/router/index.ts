@@ -1,5 +1,5 @@
-import { getInterviewByUuid } from "./interviews";
+import { getRoleByUuid } from "./roles";
 
 export default {
-	getInterviewByUuid,
+  getRoleByUuid,
 };
