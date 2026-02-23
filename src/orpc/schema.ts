@@ -1,24 +1,9 @@
-import { Schema } from "effect";
+import { interviewSelectSchema } from "@/db/schema";
 
-const TodoModelSchema = Schema.Struct({
-	id: Schema.Number,
-	name: Schema.String,
+export const InterviewSchema = interviewSelectSchema;
+
+export const GetInterviewByUuidInputSchema = InterviewSchema.pick({
+  uuid: true,
 });
 
-const InterviewModelSchema = Schema.Struct({
-	uuid: Schema.UUID,
-	roleName: Schema.String,
-});
-
-export const TodoSchema = Schema.standardSchemaV1(TodoModelSchema);
-export const InterviewSchema = Schema.standardSchemaV1(InterviewModelSchema);
-
-export const GetInterviewByUuidInputSchema = Schema.standardSchemaV1(
-	Schema.Struct({
-		uuid: Schema.UUID,
-	}),
-);
-
-export const NullableInterviewSchema = Schema.standardSchemaV1(
-	Schema.Union(InterviewModelSchema, Schema.Null),
-);
+export const NullableInterviewSchema = InterviewSchema.nullable();
