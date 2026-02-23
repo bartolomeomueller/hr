@@ -1,6 +1,5 @@
-import { addTodo, listTodos } from './todos'
+import { getInterviewByUuid } from "./interviews";
 
 export default {
-  listTodos,
-  addTodo,
-}
+	getInterviewByUuid,
+};
