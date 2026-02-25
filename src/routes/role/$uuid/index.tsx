@@ -7,14 +7,6 @@ export const Route = createFileRoute("/role/$uuid/")({
   component: RouteComponent,
 });
 
-function isRole(value: unknown): value is { uuid: string; roleName: string } {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  return "uuid" in value && "roleName" in value;
-}
-
 function RouteComponent() {
   const { uuid } = Route.useParams();
   const roleQuery = useQuery(
@@ -33,10 +25,6 @@ function RouteComponent() {
 
   if (!roleQuery.data) {
     return <div>No role found for {uuid}</div>;
-  }
-
-  if (!isRole(roleQuery.data)) {
-    return <div>Role response has an unexpected shape.</div>;
   }
 
   return (
