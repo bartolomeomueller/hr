@@ -2,14 +2,11 @@ import { os } from "@orpc/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { Role } from "@/db/schema";
-import {
-  ByUuidRoleSelectSchema,
-  NullableRoleSelectSchema,
-} from "@/orpc/schema";
+import { RoleSelectSchema } from "@/orpc/schema";
 
 export const getRoleByUuid = os
-  .input(ByUuidRoleSelectSchema)
-  .output(NullableRoleSelectSchema)
+  .input(RoleSelectSchema.pick({ uuid: true }))
+  .output(RoleSelectSchema.nullable())
   .handler(async ({ input }) => {
     try {
       const get_role = await db.query.Role.findFirst({
@@ -17,6 +14,7 @@ export const getRoleByUuid = os
         columns: {
           uuid: true,
           roleName: true,
+          questions: true,
         },
       });
 

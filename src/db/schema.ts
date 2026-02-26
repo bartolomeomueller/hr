@@ -1,9 +1,10 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
 
 export const Role = pgTable("role", {
   uuid: uuid().default(sql`uuidv7()`).primaryKey(),
   roleName: text("role_name").notNull(),
+  questions: jsonb("questions").notNull(),
 });
 
 export const Interview = pgTable("interview", {
@@ -18,5 +19,6 @@ export const Interview = pgTable("interview", {
 
 export const Candidate = pgTable("candidate", {
   uuid: uuid().default(sql`uuidv7()`).primaryKey(),
+  name: text("name").notNull(),
   email: text("email").notNull().unique(),
 });

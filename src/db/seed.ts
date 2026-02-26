@@ -36,6 +36,22 @@ async function seed() {
         .values({
           uuid: "019c9a34-72d4-7898-b34f-d1d208b17fa0",
           roleName: "Frontend Engineer at funpany",
+          questions: [
+            {
+              type: "video",
+              question:
+                "Welche Technologien würdest du für die Entwicklung einer Webanwendung verwenden?",
+            },
+            {
+              type: "video",
+              question:
+                "Was ist dir wichtiger, der Spaß beim Entwickeln der Anwendung oder die Zufriedenheit der Nutzer, die die Anwendung verwenden? ",
+            },
+            {
+              type: "scale",
+              question: "Wie würdest du deine Expertise in React bewerten?",
+            },
+          ],
         })
         .returning({ uuid: Role.uuid, roleName: Role.roleName });
     } catch (error) {

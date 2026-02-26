@@ -51,6 +51,7 @@ function RouteComponent() {
       </h2>
       <div>
         <button
+          type="button"
           onClick={handleStartInterview}
           disabled={createInterviewMutation.isPending}
         >
