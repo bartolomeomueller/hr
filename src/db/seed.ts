@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
 import * as schema from "./schema";
-import { roles } from "./schema";
+import { Role } from "./schema";
 
 config({ path: [".env.local", ".env"] });
 
@@ -24,25 +24,25 @@ async function seed() {
     const db = drizzle(pool, { schema });
 
     try {
-      await db.delete(roles);
+      await db.delete(Role);
     } catch (error) {
       throw new Error(`Failed to clear roles table: ${String(error)}`);
     }
 
-    let role: { uuid: string; roleName: string } | undefined;
+    let dummy_role: { uuid: string; roleName: string } | undefined;
     try {
-      [role] = await db
-        .insert(roles)
+      [dummy_role] = await db
+        .insert(Role)
         .values({
-          uuid: "ddd4073f-a508-4535-8315-c7924b9a95c9",
-          roleName: "Senior Frontend Engineer at funpany",
+          uuid: "019c9a34-72d4-7898-b34f-d1d208b17fa0",
+          roleName: "Frontend Engineer at funpany",
         })
-        .returning({ uuid: roles.uuid, roleName: roles.roleName });
+        .returning({ uuid: Role.uuid, roleName: Role.roleName });
     } catch (error) {
       throw new Error(`Failed to seed role row: ${String(error)}`);
     }
 
-    console.log("Seeded role:", role);
+    console.log("Seeded role:", dummy_role);
   } finally {
     try {
       await pool.end();
