@@ -1,24 +1,49 @@
 import { os } from "@orpc/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { Role } from "@/db/schema";
-import { RoleSelectSchema } from "@/orpc/schema";
+import { Question, QuestionSet, Role } from "@/db/schema";
+import { RoleSelectSchema, RoleWithQuestionsSchema } from "@/orpc/schema";
 
+// FIXME the fetching of the question set is not necessary, remove in the future
 export const getRoleByUuid = os
   .input(RoleSelectSchema.pick({ uuid: true }))
-  .output(RoleSelectSchema.nullable())
+  .output(RoleWithQuestionsSchema.nullable())
   .handler(async ({ input }) => {
     try {
-      const get_role = await db.query.Role.findFirst({
+      const role = await db.query.Role.findFirst({
         where: eq(Role.uuid, input.uuid),
         columns: {
           uuid: true,
           roleName: true,
-          questions: true,
         },
       });
 
-      return get_role ?? null;
+      if (!role) {
+        return null;
+      }
+
+      const questionSet = await db.query.QuestionSet.findFirst({
+        where: eq(QuestionSet.roleUuid, input.uuid),
+        orderBy: (table, { desc }) => [desc(table.version)],
+      });
+
+      if (!questionSet) {
+        return {
+          role,
+          questionSet: null,
+          questions: [],
+        };
+      }
+
+      const questions = await db.query.Question.findMany({
+        where: eq(Question.questionSetUuid, questionSet.uuid),
+      });
+
+      return {
+        role,
+        questionSet,
+        questions,
+      };
     } catch (error) {
       throw new Error(`Failed to fetch role ${input.uuid}: ${String(error)}`);
     }

@@ -47,7 +47,7 @@ function RouteComponent() {
   return (
     <div>
       <h2>
-        Role {roleQuery.data.uuid}: {roleQuery.data.roleName}
+        Role {roleQuery.data.role.uuid}: {roleQuery.data.role.roleName}
       </h2>
       <div>
         <button

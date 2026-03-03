@@ -1,8 +1,10 @@
 import { insertNewCandidateWithNameAndEmail } from "./candidate";
 import {
+  addParticipantToInterview,
   createInterviewForRole,
   getInterviewByUuid,
-  getRoleForInterview,
+  getInterviewRelatedDataByInterviewUuid,
+  saveInterviewStepAnswer,
 } from "./interview";
 import { getRoleByUuid } from "./role";
 
@@ -11,5 +13,7 @@ export default {
   createInterviewForRole,
   insertNewCandidateWithNameAndEmail,
   getInterviewByUuid,
-  getRoleForInterview,
+  getInterviewRelatedDataByInterviewUuid,
+  addParticipantToInterview,
+  saveInterviewStepAnswer,
 };
