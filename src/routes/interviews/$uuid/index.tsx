@@ -6,13 +6,18 @@ import { orpc } from "@/orpc/client";
 
 export const Route = createFileRoute("/interviews/$uuid/")({
   component: RouteComponent,
-  loader: async ({ params }) => {
+  loader: ({ params, context }) => {
     const { uuid } = params;
-
-    const interviewRelatedData =
-      await orpc.getInterviewRelatedDataByInterviewUuid.query({
-        uuid,
+    const interviewRelatedDataQueryOptions =
+      orpc.getInterviewRelatedDataByInterviewUuid.queryOptions({
+        input: { uuid },
       });
+    console.log(
+      "preloading interview related data with options",
+      interviewRelatedDataQueryOptions,
+    );
+    console.log(uuid);
+    context.queryClient.ensureQueryData(interviewRelatedDataQueryOptions);
   },
 });
 

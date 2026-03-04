@@ -80,6 +80,13 @@ export const getInterviewRelatedDataByInterviewUuid = os
   .output(InterviewDetailsSchema.nullable())
   .handler(async ({ input }) => {
     try {
+      // // sleep for testing loading states for a second
+      // await new Promise((resolve) => setTimeout(resolve, 5000));
+      // console.log(
+      //   "Fetching interview related data for interview uuid",
+      //   input.uuid,
+      // );
+
       return await db.transaction(async (_) => {
         const [roleAndInterview] = await db
           .select({
