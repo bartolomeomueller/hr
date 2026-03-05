@@ -10,9 +10,6 @@ export const getRoleByUuid = os
   .output(RoleWithQuestionsSchema.nullable())
   .handler(async ({ input }) => {
     try {
-      // sleep 5 seconds for timing testing of streaming ssr
-      await new Promise((resolve) => setTimeout(resolve, 10000));
-
       const role = await db.query.Role.findFirst({
         where: eq(Role.uuid, input.uuid),
         columns: {

@@ -12,8 +12,6 @@ export const Route = createFileRoute("/roles/$uuid/")({
         input: { uuid },
       }),
     );
-    // for timing testing of streaming ssr, to let the client start fetching only after 5 seconds
-    await new Promise((resolve) => setTimeout(resolve, 5000));
   },
 });
 
