@@ -9,7 +9,7 @@ export const Route = createFileRoute("/roles/$uuid/")({
   loader: ({ params, context }) => {
     const { uuid } = params;
     context.queryClient.ensureQueryData(
-      orpc.getRoleByUuid.queryOptions({
+      orpc.getRoleAndItsQuestionsByUuid.queryOptions({
         input: { uuid },
       }),
     );
@@ -29,11 +29,12 @@ function RoleDetails() {
   const navigate = useNavigate({ from: Route.fullPath });
 
   const roleQuery = useSuspenseQuery(
-    orpc.getRoleByUuid.queryOptions({
+    orpc.getRoleAndItsQuestionsByUuid.queryOptions({
       input: { uuid },
     }),
   );
 
+  // TODO for a better flow change this mutation process to directly redirect to the interview page since the questions are already fetched -> so optimistic update
   const createInterviewMutation = useMutation(
     orpc.createInterviewForRole.mutationOptions(),
   );

@@ -6,10 +6,10 @@ import {
   getInterviewRelatedDataByInterviewUuid,
   saveInterviewStepAnswer,
 } from "./interview";
-import { getRoleByUuid } from "./role";
+import { getRoleAndItsQuestionsByUuid } from "./role";
 
 export default {
-  getRoleByUuid,
+  getRoleAndItsQuestionsByUuid,
   createInterviewForRole,
   insertNewCandidateWithNameAndEmail,
   getInterviewByUuid,
