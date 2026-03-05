@@ -39,29 +39,31 @@ async function seed() {
       throw new Error(`Failed to clear roles table: ${String(error)}`);
     }
 
-    let dummy_role: { uuid: string; roleName: string } | undefined;
+    let role: { uuid: string; roleName: string } | undefined;
     try {
-      [dummy_role] = await db
+      [role] = await db
         .insert(Role)
         .values({
-          uuid: "019c9a34-72d4-7898-b34f-d1d208b17fa0",
+          slug: "frontend-engineer-at-funpany",
           roleName: "Frontend Engineer at funpany",
         })
-        .returning({ uuid: Role.uuid, roleName: Role.roleName });
+        .returning();
     } catch (error) {
       throw new Error(`Failed to seed role row: ${String(error)}`);
     }
 
     try {
-      await db.insert(QuestionSet).values({
-        uuid: "019c9a34-9dd7-73be-9a17-07f0eca87ea7",
-        roleUuid: "019c9a34-72d4-7898-b34f-d1d208b17fa0",
-        version: 1,
-      });
+      const [questionSet] = await db
+        .insert(QuestionSet)
+        .values({
+          roleUuid: role.uuid,
+          version: 1,
+        })
+        .returning();
 
       await db.insert(Question).values([
         {
-          questionSetUuid: "019c9a34-9dd7-73be-9a17-07f0eca87ea7",
+          questionSetUuid: questionSet.uuid,
           position: 1,
           questionType: "video",
           questionPayload: {
@@ -72,7 +74,7 @@ async function seed() {
           answerType: "text",
         },
         {
-          questionSetUuid: "019c9a34-9dd7-73be-9a17-07f0eca87ea7",
+          questionSetUuid: questionSet.uuid,
           position: 2,
           questionType: "scale",
           questionPayload: {
@@ -87,7 +89,7 @@ async function seed() {
           answerType: "number",
         },
         {
-          questionSetUuid: "019c9a34-9dd7-73be-9a17-07f0eca87ea7",
+          questionSetUuid: questionSet.uuid,
           position: 3,
           questionType: "pick",
           questionPayload: {
@@ -105,7 +107,7 @@ async function seed() {
       throw new Error(`Failed to seed question rows: ${String(error)}`);
     }
 
-    console.log("Seeded role:", dummy_role);
+    console.log("Seeded role:", role);
   } finally {
     try {
       await pool.end();

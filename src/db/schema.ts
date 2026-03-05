@@ -11,8 +11,8 @@ import {
 
 export const Role = pgTable("role", {
   uuid: uuid().default(sql`uuidv7()`).primaryKey(),
+  slug: text("slug").notNull().unique(),
   roleName: text("role_name").notNull(),
-  // TODO add field like slug for easier querying and human readable urls
 });
 
 // TODO run cleanup query every night to delete orphaned question sets, but do not delete the vids of questions that still exist

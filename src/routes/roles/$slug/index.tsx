@@ -4,13 +4,13 @@ import { Suspense } from "react";
 import { GenericLoader } from "@/components/GenericLoader";
 import { orpc } from "@/orpc/client";
 
-export const Route = createFileRoute("/roles/$uuid/")({
+export const Route = createFileRoute("/roles/$slug/")({
   component: RouteComponent,
   loader: ({ params, context }) => {
-    const { uuid } = params;
+    const { slug } = params;
     context.queryClient.ensureQueryData(
-      orpc.getRoleAndItsQuestionsByUuid.queryOptions({
-        input: { uuid },
+      orpc.getRoleAndItsQuestionsBySlug.queryOptions({
+        input: { slug },
       }),
     );
   },
@@ -25,12 +25,12 @@ function RouteComponent() {
 }
 
 function RoleDetails() {
-  const { uuid } = Route.useParams();
+  const { slug } = Route.useParams();
   const navigate = useNavigate({ from: Route.fullPath });
 
   const roleQuery = useSuspenseQuery(
-    orpc.getRoleAndItsQuestionsByUuid.queryOptions({
-      input: { uuid },
+    orpc.getRoleAndItsQuestionsBySlug.queryOptions({
+      input: { slug },
     }),
   );
 
@@ -40,8 +40,10 @@ function RoleDetails() {
   );
 
   const handleStartInterview = async () => {
+    if (!roleQuery.data) return; // if no role exists, no interview can be created for this role
+
     const interview = await createInterviewMutation.mutateAsync({
-      uuid: uuid,
+      uuid: roleQuery.data.role.uuid,
     });
 
     await navigate({
@@ -51,7 +53,7 @@ function RoleDetails() {
   };
 
   if (!roleQuery.data) {
-    return <div>No role found for {uuid}</div>;
+    return <div>No role found for {slug}</div>;
   }
 
   return (

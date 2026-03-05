@@ -4,8 +4,8 @@ import { db } from "@/db";
 import { Question, QuestionSet, Role } from "@/db/schema";
 import { RoleSelectSchema, RoleWithQuestionsSchema } from "@/orpc/schema";
 
-export const getRoleAndItsQuestionsByUuid = os
-  .input(RoleSelectSchema.pick({ uuid: true }))
+export const getRoleAndItsQuestionsBySlug = os
+  .input(RoleSelectSchema.pick({ slug: true }))
   .output(RoleWithQuestionsSchema.nullable())
   .handler(async ({ input }) => {
     try {
@@ -17,21 +17,17 @@ export const getRoleAndItsQuestionsByUuid = os
           })
           .from(Role)
           .leftJoin(QuestionSet, eq(QuestionSet.roleUuid, Role.uuid))
-          .where(eq(Role.uuid, input.uuid))
+          .where(eq(Role.slug, input.slug))
           .orderBy(desc(QuestionSet.version))
           .limit(1);
 
         if (result.length === 0) {
           return null;
         }
-
         const { role, questionSet } = result[0];
-        if (!questionSet) {
-          return {
-            role,
-            questionSet: null,
-            questions: [],
-          };
+
+        if (!role || !questionSet) {
+          return null;
         }
 
         const questions = await db.query.Question.findMany({
@@ -45,6 +41,6 @@ export const getRoleAndItsQuestionsByUuid = os
         };
       });
     } catch (error) {
-      throw new Error(`Failed to fetch role ${input.uuid}: ${String(error)}`);
+      throw new Error(`Failed to fetch role ${input.slug}: ${String(error)}`);
     }
   });
