@@ -6,7 +6,7 @@ import { orpc } from "@/orpc/client";
 
 export const Route = createFileRoute("/roles/$uuid/")({
   component: RouteComponent,
-  loader: async ({ params, context }) => {
+  loader: ({ params, context }) => {
     const { uuid } = params;
     context.queryClient.ensureQueryData(
       orpc.getRoleByUuid.queryOptions({

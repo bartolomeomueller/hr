@@ -8,16 +8,11 @@ export const Route = createFileRoute("/interviews/$uuid/")({
   component: RouteComponent,
   loader: ({ params, context }) => {
     const { uuid } = params;
-    const interviewRelatedDataQueryOptions =
-      orpc.getInterviewRelatedDataByInterviewUuid.queryOptions({
+    context.queryClient.ensureQueryData(
+      orpc.getInterviewByUuid.queryOptions({
         input: { uuid },
-      });
-    console.log(
-      "preloading interview related data with options",
-      interviewRelatedDataQueryOptions,
+      }),
     );
-    console.log(uuid);
-    context.queryClient.ensureQueryData(interviewRelatedDataQueryOptions);
   },
 });
 
