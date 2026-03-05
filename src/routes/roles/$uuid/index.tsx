@@ -1,6 +1,7 @@
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Suspense } from "react";
+import { GenericLoader } from "@/components/GenericLoader";
 import { orpc } from "@/orpc/client";
 
 export const Route = createFileRoute("/roles/$uuid/")({
@@ -17,7 +18,7 @@ export const Route = createFileRoute("/roles/$uuid/")({
 
 function RouteComponent() {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense fallback={<GenericLoader />}>
       <RoleDetails />
     </Suspense>
   );
