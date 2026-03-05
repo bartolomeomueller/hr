@@ -1,15 +1,33 @@
-import { createRouter as createTanStackRouter } from "@tanstack/react-router";
+import { QueryClient } from "@tanstack/react-query";
+import { createRouter } from "@tanstack/react-router";
 import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query";
-import { getContext } from "./integrations/tanstack-query/root-provider";
+import { createIsomorphicFn } from "@tanstack/react-start";
 import { routeTree } from "./routeTree.gen";
 
-export function getRouter() {
-  const context = getContext();
+// For why QueryClient is created this way:
+// see https://tanstack.com/query/latest/docs/framework/react/guides/advanced-ssr#streaming-with-server-components
 
-  const router = createTanStackRouter({
+// global variable for the client, not for the server
+let browserQueryClient: QueryClient | undefined;
+
+export const getQueryClient = createIsomorphicFn()
+  .client(() => {
+    if (!browserQueryClient) browserQueryClient = new QueryClient();
+    return browserQueryClient;
+  })
+  .server(() => {
+    return new QueryClient();
+  });
+
+export function getRouter() {
+  const queryClient = getQueryClient();
+
+  const router = createRouter({
     routeTree,
 
-    context,
+    context: {
+      queryClient,
+    },
 
     scrollRestoration: true,
     defaultPreload: "intent",
@@ -22,7 +40,8 @@ export function getRouter() {
 
   setupRouterSsrQueryIntegration({
     router,
-    queryClient: context.queryClient,
+    queryClient,
+    wrapQueryClient: false,
   });
 
   return router;

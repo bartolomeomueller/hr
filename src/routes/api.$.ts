@@ -7,7 +7,7 @@ import { onError } from "@orpc/server";
 import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { createFileRoute } from "@tanstack/react-router";
 import router from "@/orpc/router";
-import { RoleSchema } from "@/orpc/schema";
+import { RoleSelectSchema } from "@/orpc/schema";
 
 const handler = new OpenAPIHandler(router, {
   interceptors: [
@@ -27,7 +27,8 @@ const handler = new OpenAPIHandler(router, {
           version: "1.0.0",
         },
         commonSchemas: {
-          Role: { schema: RoleSchema },
+          // NOTE if a real api is in planning, then this should be updated
+          RoleSelectSchema: { schema: RoleSelectSchema },
           UndefinedError: { error: "UndefinedError" },
         },
         security: [{ bearerAuth: [] }],

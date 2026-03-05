@@ -1,17 +1,35 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-
+import { Suspense } from "react";
 import { orpc } from "@/orpc/client";
 
 export const Route = createFileRoute("/roles/$uuid/")({
   component: RouteComponent,
+  loader: async ({ params, context }) => {
+    const { uuid } = params;
+    context.queryClient.ensureQueryData(
+      orpc.getRoleByUuid.queryOptions({
+        input: { uuid },
+      }),
+    );
+    // for timing testing of streaming ssr, to let the client start fetching only after 5 seconds
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  },
 });
 
 function RouteComponent() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <RoleDetails />
+    </Suspense>
+  );
+}
+
+function RoleDetails() {
   const { uuid } = Route.useParams();
   const navigate = useNavigate({ from: Route.fullPath });
 
-  const roleQuery = useQuery(
+  const roleQuery = useSuspenseQuery(
     orpc.getRoleByUuid.queryOptions({
       input: { uuid },
     }),
@@ -31,14 +49,6 @@ function RouteComponent() {
       params: { uuid: interview.uuid },
     });
   };
-
-  if (roleQuery.isPending) {
-    return <div>Loading role...</div>;
-  }
-
-  if (roleQuery.isError) {
-    return <div>Could not load role.</div>;
-  }
 
   if (!roleQuery.data) {
     return <div>No role found for {uuid}</div>;
