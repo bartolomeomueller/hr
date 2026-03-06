@@ -36,6 +36,14 @@ export function getRouter() {
     defaultNotFoundComponent: () => (
       <div>Not found. Please return to home.</div>
     ),
+    defaultErrorComponent: ({ error, reset }) => (
+      <div>
+        <p>Error: {String(error)}</p>
+        <button type="button" onClick={() => reset()}>
+          Retry
+        </button>
+      </div>
+    ),
   });
 
   setupRouterSsrQueryIntegration({
