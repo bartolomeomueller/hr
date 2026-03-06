@@ -1,5 +1,6 @@
 import { os } from "@orpc/server";
 import { and, desc, eq } from "drizzle-orm";
+import z from "zod";
 import { db } from "@/db";
 import {
   Candidate,
@@ -11,60 +12,55 @@ import {
 } from "@/db/schema";
 import {
   CandidateInsertSchema,
-  InterviewDetailsSchema,
   InterviewSelectSchema,
   InterviewStepSelectSchema,
+  InterviewWithCandidateAndStepsSchema,
+  QuestionSetSelectSchema,
   RoleSelectSchema,
 } from "@/orpc/schema";
 
-export const createInterviewForRole = os
+export const createInterviewForRoleAndQuestionSet = os
   .input(
-    RoleSelectSchema.pick({
-      uuid: true,
+    z.object({
+      roleUuid: RoleSelectSchema.shape.uuid,
+      questionSetVersion: QuestionSetSelectSchema.shape.version,
     }),
   )
+  // Only return the interview uuid to keep the api lean and not introduce unnecessary coupling between the frontend and backend.
   .output(InterviewSelectSchema.pick({ uuid: true }))
-  // TODO put in transaction
   .handler(async ({ input }) => {
     try {
-      const latestQuestionSet = await db.query.QuestionSet.findFirst({
-        where: eq(QuestionSet.roleUuid, input.uuid),
-        orderBy: [desc(QuestionSet.version)],
-      });
-
-      if (!latestQuestionSet) {
-        throw new Error(`No question set found for role ${input.uuid}`);
-      }
-
-      const new_interview = await db
+      const interview = await db
         .insert(Interview)
-        .values({
-          questionSetUuid: latestQuestionSet.uuid,
-        })
+        .select(
+          db
+            .select({ questionSetUuid: QuestionSet.uuid })
+            .from(QuestionSet)
+            .where(
+              and(
+                eq(QuestionSet.roleUuid, input.roleUuid),
+                eq(QuestionSet.version, input.questionSetVersion),
+              ),
+            ),
+        )
         .returning({
           uuid: Interview.uuid,
         });
-      return new_interview[0];
+      return interview[0];
     } catch (error) {
       throw new Error(
-        `Failed to create interview for role ${input.uuid}: ${String(error)}`,
+        `Failed to create interview for role ${input.roleUuid}: ${String(error)}`,
       );
     }
   });
 
+// FIXME correct this api call
 // NOTE Maybe have a look into json aggregation to make it one roundtrip for better performance
 export const getInterviewRelatedDataByInterviewUuid = os
   .input(InterviewSelectSchema.pick({ uuid: true }))
-  .output(InterviewDetailsSchema.nullable())
+  .output(InterviewWithCandidateAndStepsSchema.nullable())
   .handler(async ({ input }) => {
     try {
-      // // sleep for testing loading states for a second
-      // await new Promise((resolve) => setTimeout(resolve, 5000));
-      // console.log(
-      //   "Fetching interview related data for interview uuid",
-      //   input.uuid,
-      // );
-
       return await db.transaction(async (_) => {
         const [roleAndInterview] = await db
           .select({
