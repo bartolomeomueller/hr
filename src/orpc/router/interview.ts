@@ -52,28 +52,6 @@ export const createInterviewForRole = os
     }
   });
 
-export const getInterviewByUuid = os
-  .input(InterviewSelectSchema.pick({ uuid: true }))
-  .output(InterviewSelectSchema.nullable())
-  .handler(async ({ input }) => {
-    try {
-      const interview = await db.query.Interview.findFirst({
-        where: eq(Interview.uuid, input.uuid),
-        columns: {
-          uuid: true,
-          questionSetUuid: true,
-          candidateUuid: true,
-        },
-      });
-
-      return interview ?? null;
-    } catch (error) {
-      throw new Error(
-        `Failed to fetch interview ${input.uuid}: ${String(error)}`,
-      );
-    }
-  });
-
 // NOTE Maybe have a look into json aggregation to make it one roundtrip for better performance
 export const getInterviewRelatedDataByInterviewUuid = os
   .input(InterviewSelectSchema.pick({ uuid: true }))

@@ -9,7 +9,7 @@ export const Route = createFileRoute("/interviews/$uuid/")({
   loader: ({ params, context }) => {
     const { uuid } = params;
     context.queryClient.ensureQueryData(
-      orpc.getInterviewByUuid.queryOptions({
+      orpc.getInterviewRelatedDataByInterviewUuid.queryOptions({
         input: { uuid },
       }),
     );
