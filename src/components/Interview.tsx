@@ -1,7 +1,7 @@
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
-import { type SubmitEvent, useId, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useCandidateFlowForm } from "@/components/CandidateFlowFormContext";
 import { orpc } from "@/orpc/client";
-import { CandidateGreetingForm } from "./CandidateGreetingForm";
 
 export function Interview({
   uuid,
@@ -15,6 +15,7 @@ export function Interview({
   onResourceNotFound: () => never;
 }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const { hideForm, showForm } = useCandidateFlowForm();
 
   // NOTE both queries will not run in parallel
   // see https://tanstack.com/query/latest/docs/framework/react/guides/parallel-queries#manual-parallel-queries
@@ -71,7 +72,7 @@ export function Interview({
 
       return { previousData };
     },
-    onError: (error, variables, onMutateResult, context) => {
+    onError: (_error, _variables, onMutateResult, context) => {
       context.client.setQueryData(
         interviewRelatedDataQueryOptions.queryKey,
         onMutateResult?.previousData,
@@ -79,24 +80,12 @@ export function Interview({
       // NOTE we could try to show the error here to the user somehow
       // better would be with the onError function at the component level
     },
-    onSettled: (_, __, ___, ____, context) => {
+    onSettled: (_data, _error, _variables, _onMutateResult, context) => {
       context.client.invalidateQueries({
         queryKey: interviewRelatedDataQueryOptions.queryKey,
       });
     },
   });
-
-  if (!interviewRelatedDataQuery.data || !questionsQuery.data) {
-    return onResourceNotFound();
-  }
-
-  if (
-    interviewRelatedDataQuery.data.interview.questionSetUuid !==
-    questionsQuery.data.questionSet.uuid
-  )
-    throw new Error(
-      "Mismatching question set data. This should never happen, please try again.",
-    ); // TODO think about a better error handling strategy
 
   const handleParticipantSubmit = async ({
     name,
@@ -125,16 +114,46 @@ export function Interview({
     }
   };
 
+  useEffect(() => {
+    return () => {
+      hideForm();
+    };
+  }, [hideForm]);
+
+  useEffect(() => {
+    if (interviewRelatedDataQuery.data?.candidate === null) {
+      showForm({
+        canSubmit: true,
+        errorMessage: submitError,
+        onSubmit: handleParticipantSubmit,
+      });
+      return;
+    }
+
+    hideForm();
+  }, [
+    // biome-ignore lint/correctness/useExhaustiveDependencies: React Compiler stabilizes handleParticipantSubmit
+    handleParticipantSubmit,
+    hideForm,
+    interviewRelatedDataQuery.data?.candidate,
+    showForm,
+    submitError,
+  ]);
+
+  if (!interviewRelatedDataQuery.data || !questionsQuery.data) {
+    return onResourceNotFound();
+  }
+
+  if (
+    interviewRelatedDataQuery.data.interview.questionSetUuid !==
+    questionsQuery.data.questionSet.uuid
+  )
+    throw new Error(
+      "Mismatching question set data. This should never happen, please try again.",
+    ); // TODO think about a better error handling strategy
+
   if (interviewRelatedDataQuery.data.candidate === null) {
-    return (
-      <div>
-        <CandidateGreetingForm
-          canSubmit={true}
-          errorMessage={submitError}
-          onSubmit={handleParticipantSubmit}
-        />
-      </div>
-    );
+    return null;
   }
 
   return (

@@ -11,7 +11,7 @@ const InterviewSearch = z.object({
   version: QuestionSetSelectSchema.shape.version.optional(),
 });
 
-export const Route = createFileRoute("/interviews/$uuid/")({
+export const Route = createFileRoute("/_interviewFlow/interviews/$uuid/")({
   component: RouteComponent,
   validateSearch: InterviewSearch, // automatically parses and validates the search params
   loaderDeps: ({ search }) => ({ search }), // make search params available in the loader

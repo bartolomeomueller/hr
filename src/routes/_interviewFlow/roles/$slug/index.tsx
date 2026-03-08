@@ -4,7 +4,7 @@ import { GenericLoader } from "@/components/GenericLoader";
 import { RoleContainer } from "@/components/Role";
 import { orpc } from "@/orpc/client";
 
-export const Route = createFileRoute("/roles/$slug/")({
+export const Route = createFileRoute("/_interviewFlow/roles/$slug/")({
   component: RouteComponent,
   loader: ({ params, context }) => {
     const { slug } = params;

@@ -4,9 +4,12 @@ import {
   useQuery,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+  candidateFlowNoopSubmit,
+  useCandidateFlowForm,
+} from "@/components/CandidateFlowFormContext";
 import { orpc } from "@/orpc/client";
-import { CandidateGreetingForm } from "./CandidateGreetingForm";
 
 // For maximum performance this site creates a waterfall system of queries:
 // 1. In the loader of the route fetch the role.
@@ -28,6 +31,7 @@ export function RoleContainer({
 }) {
   const [showCandidateGreetingForm, setShowCandidateGreetingForm] =
     useState(false);
+  const { hideForm, showForm } = useCandidateFlowForm();
 
   const roleQueryOptions = orpc.getRoleAndItsQuestionSetBySlug.queryOptions({
     input: { slug },
@@ -60,6 +64,20 @@ export function RoleContainer({
   });
 
   const roleData = roleQuery.data;
+
+  // TODO think about just showing the form immediately not via useEffect
+  useEffect(() => {
+    if (showCandidateGreetingForm) {
+      showForm({
+        canSubmit: false,
+        errorMessage: null,
+        onSubmit: candidateFlowNoopSubmit,
+      });
+      return;
+    }
+
+    hideForm();
+  }, [showCandidateGreetingForm, showForm, hideForm]);
 
   const questionsByRoleSlugAndQuestionSetVersionQueryOptions =
     orpc.getQuestionsByRoleSlugAndQuestionSetVersion.queryOptions({
@@ -97,13 +115,7 @@ export function RoleContainer({
   };
 
   if (showCandidateGreetingForm) {
-    return (
-      <CandidateGreetingForm
-        canSubmit={false}
-        errorMessage={null}
-        onSubmit={async () => {}}
-      />
-    );
+    return null;
   }
 
   return (
