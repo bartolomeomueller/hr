@@ -5,14 +5,22 @@ import {
   getInterviewRelatedDataByInterviewUuid,
   saveInterviewStepAnswer,
 } from "./interview";
-import { getRoleAndItsQuestionsBySlug } from "./role";
+import {
+  getQuestionsByRoleSlugAndQuestionSetVersion,
+  getRoleAndItsQuestionSetBySlug,
+  getRoleSlugAndQuestionSetVersionByInterviewUuid,
+} from "./role";
 
 export default {
   // These exports are sorted in the order of intended usage in the interview process.
-  getRoleAndItsQuestionsBySlug,
+  getRoleAndItsQuestionSetBySlug,
+  getQuestionsByRoleSlugAndQuestionSetVersion,
   createInterviewForRoleAndQuestionSet,
   getInterviewRelatedDataByInterviewUuid,
   insertNewCandidateWithNameAndEmail,
   addParticipantToInterview,
   saveInterviewStepAnswer,
+
+  // Helper functions for the interview process
+  getRoleSlugAndQuestionSetVersionByInterviewUuid,
 };

@@ -37,12 +37,6 @@ export const InterviewStepSelectSchema = createSelectSchema(InterviewStep);
 export const InterviewStepInsertSchema = createInsertSchema(InterviewStep);
 export const InterviewStepUpdateSchema = createUpdateSchema(InterviewStep);
 
-export const RoleWithQuestionsSchema = z.object({
-  role: RoleSelectSchema,
-  questionSet: QuestionSetSelectSchema,
-  questions: z.array(QuestionSelectSchema),
-});
-
 export const InterviewWithCandidateAndStepsSchema = z.object({
   interview: InterviewSelectSchema,
   candidate: CandidateSelectSchema.nullable(),

@@ -7,4 +7,4 @@ if (!databaseUrl) {
   throw new Error("DATABASE_URL environment variable is not set");
 }
 
-export const db = drizzle(databaseUrl, { schema });
+export const db = drizzle(databaseUrl, { schema, logger: false });

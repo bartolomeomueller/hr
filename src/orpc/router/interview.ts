@@ -1,15 +1,8 @@
 import { os } from "@orpc/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import z from "zod";
 import { db } from "@/db";
-import {
-  Candidate,
-  Interview,
-  InterviewStep,
-  Question,
-  QuestionSet,
-  Role,
-} from "@/db/schema";
+import { Candidate, Interview, InterviewStep, QuestionSet } from "@/db/schema";
 import {
   CandidateInsertSchema,
   InterviewSelectSchema,
@@ -18,8 +11,10 @@ import {
   QuestionSetSelectSchema,
   RoleSelectSchema,
 } from "@/orpc/schema";
+import { debugMiddleware } from "../debug-middleware";
 
 export const createInterviewForRoleAndQuestionSet = os
+  .use(debugMiddleware)
   .input(
     z.object({
       roleUuid: RoleSelectSchema.shape.uuid,
@@ -30,19 +25,23 @@ export const createInterviewForRoleAndQuestionSet = os
   .output(InterviewSelectSchema.pick({ uuid: true }))
   .handler(async ({ input }) => {
     try {
+      const questionSetUuidSubquery = db
+        .select({ value: QuestionSet.uuid })
+        .from(QuestionSet)
+        .where(
+          and(
+            eq(QuestionSet.roleUuid, input.roleUuid),
+            eq(QuestionSet.version, input.questionSetVersion),
+          ),
+        )
+        .limit(1);
+
       const interview = await db
         .insert(Interview)
-        .select(
-          db
-            .select({ questionSetUuid: QuestionSet.uuid })
-            .from(QuestionSet)
-            .where(
-              and(
-                eq(QuestionSet.roleUuid, input.roleUuid),
-                eq(QuestionSet.version, input.questionSetVersion),
-              ),
-            ),
-        )
+        .values({
+          // Because of a drizzle limitation, this subquery needs to be casted to sql
+          questionSetUuid: sql`${questionSetUuidSubquery}`,
+        })
         .returning({
           uuid: Interview.uuid,
         });
@@ -54,9 +53,9 @@ export const createInterviewForRoleAndQuestionSet = os
     }
   });
 
-// FIXME correct this api call
 // NOTE Maybe have a look into json aggregation to make it one roundtrip for better performance
 export const getInterviewRelatedDataByInterviewUuid = os
+  .use(debugMiddleware)
   .input(InterviewSelectSchema.pick({ uuid: true }))
   .output(InterviewWithCandidateAndStepsSchema.nullable())
   .handler(async ({ input }) => {
@@ -64,40 +63,29 @@ export const getInterviewRelatedDataByInterviewUuid = os
       return await db.transaction(async (_) => {
         const [roleAndInterview] = await db
           .select({
-            questionSet: QuestionSet,
-            role: Role,
             interview: Interview,
             candidate: Candidate,
+            // TODO look into if this works as soon as it can be tested
+            // steps: sql`(
+            //   SELECT json_agg(steps.*)
+            //   FROM ${InterviewStep} AS steps
+            //   WHERE steps.interview_uuid = ${Interview.uuid}
+            // )`,
           })
           .from(Interview)
-          .innerJoin(
-            QuestionSet,
-            eq(Interview.questionSetUuid, QuestionSet.uuid),
-          )
-          .innerJoin(Role, eq(QuestionSet.roleUuid, Role.uuid))
-          .leftJoin(Candidate, eq(Interview.candidateUuid, Candidate.uuid)) // might be null
+          .leftJoin(Candidate, eq(Interview.candidateUuid, Candidate.uuid)) // candidate might be null
           .where(eq(Interview.uuid, input.uuid))
           .limit(1);
 
         if (!roleAndInterview) return null;
-
-        const questions = await db.query.Question.findMany({
-          where: eq(
-            Question.questionSetUuid,
-            roleAndInterview.questionSet.uuid,
-          ),
-        });
 
         const steps = await db.query.InterviewStep.findMany({
           where: eq(InterviewStep.interviewUuid, input.uuid),
         });
 
         return {
-          role: roleAndInterview.role,
-          questionSet: roleAndInterview.questionSet,
           interview: roleAndInterview.interview,
           candidate: roleAndInterview.candidate,
-          questions,
           steps,
         };
       });
@@ -109,6 +97,7 @@ export const getInterviewRelatedDataByInterviewUuid = os
   });
 
 export const saveInterviewStepAnswer = os
+  .use(debugMiddleware)
   .input(
     InterviewStepSelectSchema.pick({
       interviewUuid: true,
@@ -165,6 +154,7 @@ export const saveInterviewStepAnswer = os
 
 // NOTE This handler needs two roundtrips from the server to the database. This can be optimized for performance by using a CTE.
 export const addParticipantToInterview = os
+  .use(debugMiddleware)
   .input(
     CandidateInsertSchema.extend({
       interviewUuid: InterviewSelectSchema.shape.uuid,
