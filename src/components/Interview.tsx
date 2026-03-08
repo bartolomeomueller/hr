@@ -1,5 +1,5 @@
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useCandidateFlowForm } from "@/components/CandidateFlowFormContext";
 import { orpc } from "@/orpc/client";
 

@@ -40,14 +40,14 @@ export function RoleContainer({
 
   const createInterviewMutation = useMutation({
     ...orpc.createInterviewForRoleAndQuestionSet.mutationOptions(),
-    onMutate: async (variables, context) => {
+    onMutate: async (_variables, _context) => {
       setShowCandidateGreetingForm(true);
     },
-    onError: (error, variables, context) => {
+    onError: (_error, _variables, _context) => {
       // FIXME
       setShowCandidateGreetingForm(false);
     },
-    onSuccess: async (data, variables, onMutateResult, context) => {
+    onSuccess: async (data, variables, _onMutateResult, context) => {
       // NOTE This round trip could be eliminated by a refactor
       await context.client.fetchQuery(
         orpc.getInterviewRelatedDataByInterviewUuid.queryOptions({

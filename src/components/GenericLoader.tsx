@@ -2,36 +2,40 @@ export function GenericLoader() {
   // Use css fade-in animation with delay so no js needs to run.
   // Suspense with SSR will not run any fallback component code.
   return (
-    <div className="opacity-0 animate-[fade-in_0.2s_forwards] delay-400 transform-none">
+    <div className="transform-none animate-[fade-in_0.2s_forwards] opacity-0 delay-400">
       Bitte gib uns einen kleinen Augenblick, um alles für dich vorzubereiten..
       <style>
         {/* see https://css-loaders.com/bouncing/ */}
         {`
-        .loader {
-          height: 60px;
-          aspect-ratio: 2;
-          border-bottom: 3px solid #0000;
-          background: 
-            linear-gradient(90deg,#524656 50%,#0000 0)
-            -25% 100%/50% 3px repeat-x border-box;
-          position: relative;
-          animation: l3-0 .75s linear infinite;
+        .loader {    
+          width: 70px;
+          height: 70px;
+          padding: 10px;
+          box-sizing: border-box;
+          background: #fff;
+          mix-blend-mode: darken;
+          display: grid;
+          filter: blur(4px) contrast(10) hue-rotate(270deg);
         }
-        .loader:before {
-          content: "";
-          position: absolute;
-          inset: auto 42.5% 0;
-          aspect-ratio: 1;
+        .loader:before,
+        .loader:after {
+          content:"";
+          grid-area: 1/1;
+          animation: l2 3s infinite linear;
+          background:#ff00ff;
           border-radius: 50%;
-          background: #CF4647;
-          animation: l3-1 .75s cubic-bezier(0,900,1,900) infinite;
         }
-        @keyframes l3-0 {
-          to {background-position: -125% 100%}
+        .loader:after {
+          animation-delay: -.8s;
         }
-        @keyframes l3-1 {
-          0%,2% {bottom: 0%}
-          98%,to {bottom:.1%}
+        @keyframes l2{
+          12.5% {border-radius: 37% 63% 70% 30% / 30% 62% 38% 70%}
+          25%   {border-radius: 84% 16% 15% 85% / 55% 79% 21% 45%}
+          37.5% {border-radius: 73% 27% 74% 26% / 64% 32% 68% 36%}
+          50%   {border-radius: 73% 27% 18% 82% / 52% 32% 68% 48%}
+          62.5% {border-radius: 33% 67% 18% 82% / 52% 75% 25% 48%}
+          75%   {border-radius: 12% 88% 69% 31% / 10% 66% 34% 90%}
+          87.5% {border-radius: 50% 50% 70% 30% / 52% 62% 38% 48%}
         }`}
       </style>
       <div className="loader"></div>
