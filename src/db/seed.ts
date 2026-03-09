@@ -65,18 +65,25 @@ async function seed() {
         {
           questionSetUuid: questionSet.uuid,
           position: 1,
-          questionType: "video",
+          questionType: "text",
           questionPayload: {
-            prompt:
-              "Welche Technologien würdest du für die Entwicklung einer Webanwendung verwenden?",
-            sourceUrl: "https://example.com/question-1.mp4",
+            text: "Dies ist eine Beispiel-Frage?",
           },
           answerType: "text",
         },
         {
           questionSetUuid: questionSet.uuid,
           position: 2,
-          questionType: "scale",
+          questionType: "text",
+          questionPayload: {
+            text: "Welche Technologien würdest du für die Entwicklung einer Webanwendung verwenden?",
+          },
+          answerType: "video",
+        },
+        {
+          questionSetUuid: questionSet.uuid,
+          position: 3,
+          questionType: "multiple_choice",
           questionPayload: {
             prompt:
               "Wie würdest du deine Expertise in React auf einer Skala von 1 bis 10 bewerten?",
@@ -90,7 +97,7 @@ async function seed() {
         },
         {
           questionSetUuid: questionSet.uuid,
-          position: 3,
+          position: 4,
           questionType: "pick",
           questionPayload: {
             prompt: "Welche Arbeitsweise passt am besten zu dir?",

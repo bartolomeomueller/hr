@@ -1,7 +1,10 @@
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import type z from "zod";
 import { useCandidateFlowForm } from "@/components/CandidateFlowFormContext";
+import { TextPayloadType } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
+import type { InterviewStepSelectSchema } from "@/orpc/schema";
 
 export function Interview({
   uuid,
@@ -87,6 +90,7 @@ export function Interview({
     },
   });
 
+  // NOTE this is unidiomatic. use mutate (without async) and use the provided hooks
   const handleParticipantSubmit = async ({
     name,
     email,
@@ -114,12 +118,7 @@ export function Interview({
     }
   };
 
-  useEffect(() => {
-    return () => {
-      hideForm();
-    };
-  }, [hideForm]);
-
+  // To show or to hide the CandidateGreetingForm
   useEffect(() => {
     if (interviewRelatedDataQuery.data?.candidate === null) {
       showForm({
@@ -140,47 +139,163 @@ export function Interview({
     submitError,
   ]);
 
-  if (!interviewRelatedDataQuery.data || !questionsQuery.data) {
+  // On dismount of the component we want to make sure the CandidateGreetingForm is hidden again.
+  // Otherwise on using the browser back button the form would still be visible, while the role component loads.
+  useEffect(() => {
+    return () => {
+      hideForm();
+    };
+  }, [hideForm]);
+
+  const saveInverviewStepMutation = useMutation<
+    z.infer<typeof InterviewStepSelectSchema>,
+    Error,
+    Pick<
+      z.infer<typeof InterviewStepSelectSchema>,
+      "interviewUuid" | "questionUuid" | "answerPayload"
+    >,
+    { previousData: typeof interviewRelatedDataQuery.data | undefined }
+  >({
+    ...orpc.saveInterviewStep.mutationOptions(),
+    onMutate: async (variables, context) => {
+      await context.client.cancelQueries({
+        queryKey: interviewRelatedDataQueryOptions.queryKey,
+      });
+      const previousData = context.client.getQueryData(
+        interviewRelatedDataQueryOptions.queryKey,
+      );
+
+      // if questionUuid is already in steps, then update it, otherwise append
+      const existingStepIndex = previousData?.steps.findIndex(
+        (step) => step.questionUuid === variables.questionUuid,
+      );
+      let steps = previousData?.steps ?? [];
+      if (existingStepIndex !== undefined && existingStepIndex >= 0) {
+        steps[existingStepIndex] = {
+          ...steps[existingStepIndex],
+          answerPayload: variables.answerPayload,
+          answeredAt: new Date(),
+        };
+      } else {
+        steps = [
+          ...steps,
+          {
+            uuid: "optimistic-interview-step-uuid",
+            interviewUuid: variables.interviewUuid,
+            questionUuid: variables.questionUuid,
+            answerPayload: variables.answerPayload,
+            answeredAt: new Date(),
+          },
+        ];
+      }
+
+      context.client.setQueryData(
+        interviewRelatedDataQueryOptions.queryKey,
+        (oldData) => {
+          if (!oldData) return oldData;
+          return {
+            ...oldData,
+            steps,
+          };
+        },
+      );
+      return { previousData };
+    },
+    onError: (_error, _variables, onMutateResult, context) => {
+      context.client.setQueryData(
+        interviewRelatedDataQueryOptions.queryKey,
+        onMutateResult?.previousData,
+      );
+    },
+    onSettled: (_data, _error, _variables, _onMutateResult, context) => {
+      context.client.invalidateQueries({
+        queryKey: interviewRelatedDataQueryOptions.queryKey,
+      });
+    },
+  });
+
+  const interviewRelatedData = interviewRelatedDataQuery.data;
+  const questionsData = questionsQuery.data;
+  if (!interviewRelatedData || !questionsData) {
     return onResourceNotFound();
   }
 
   if (
-    interviewRelatedDataQuery.data.interview.questionSetUuid !==
-    questionsQuery.data.questionSet.uuid
+    interviewRelatedData.interview.questionSetUuid !==
+    questionsData.questionSet.uuid
   )
     throw new Error(
-      "Mismatching question set data. This should never happen, please try again.",
+      "Mismatched question set data. This should never happen, please try again.",
     ); // TODO think about a better error handling strategy
 
-  if (interviewRelatedDataQuery.data.candidate === null) {
+  // In this case, only the CandidateGreetingForm will be shown
+  if (interviewRelatedData.candidate === null) {
     return null;
+  }
+
+  const currentInterviewStep = interviewRelatedData.steps.length + 1;
+  const currentQuestion = questionsData.questions.find(
+    (question) => question.position === currentInterviewStep,
+  );
+  if (!currentQuestion)
+    throw new Error("Current question not found. This should never happen.");
+  const currentQuestionType = currentQuestion.questionType;
+  let currentQuestionPayload = currentQuestion.questionPayload;
+  switch (currentQuestionType) {
+    case "text":
+      currentQuestionPayload = currentQuestionPayload as z.infer<
+        typeof TextPayloadType
+      >;
+      currentQuestionPayload = TextPayloadType.parse(
+        currentQuestion.questionPayload,
+      );
+      break;
+    default:
+      throw new Error(
+        `Question type ${currentQuestionType} not supported yet.`,
+      );
   }
 
   return (
     <div>
-      <h2>{questionsQuery.data.role.roleName}</h2>
-      <ul>
-        {questionsQuery.data.questions.map((question) => (
-          <li key={question.uuid}>
-            <strong>#{question.position}</strong>{" "}
-            {getQuestionPrompt(question.questionPayload)} (
-            {question.questionType} → {question.answerType})
-          </li>
-        ))}
-      </ul>
-      <p>Recorded answers: {interviewRelatedDataQuery.data.steps.length}</p>
+      <h2>{questionsData.role.roleName}</h2>
+      <p>
+        Question {currentInterviewStep} of {questionsData.questions.length}
+      </p>
+      {currentQuestionType === "text" && <p>{currentQuestionPayload.text}</p>}
+      {currentQuestion.answerType === "text" && (
+        <TextAnswer
+          onSubmit={(text) => {
+            saveInverviewStepMutation.mutate({
+              interviewUuid: interviewRelatedData.interview.uuid,
+              questionUuid: currentQuestion.uuid,
+              answerPayload: { text },
+            });
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function getQuestionPrompt(payload: unknown): string {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return "Untitled question";
-  }
+function TextAnswer({ onSubmit }: { onSubmit: (text: string) => void }) {
+  const [text, setText] = useState("");
 
-  const prompt = (payload as Record<string, unknown>).prompt;
-
-  return typeof prompt === "string" && prompt.length > 0
-    ? prompt
-    : "Untitled question";
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit(text);
+      }}
+    >
+      <input
+        type="text"
+        name="answer"
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        required
+      />
+      <button type="submit">Weiter</button>
+    </form>
+  );
 }

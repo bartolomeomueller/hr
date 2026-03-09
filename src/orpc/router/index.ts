@@ -3,7 +3,7 @@ import {
   addParticipantToInterview,
   createInterviewForRoleAndQuestionSet,
   getInterviewRelatedDataByInterviewUuid,
-  saveInterviewStepAnswer,
+  saveInterviewStep,
 } from "./interview";
 import {
   getQuestionsByRoleSlugAndQuestionSetVersion,
@@ -19,7 +19,7 @@ export default {
   getInterviewRelatedDataByInterviewUuid,
   insertNewCandidateWithNameAndEmail,
   addParticipantToInterview,
-  saveInterviewStepAnswer,
+  saveInterviewStep,
 
   // Helper functions for the interview process
   getRoleSlugAndQuestionSetVersionByInterviewUuid,

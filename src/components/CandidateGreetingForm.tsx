@@ -49,7 +49,11 @@ export function CandidateGreetingForm({
         required
       />
 
-      <button type="submit" disabled={!canSubmit}>
+      <button
+        type="submit"
+        disabled={!canSubmit}
+        className="disabled:cursor-not-allowed disabled:opacity-70"
+      >
         Los geht's!
       </button>
 

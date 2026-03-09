@@ -96,7 +96,7 @@ export const getInterviewRelatedDataByInterviewUuid = os
     }
   });
 
-export const saveInterviewStepAnswer = os
+export const saveInterviewStep = os
   .use(debugMiddleware)
   .input(
     InterviewStepSelectSchema.pick({

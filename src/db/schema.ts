@@ -10,7 +10,9 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const Role = pgTable("role", {
-  uuid: uuid().default(sql`uuidv7()`).primaryKey(),
+  uuid: uuid()
+    .default(sql`uuidv7()`)
+    .primaryKey(),
   slug: text("slug").notNull().unique(),
   roleName: text("role_name").notNull(),
 });
@@ -19,7 +21,9 @@ export const Role = pgTable("role", {
 export const QuestionSet = pgTable(
   "question_set",
   {
-    uuid: uuid().default(sql`uuidv7()`).primaryKey(),
+    uuid: uuid()
+      .default(sql`uuidv7()`)
+      .primaryKey(),
     roleUuid: uuid("role_uuid")
       .notNull()
       .references(() => Role.uuid, { onDelete: "cascade" }),
@@ -39,7 +43,9 @@ export const QuestionSet = pgTable(
 export const Question = pgTable(
   "question",
   {
-    uuid: uuid().default(sql`uuidv7()`).primaryKey(),
+    uuid: uuid()
+      .default(sql`uuidv7()`)
+      .primaryKey(),
     questionSetUuid: uuid("question_set_uuid")
       .notNull()
       // prevent video questions from being orphaned
@@ -58,13 +64,17 @@ export const Question = pgTable(
 );
 
 export const Candidate = pgTable("candidate", {
-  uuid: uuid().default(sql`uuidv7()`).primaryKey(),
+  uuid: uuid()
+    .default(sql`uuidv7()`)
+    .primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull(),
 });
 
 export const Interview = pgTable("interview", {
-  uuid: uuid().default(sql`uuidv7()`).primaryKey(),
+  uuid: uuid()
+    .default(sql`uuidv7()`)
+    .primaryKey(),
   questionSetUuid: uuid("question_set_uuid")
     .notNull()
     .references(() => QuestionSet.uuid, { onDelete: "restrict" }),
@@ -76,7 +86,9 @@ export const Interview = pgTable("interview", {
 export const InterviewStep = pgTable(
   "interview_step",
   {
-    uuid: uuid().default(sql`uuidv7()`).primaryKey(),
+    uuid: uuid()
+      .default(sql`uuidv7()`)
+      .primaryKey(),
     interviewUuid: uuid("interview_uuid")
       .notNull()
       // restrict on delete to prevent accidental orphaning of video sources
