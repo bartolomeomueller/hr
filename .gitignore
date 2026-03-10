@@ -13,3 +13,4 @@ __unconfig*
 
 docker-compose.env
 routeTree.gen.ts
+package-lock.json
