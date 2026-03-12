@@ -130,10 +130,11 @@ function VideoRecorder({
       }
 
       return stream;
-    } catch {
+    } catch (error) {
       setError(
         "Could not access camera/microphone. Please allow permissions and try again. If you do not find the permissions settings, just reload and you will be asked again.",
       );
+      console.log("Error accessing media devices:", error);
       return null;
     }
   }, []);
