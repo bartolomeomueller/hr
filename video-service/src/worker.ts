@@ -1,6 +1,6 @@
-import { parentPort } from "node:worker_threads";
-import { mkdir, unlink, readdir } from "node:fs/promises";
+import { mkdir, readdir, unlink } from "node:fs/promises";
 import path from "node:path";
+import { parentPort } from "node:worker_threads";
 import ffmpeg from "fluent-ffmpeg";
 
 const workerId = parseInt(process.env.WORKER_ID || "0");
@@ -75,45 +75,40 @@ async function processVideo(uuid: string): Promise<void> {
     );
 
     let mapPartString = "";
-    if (resolution.height >= 1080) {
-      mapPartString =
-        "-map 0:v:0 -map 0:a:0 -map 0:v:0 -map 0:a:0 -map 0:v:0 -map 0:a:0";
-    } else if (resolution.height >= 720) {
-      mapPartString = "-map 0:v:0 -map 0:a:0 -map 0:v:0 -map 0:a:0";
-    } else {
-      mapPartString = "-map 0:v:0 -map 0:a:0";
-    }
-
     let filterPartString = "";
     if (resolution.height >= 1080) {
+      mapPartString = "-map 0:v:0 -map 0:v:0 -map 0:v:0 -map 0:a:0";
       filterPartString =
         '-filter:v:0 "fps=24,scale=-2:\'min(1080,ih)\'" -force_key_frames:v:0 "expr:gte(t,n_forced*4)" ' +
         '-filter:v:1 "fps=24,scale=-2:\'min(720,ih)\'"  -force_key_frames:v:1 "expr:gte(t,n_forced*4)" ' +
         '-filter:v:2 "fps=24,scale=-2:\'min(480,ih)\'"  -force_key_frames:v:2 "expr:gte(t,n_forced*4)"';
     } else if (resolution.height >= 720) {
+      mapPartString = "-map 0:v:0 -map 0:v:0 -map 0:a:0";
       filterPartString =
         '-filter:v:0 "fps=24,scale=-2:\'min(720,ih)\'"  -force_key_frames:v:0 "expr:gte(t,n_forced*4)" ' +
         '-filter:v:1 "fps=24,scale=-2:\'min(480,ih)\'"  -force_key_frames:v:1 "expr:gte(t,n_forced*4)"';
     } else {
+      mapPartString = "-map 0:v:0 -map 0:a:0";
       filterPartString =
         '-filter:v:0 "fps=24,scale=-2:\'min(480,ih)\'"  -force_key_frames:v:0 "expr:gte(t,n_forced*4)"';
     }
 
     // Transcode to DASH format
-    // ffmpeg -i input.mp4 \
+    // ffmpeg -i recording.webm \
     // -map 0:v:0 -map 0:a:0 -map 0:v:0 -map 0:a:0 -map 0:v:0 -map 0:a:0 \
     // -c:v libaom-av1 -crf 22 -b:v 0 -cpu-used 6 \
-    // -filter:v:0 "scale=-2:'min(1080,ih)'" -force_key_frames:v:0 "expr:gte(t,n_forced*4)" \
-    // -filter:v:1 "scale=-2:'min(720,ih)'"  -force_key_frames:v:1 "expr:gte(t,n_forced*4)" \
-    // -filter:v:2 "scale=-2:'min(480,ih)'"  -force_key_frames:v:2 "expr:gte(t,n_forced*4)" \
+    // -filter:v:0 "fps=24,scale=-2:'min(1080,ih)'" -force_key_frames:v:0 "expr:gte(t,n_forced*4)" \
+    // -filter:v:1 "fps=24,scale=-2:'min(720,ih)'"  -force_key_frames:v:1 "expr:gte(t,n_forced*4)" \
+    // -filter:v:2 "fps=24,scale=-2:'min(480,ih)'"  -force_key_frames:v:2 "expr:gte(t,n_forced*4)" \
     // -c:a libopus -b:a 96k \
     // -f dash \
     // -seg_duration 4 \
     // -use_template 1 \
     // -use_timeline 1 \
-    // -init_seg_name 'init-stream$RepresentationID$.m4s' \
-    // -media_seg_name 'chunk-stream$RepresentationID$-$Number%05d$.m4s' \
-    // dashoutput/manifest.mpd
+    // -init_seg_name 'init-stream$RepresentationID$.webm' \
+    // -media_seg_name 'chunk-stream$RepresentationID$-$Number%05d$.webm' \
+    // -adaptation_sets 'id=0,streams=v id=1,streams=a' \
+    // dash-output/manifest.mpd
     await new Promise<void>((resolve, reject) => {
       ffmpeg(inputPath)
         .output(outputPath)
@@ -126,8 +121,9 @@ async function processVideo(uuid: string): Promise<void> {
           "-seg_duration 4",
           "-use_template 1",
           "-use_timeline 1",
-          "-init_seg_name 'init-stream$RepresentationID$.m4s'",
-          "-media_seg_name 'chunk-stream$RepresentationID$-$Number%05d$.m4s'",
+          "-init_seg_name 'init-stream$RepresentationID$.webm'",
+          "-media_seg_name 'chunk-stream$RepresentationID$-$Number%05d$.webm'",
+          "-adaptation_sets 'id=0,streams=v id=1,streams=a'",
           "manifest.mpd",
         ])
         .on("error", (err: Error) => {

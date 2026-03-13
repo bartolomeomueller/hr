@@ -1,0 +1,7 @@
+services:
+  nginx:
+    build: ./nginx
+    ports:
+      - "3002:80"
+    volumes:
+      - ./tmp/videos/processed:/usr/share/nginx/html:ro

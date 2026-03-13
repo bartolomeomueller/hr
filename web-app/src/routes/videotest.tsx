@@ -115,7 +115,7 @@ function VideoRecorder({
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: { height: { ideal: 1080 } },
         audio: true,
       });
 
