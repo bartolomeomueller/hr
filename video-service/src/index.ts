@@ -1,22 +1,36 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import { mkdir, writeFile, readdir, unlink } from "node:fs/promises";
+import { mkdir, writeFile, readdir, appendFile } from "node:fs/promises";
 import path from "node:path";
 import { v7 as uuidv7 } from "uuid";
-import os from "node:os";
-import { WorkerPool } from "./worker-pool.js";
+import { Piscina } from "piscina";
 
 const app = new Hono();
 const storageRoot =
   process.env.VIDEO_STORAGE_DIR ?? path.resolve(process.cwd(), "tmp/videos");
 const uploadDir = path.join(storageRoot, "uploads");
 const processedDir = path.join(storageRoot, "processed");
+const backupDir = path.join(storageRoot, "backup");
 
-let workerPool: WorkerPool;
+const pool = new Piscina({
+  filename: path.join(__dirname, "worker.ts"),
+  minThreads: 1,
+  // maxThreads is automatically set, scaling is automatic
+});
+
+const initializeWorkForPool = async (): Promise<void> => {
+  await ensureDirs();
+
+  const orphanedUuids = await performRecoveryScan();
+  for (const uuid of orphanedUuids) {
+    runJobWithRetry(uuid, processedDir, 0, 1);
+  }
+};
 
 const ensureDirs = async () => {
   await mkdir(uploadDir, { recursive: true });
   await mkdir(processedDir, { recursive: true });
+  await mkdir(backupDir, { recursive: true });
 };
 
 /**
@@ -39,28 +53,6 @@ const performRecoveryScan = async (): Promise<string[]> => {
   }
 };
 
-/**
- * Initialize the worker pool and start processing.
- */
-const initializeWorkerPool = async (): Promise<void> => {
-  await ensureDirs();
-
-  const workerCount =
-    parseInt(process.env.WORKER_COUNT || "0") || os.cpus().length;
-  console.log(`Initializing worker pool with ${workerCount} threads`);
-
-  workerPool = new WorkerPool(workerCount, storageRoot);
-
-  // Perform recovery scan and enqueue any orphaned files
-  const orphanedUuids = await performRecoveryScan();
-  for (const uuid of orphanedUuids) {
-    workerPool.enqueueJob(uuid);
-  }
-
-  // Start the worker threads
-  await workerPool.startWorkers();
-};
-
 serve(
   {
     fetch: app.fetch,
@@ -68,16 +60,14 @@ serve(
   },
   async (info) => {
     console.log(`Server is running on http://localhost:${info.port}`);
-    await initializeWorkerPool();
+    await initializeWorkForPool();
   },
 );
 
 // Graceful shutdown
 process.on("SIGINT", async () => {
   console.log("\nShutting down...");
-  if (workerPool) {
-    await workerPool.shutdown();
-  }
+  await pool.destroy();
   process.exit(0);
 });
 
@@ -85,10 +75,12 @@ app.get("/", (c) => {
   return c.text("Hello Hono!");
 });
 
+// TODO make the upload streaming
+
 // The upload endpoint gets a blob video file and saves it to the local filesystem under a generated uuidv7 filename.
 // It then signals the worker process to process the video file to dash.
 // It then returns the uuidv7 to the client.
-app.post("/upload", async (c) => {
+app.post("/api/v1/upload", async (c) => {
   const file = await c.req.blob();
 
   if (file.size === 0) {
@@ -105,10 +97,43 @@ app.post("/upload", async (c) => {
 
   await writeFile(uploadPath, buffer);
 
-  // Enqueue the job for processing (non-blocking, fires and forgets)
-  if (workerPool) {
-    workerPool.enqueueJob(id);
-  }
+  runJobWithRetry(id, processedDir);
 
   return c.json({ uuid: id }, 201);
 });
+
+async function runJobWithRetry(
+  uuid: string,
+  processedDir: string,
+  retryCount: number = 0,
+  maxRetries: number = 3,
+): Promise<void> {
+  try {
+    await pool.run({
+      fileToProcess: path.join(uploadDir, `${uuid}.webm`),
+      processedDir,
+      backupPath: path.join(backupDir, `${uuid}.webm`),
+    });
+    console.log(`Job completed: ${uuid}`);
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const nextAttempt = retryCount + 1;
+
+    if (nextAttempt <= maxRetries) {
+      console.warn(
+        `Job failed: ${uuid}, retrying (attempt ${nextAttempt}/${maxRetries}). Error: ${errorMsg}`,
+      );
+      return runJobWithRetry(uuid, processedDir, nextAttempt, maxRetries);
+    }
+
+    await appendFile(
+      "./failed.log",
+      `${uuid} failed because: ${errorMsg}\n`,
+    ).catch((err) => {
+      console.error("THIS IS REALLY BAD: Failed to write to failed.log:", err);
+    });
+    console.error(
+      `Job permanently failed after ${maxRetries} retries: ${uuid}. Error: ${errorMsg}`,
+    );
+  }
+}

@@ -8,12 +8,11 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.11",
-    "fluent-ffmpeg": "^2.1.3",
     "hono": "^4.12.7",
+    "piscina": "^5.1.4",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "@types/fluent-ffmpeg": "^2.1.28",
     "@types/node": "^20.11.17",
     "tsx": "^4.7.1",
     "typescript": "^5.8.3"
