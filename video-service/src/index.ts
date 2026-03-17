@@ -1,7 +1,18 @@
 import { serve } from "@hono/node-server";
-import { Hono } from "hono";
-import { mkdir, writeFile, readdir, appendFile } from "node:fs/promises";
+import { Hono, type Context } from "hono";
+import { createWriteStream } from "node:fs";
+import {
+  mkdir,
+  readdir,
+  appendFile,
+  unlink,
+  rename,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { v7 as uuidv7 } from "uuid";
 import { Piscina } from "piscina";
 
@@ -31,6 +42,22 @@ const ensureDirs = async () => {
   await mkdir(uploadDir, { recursive: true });
   await mkdir(processedDir, { recursive: true });
   await mkdir(backupDir, { recursive: true });
+};
+
+const setUploadCorsHeaders = (c: Context) => {
+  c.header("Access-Control-Allow-Origin", "http://localhost:3000");
+  c.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+  c.header("Access-Control-Allow-Headers", "content-type");
+};
+
+const handleUploadCors = async (c: Context, next: () => Promise<void>) => {
+  setUploadCorsHeaders(c);
+
+  if (c.req.method === "OPTIONS") {
+    return c.body(null, 204);
+  }
+
+  await next();
 };
 
 /**
@@ -75,12 +102,58 @@ app.get("/", (c) => {
   return c.text("Hello Hono!");
 });
 
-// TODO make the upload streaming
+app.use("/api/v1/upload", handleUploadCors);
+app.use("/api/v1/upload-blob", handleUploadCors);
 
-// The upload endpoint gets a blob video file and saves it to the local filesystem under a generated uuidv7 filename.
-// It then signals the worker process to process the video file to dash.
-// It then returns the uuidv7 to the client.
+// The upload endpoint streams a video file to the local filesystem under a
+// generated uuidv7 filename, then signals the worker process to process it.
 app.post("/api/v1/upload", async (c) => {
+  const requestBody = c.req.raw.body;
+  if (!requestBody) {
+    return c.json({ error: "Request body must contain a video stream." }, 400);
+  }
+
+  const id = uuidv7();
+  const filename = `${id}.webm.uploading`;
+
+  await ensureDirs();
+
+  const uploadPath = path.join(uploadDir, filename);
+  const uploadStream = createWriteStream(uploadPath);
+
+  try {
+    await pipeline(
+      Readable.fromWeb(requestBody as unknown as NodeReadableStream),
+      uploadStream,
+    );
+  } catch (error) {
+    console.error(`Streaming upload failed for ${id}:`, error);
+    await unlink(uploadPath).catch((unlinkError) => {
+      console.warn(
+        `Failed to remove partial upload ${uploadPath}:`,
+        unlinkError,
+      );
+    });
+    return c.json({ error: "Failed to store the streamed upload." }, 500);
+  }
+
+  if (uploadStream.bytesWritten === 0) {
+    await unlink(uploadPath).catch((unlinkError) => {
+      console.warn(`Failed to remove empty upload ${uploadPath}:`, unlinkError);
+    });
+    return c.json({ error: "Request body must contain a video stream." }, 400);
+  }
+
+  await rename(uploadPath, uploadPath.replace(".uploading", ""));
+
+  runJobWithRetry(id, processedDir);
+
+  return c.json({ uuid: id }, 201);
+});
+
+// The blob-upload endpoint keeps a non-streaming fallback for browsers that do
+// not support fetch request-body streaming yet.
+app.post("/api/v1/upload-blob", async (c) => {
   const file = await c.req.blob();
 
   if (file.size === 0) {
@@ -88,14 +161,27 @@ app.post("/api/v1/upload", async (c) => {
   }
 
   const id = uuidv7();
-  const filename = `${id}.webm`;
+  const filename = `${id}.webm.uploading`;
 
   await ensureDirs();
 
   const uploadPath = path.join(uploadDir, filename);
-  const buffer = Buffer.from(await file.arrayBuffer());
 
-  await writeFile(uploadPath, buffer);
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    await writeFile(uploadPath, buffer);
+  } catch (error) {
+    console.error(`Blob upload failed for ${id}:`, error);
+    await unlink(uploadPath).catch((unlinkError) => {
+      console.warn(
+        `Failed to remove partial blob upload ${uploadPath}:`,
+        unlinkError,
+      );
+    });
+    return c.json({ error: "Failed to store the blob upload." }, 500);
+  }
+
+  await rename(uploadPath, uploadPath.replace(".uploading", ""));
 
   runJobWithRetry(id, processedDir);
 
