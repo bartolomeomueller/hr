@@ -10,27 +10,27 @@ import {
 // available across browsers: https://wpt.fyi/interop-2026?feature=interop-2026-fetch&stable
 // This function was tested on Chrome and Firefox on 16.03.2026 and was working.
 // https://developer.chrome.com/docs/capabilities/web-apis/fetch-streaming-requests#feature_detection
-// const supportsRequestStreams = (() => {
-//   if (typeof ReadableStream === "undefined") {
-//     return false;
-//   }
-//   try {
-//     let duplexAccessed = false;
-//     const request = new Request("", {
-//       method: "POST",
-//       body: new ReadableStream(),
-//       get duplex() {
-//         duplexAccessed = true;
-//         return "half";
-//       },
-//     } as RequestInit & { duplex: "half" });
+const supportsRequestStreams = (() => {
+  if (typeof ReadableStream === "undefined") {
+    return false;
+  }
+  try {
+    let duplexAccessed = false;
+    const request = new Request("", {
+      method: "POST",
+      body: new ReadableStream(),
+      get duplex() {
+        duplexAccessed = true;
+        return "half";
+      },
+    } as RequestInit & { duplex: "half" });
 
-//     return duplexAccessed && !request.headers.has("content-type");
-//   } catch {
-//     return false;
-//   }
-// })();
-const supportsRequestStreams = false; // For testing
+    return duplexAccessed && !request.headers.has("content-type");
+  } catch {
+    return false;
+  }
+})();
+// const supportsRequestStreams = false; // For testing
 
 // TODO maybe implement if available then: tracking upload progress for fetch https://jakearchibald.com/2025/fetch-streams-not-for-progress/ -> otherwise have to use XMLHttpRequest
 
