@@ -19,8 +19,10 @@ export default async function processVideo({
   processedDir: string;
   backupPath: string;
 }): Promise<void> {
+  // The file path is set by the main thread, so it never throws.
   const uuid = path.basename(fileToProcess, ".webm");
   await mkdir(path.join(processedDir, uuid), { recursive: true });
+  console.log(`[Worker ${threadId}] Starting for ${uuid}`);
 
   try {
     await access(fileToProcess);
@@ -88,7 +90,9 @@ export default async function processVideo({
     throw new Error("ffprobe did not return any output");
   }
   const [width, height] = ffprobeStdout.trim().split(",").map(Number);
-  console.log(`[Worker ${threadId}] Input resolution: ${width}x${height}`);
+  console.log(
+    `[Worker ${threadId}] ${uuid} - Input resolution: ${width}x${height}`,
+  );
 
   const targets = [];
   if (height >= 1080) targets.push(1080);
@@ -181,5 +185,5 @@ export default async function processVideo({
   await rename(fileToProcess, backupPath); // For now move the file to /backup, if video-service is faulty.
   // await unlink(fileToProcess); // Delete or unlink the source file.
 
-  console.log(`[Worker ${threadId}] Processed: ${fileToProcess}`);
+  console.log(`[Worker ${threadId}] Processed: ${uuid}`);
 }
