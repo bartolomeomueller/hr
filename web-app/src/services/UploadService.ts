@@ -10,27 +10,27 @@ import {
 // available across browsers: https://wpt.fyi/interop-2026?feature=interop-2026-fetch&stable
 // This function was tested on Chrome and Firefox on 16.03.2026 and was working.
 // https://developer.chrome.com/docs/capabilities/web-apis/fetch-streaming-requests#feature_detection
-const supportsRequestStreams = (() => {
-  if (typeof ReadableStream === "undefined") {
-    return false;
-  }
-  try {
-    let duplexAccessed = false;
-    const request = new Request("", {
-      method: "POST",
-      body: new ReadableStream(),
-      get duplex() {
-        duplexAccessed = true;
-        return "half";
-      },
-    } as RequestInit & { duplex: "half" });
+// const supportsRequestStreams = (() => {
+//   if (typeof ReadableStream === "undefined") {
+//     return false;
+//   }
+//   try {
+//     let duplexAccessed = false;
+//     const request = new Request("", {
+//       method: "POST",
+//       body: new ReadableStream(),
+//       get duplex() {
+//         duplexAccessed = true;
+//         return "half";
+//       },
+//     } as RequestInit & { duplex: "half" });
 
-    return duplexAccessed && !request.headers.has("content-type");
-  } catch {
-    return false;
-  }
-})();
-// const supportsRequestStreams = false; // For testing
+//     return duplexAccessed && !request.headers.has("content-type");
+//   } catch {
+//     return false;
+//   }
+// })();
+const supportsRequestStreams = false; // For testing
 
 // TODO maybe implement if available then: tracking upload progress for fetch https://jakearchibald.com/2025/fetch-streams-not-for-progress/ -> otherwise have to use XMLHttpRequest
 
@@ -51,16 +51,20 @@ export async function addChunkAndTryUpload(chunk: RecordingChunk | null) {
   }
 
   if (!supportsRequestStreams) {
-    if (!useUploadStore.getState().recordings.at(0)?.isComplete) {
+    const firstRecording = useUploadStore.getState().recordings.at(0);
+    if (!firstRecording?.isComplete) {
       return;
     }
-    if (!useUploadStore.getState().recordings.at(0)?.isUploading) {
+    if (firstRecording.isUploading) {
       return;
     }
-    // Does not support streaming uploads and is complete and not yet uploading
+    // Does not support streaming uploads and is complete and not yet uploading.
     useUploadStore.getState().setFirstRecordingAsUploading();
-    await uploadBlob(useUploadStore.getState().recordings.at(0)!);
+    await uploadBlob(firstRecording);
     useUploadStore.getState().removeFirstRecordingInQueue();
+    void addChunkAndTryUpload(null); // Start the next upload if there is one
+
+    return;
   }
   if (!useUploadStore.getState().recordings.at(0)?.isUploading) {
     // Streaming upload is supported and the first recording in the queue is not yet uploading
@@ -94,8 +98,6 @@ async function uploadBlob(recording: Recording, retryCount = 0) {
     console.log("Upload successful, server response:", result);
 
     // TODO call some callback function to get the id to the db somehow, or have the video service communicate with the web-app somehow
-
-    addChunkAndTryUpload(null); // Start the next upload if there is one
   } catch (error) {
     console.error("Blob upload failed:", error);
     if (retryCount < 3) {
