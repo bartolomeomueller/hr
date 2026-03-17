@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { createWriteStream } from "node:fs";
 import {
+  access,
   mkdir,
   readdir,
   appendFile,
@@ -18,13 +19,21 @@ import { Piscina } from "piscina";
 
 const app = new Hono();
 const storageRoot =
-  process.env.VIDEO_STORAGE_DIR ?? path.resolve(process.cwd(), "tmp/videos");
+  process.env.VIDEO_STORAGE_DIR ?? path.resolve(process.cwd(), "data/videos");
 const uploadDir = path.join(storageRoot, "uploads");
 const processedDir = path.join(storageRoot, "processed");
 const backupDir = path.join(storageRoot, "backup");
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
+
+let workerFilePath = path.join(__dirname, "worker.js");
+try {
+  await access(workerFilePath);
+} catch {
+  workerFilePath = path.join(__dirname, "worker.ts");
+}
 
 const pool = new Piscina({
-  filename: path.join(__dirname, "worker.ts"),
+  filename: workerFilePath,
   minThreads: 1,
   // maxThreads is automatically set, scaling is automatic
 });
@@ -102,12 +111,12 @@ app.get("/", (c) => {
   return c.text("Hello Hono!");
 });
 
-app.use("/api/v1/upload", handleUploadCors);
-app.use("/api/v1/upload-blob", handleUploadCors);
+app.use("/api/v1/upload/upload-stream", handleUploadCors);
+app.use("/api/v1/upload/upload-blob", handleUploadCors);
 
 // The upload endpoint streams a video file to the local filesystem under a
 // generated uuidv7 filename, then signals the worker process to process it.
-app.post("/api/v1/upload", async (c) => {
+app.post("/api/v1/upload/upload-stream", async (c) => {
   const requestBody = c.req.raw.body;
   if (!requestBody) {
     return c.json({ error: "Request body must contain a video stream." }, 400);
@@ -153,7 +162,7 @@ app.post("/api/v1/upload", async (c) => {
 
 // The blob-upload endpoint keeps a non-streaming fallback for browsers that do
 // not support fetch request-body streaming yet.
-app.post("/api/v1/upload-blob", async (c) => {
+app.post("/api/v1/upload/upload-blob", async (c) => {
   const file = await c.req.blob();
 
   if (file.size === 0) {
@@ -213,7 +222,7 @@ async function runJobWithRetry(
     }
 
     await appendFile(
-      "./failed.log",
+      "./data/failed.log",
       `${uuid} failed because: ${errorMsg}\n`,
     ).catch((err) => {
       console.error("THIS IS REALLY BAD: Failed to write to failed.log:", err);

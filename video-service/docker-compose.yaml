@@ -2,6 +2,11 @@ services:
   nginx:
     build: ./nginx
     ports:
-      - "3002:80"
+      - "3001:443"
     volumes:
-      - ./tmp/videos/processed:/usr/share/nginx/html:ro
+      - ./data/videos/processed:/usr/share/nginx/html:ro
+    
+  video-service:
+    build: .
+    volumes:
+      - ./data/:/app/data:rw

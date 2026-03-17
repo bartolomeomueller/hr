@@ -19,7 +19,8 @@ export default async function processVideo({
   processedDir: string;
   backupPath: string;
 }): Promise<void> {
-  await mkdir(processedDir, { recursive: true });
+  const uuid = path.basename(fileToProcess, ".webm");
+  await mkdir(path.join(processedDir, uuid), { recursive: true });
 
   try {
     await access(fileToProcess);
@@ -119,7 +120,7 @@ export default async function processVideo({
     "expr:gte(t,n_forced*4)",
   ]);
 
-  const outputPath = path.join(processedDir, "manifest.mpd");
+  const outputPath = path.join(processedDir, uuid, "manifest.mpd");
   const ffmpegArgs = [
     "-i",
     fileToProcess,

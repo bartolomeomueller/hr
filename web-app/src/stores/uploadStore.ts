@@ -44,12 +44,15 @@ export const useUploadStore = create<UploadStore>((set) => ({
             r.recordingId === chunk.recordingId
               ? {
                   ...r,
+                  // The last chunk is always an empty blob with isLastChunk=true
                   chunks: [
                     ...r.chunks,
-                    { chunk: chunk.chunk, gotEnqueuedToUploadStream: false },
+                    {
+                      chunk: chunk.chunk,
+                      gotEnqueuedToUploadStream: false,
+                    },
                   ],
                   isComplete: chunk.isLastChunk,
-                  isUploading: false,
                 }
               : r,
           ),

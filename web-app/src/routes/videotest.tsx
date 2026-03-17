@@ -1,86 +1,20 @@
+import type { RecordingChunk } from "@/stores/uploadStore";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { addChunkAndTryUpload } from "@/services/UploadService";
 
 export const Route = createFileRoute("/videotest")({
   component: RouteComponent,
 });
 
 function RouteComponent() {
-  const [recordingData, setRecordingData] = useState<{
-    blob: Blob;
-    mimeType: string;
-  } | null>(null);
-  const [recordingObjectUrl, setRecordingObjectUrl] = useState<string | null>(
-    null,
-  );
-
-  useEffect(() => {
-    if (!recordingData) {
-      setRecordingObjectUrl(null);
-      return;
-    }
-
-    const url = URL.createObjectURL(recordingData.blob);
-    setRecordingObjectUrl(url);
-
-    return () => {
-      URL.revokeObjectURL(url);
-    };
-  }, [recordingData]);
-
   return (
-    <div className="flex min-h-screen flex-col items-center gap-8 bg-slate-900 p-8">
-      <VideoRecorder
-        maxDurationMs={3 * 60 * 1000}
-        maxOvertimeMs={60 * 1000}
-        hasRecording={!!recordingData}
-        onRecordingChange={setRecordingData}
-      />
-
-      {recordingData && recordingObjectUrl && (
-        <div className="w-full max-w-2xl overflow-hidden rounded-xl border border-slate-700 bg-slate-800 p-4">
-          <p className="mb-3 text-sm font-medium text-slate-300">
-            Recorded Preview (parent-owned data)
-          </p>
-          <video
-            className="aspect-video w-full rounded-lg object-cover"
-            src={recordingObjectUrl}
-            controls
-          >
-            <track kind="captions" />
-          </video>
-
-          <div className="mt-4 flex flex-wrap gap-4">
-            <a
-              href={recordingObjectUrl}
-              download="recording.webm"
-              className="rounded-lg border border-slate-600 px-6 py-3 font-semibold text-slate-300 transition-colors hover:border-slate-400 hover:text-white"
-            >
-              Download
-            </a>
-
-            <button
-              type="button"
-              onClick={() => {
-                // Parent now has the Blob and can upload it wherever needed.
-                console.log(
-                  "Upload this blob from parent:",
-                  recordingData.blob,
-                );
-              }}
-              className="rounded-lg bg-emerald-500 px-6 py-3 font-semibold text-white shadow-lg shadow-emerald-500/30 transition-colors hover:bg-emerald-600"
-            >
-              Upload Placeholder
-            </button>
-          </div>
-
-          <p className="mt-3 text-xs text-slate-400">
-            {recordingData.mimeType} •{" "}
-            {Math.round(recordingData.blob.size / 1024)} KB
-          </p>
-        </div>
-      )}
-    </div>
+    <VideoRecorder
+      maxDurationMs={3 * 60 * 1000}
+      maxOvertimeMs={60 * 1000}
+      hasRecording={false}
+      transferNewChunk={addChunkAndTryUpload}
+    />
   );
 }
 
@@ -88,21 +22,21 @@ function VideoRecorder({
   maxDurationMs,
   maxOvertimeMs,
   hasRecording,
-  onRecordingChange,
+  transferNewChunk,
 }: {
   maxDurationMs: number;
   maxOvertimeMs: number;
   hasRecording: boolean;
-  onRecordingChange: (data: { blob: Blob; mimeType: string } | null) => void;
+  transferNewChunk: (data: RecordingChunk) => Promise<void>;
 }) {
   const maxRecordingMs = maxDurationMs + maxOvertimeMs;
 
   const streamRef = useRef<MediaStream | null>(null); // Asking a user to allow camera/microphone access will result in this stream.
   const videoRef = useRef<HTMLVideoElement>(null); // The <video> element where the stream will be shown before and while recording.
   const mediaRecorderRef = useRef<MediaRecorder | null>(null); // The MediaStream will be fed into the MediaRecorder.
-  const chunksRef = useRef<Blob[]>([]); // The blob where the recorded video data will be stored, written in chunks.
   const startTimeRef = useRef<number | null>(null); // The timestamp when the recording was started.
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null); // The setInterval function (running repeatedly) to update the text indicating remaining time.
+  const currentRecordingIdRef = useRef<string | null>(null); // The recordingId that should be used for the current recording, so that all chunks get the same id.
 
   const [isRecording, setIsRecording] = useState(false);
   const [timeFromLimitMs, setTimeFromLimitMs] = useState(maxDurationMs);
@@ -148,13 +82,15 @@ function VideoRecorder({
       clearInterval(tickRef.current);
       tickRef.current = null;
     }
-    startTimeRef.current = null;
 
-    const mediaRecorder = mediaRecorderRef.current;
-    if (mediaRecorder && mediaRecorder.state !== "inactive") {
-      mediaRecorder.stop();
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state !== "inactive"
+    ) {
+      mediaRecorderRef.current.stop();
     }
 
+    startTimeRef.current = null;
     setIsRecording(false);
   }, []);
 
@@ -175,9 +111,8 @@ function VideoRecorder({
 
   const startRecording = useCallback(async () => {
     setError(null);
-    onRecordingChange(null);
     setTimeFromLimitMs(maxDurationMs);
-    chunksRef.current = [];
+    currentRecordingIdRef.current = `optimistic-recording-id-${Date.now()}`;
 
     const stream = await ensurePreviewStream();
     if (!stream) {
@@ -207,18 +142,23 @@ function VideoRecorder({
 
     mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
-        chunksRef.current.push(event.data);
+        transferNewChunk({
+          recordingId: currentRecordingIdRef.current!,
+          chunk: event.data,
+          mimeType,
+          isLastChunk: false,
+        });
       }
     };
 
     mediaRecorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, {
-        type: mimeType,
-      });
-      onRecordingChange({
-        blob,
+      transferNewChunk({
+        recordingId: currentRecordingIdRef.current!,
+        chunk: new Blob(),
         mimeType,
+        isLastChunk: true,
       });
+      currentRecordingIdRef.current = null;
     };
 
     mediaRecorder.start(250); // collect data every 250 ms
@@ -247,7 +187,7 @@ function VideoRecorder({
     stopRecording,
     maxDurationMs,
     maxRecordingMs,
-    onRecordingChange,
+    transferNewChunk,
   ]);
 
   const isOvertime = timeFromLimitMs < 0;

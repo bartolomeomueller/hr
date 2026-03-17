@@ -1,11 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
+import z from "zod";
+
+const ShakaPlayerSearch = z.object({
+  videoUuid: z.string().optional(),
+});
 
 export const Route = createFileRoute("/shakaplayertest")({
   component: RouteComponent,
+  validateSearch: ShakaPlayerSearch,
 });
 
-const DASH_URL = "http://localhost:3002/dash-output/manifest.mpd";
+const DASH_FALLBACK_URL =
+  "https://localhost:3001/api/v1/stream/dash-output/manifest.mpd";
 
 type ShakaPlayer = {
   addEventListener: (type: "error", listener: (event: unknown) => void) => void;
@@ -22,6 +29,8 @@ type ShakaModule = {
 };
 
 function RouteComponent() {
+  const search = Route.useSearch();
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playerRef = useRef<ShakaPlayer | null>(null);
 
@@ -53,7 +62,12 @@ function RouteComponent() {
       player.addEventListener("error", onError);
 
       try {
-        await player.load(DASH_URL);
+        console.log("Loading video with UUID:", search.videoUuid);
+        await player.load(
+          search.videoUuid
+            ? `https://localhost:3001/api/v1/stream/${search.videoUuid}/manifest.mpd`
+            : DASH_FALLBACK_URL,
+        );
       } catch (error) {
         onError(error);
       }

@@ -4,6 +4,8 @@ import {
   useUploadStore,
 } from "@/stores/uploadStore";
 
+// FIXME write tests for this service, it is too complicated
+
 // TODO: Remove the blob-upload fallback once fetch upload streaming support is
 // available across browsers: https://wpt.fyi/interop-2026?feature=interop-2026-fetch&stable
 // This function was tested on Chrome and Firefox on 16.03.2026 and was working.
@@ -28,14 +30,20 @@ const supportsRequestStreams = (() => {
     return false;
   }
 })();
+// const supportsRequestStreams = false; // For testing
 
 // TODO maybe implement if available then: tracking upload progress for fetch https://jakearchibald.com/2025/fetch-streams-not-for-progress/ -> otherwise have to use XMLHttpRequest
 
 let wakeUpStream: (() => void) | null = null;
 
 // TODO think about wrapping this in a lock
-async function addChunkAndTryUpload(chunk: RecordingChunk) {
-  useUploadStore.getState().addChunk(chunk); // recordings[0] now defined
+export async function addChunkAndTryUpload(chunk: RecordingChunk | null) {
+  if (chunk) {
+    useUploadStore.getState().addChunk(chunk); // recordings[0] now defined
+  }
+  if (useUploadStore.getState().recordings.length === 0) {
+    return;
+  }
 
   if (wakeUpStream) {
     wakeUpStream();
@@ -68,20 +76,26 @@ async function uploadBlob(recording: Recording, retryCount = 0) {
       recording.chunks.map((c) => c.chunk),
       { type: recording.mimeType },
     ); // The duplication is ok for memory usage
-    const response = await fetch("/api/v1/upload-blob", {
-      method: "POST",
-      headers: {
-        "Content-Type": recording.mimeType,
+    const response = await fetch(
+      "https://localhost:3001/api/v1/upload/upload-blob",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": recording.mimeType,
+        },
+        body: blob,
       },
-      body: blob,
-    });
+    );
     if (!response.ok) {
       throw new Error(`Upload failed with status ${response.status}`);
     }
 
     const result = await response.json();
     console.log("Upload successful, server response:", result);
+
     // TODO call some callback function to get the id to the db somehow, or have the video service communicate with the web-app somehow
+
+    addChunkAndTryUpload(null); // Start the next upload if there is one
   } catch (error) {
     console.error("Blob upload failed:", error);
     if (retryCount < 3) {
@@ -103,7 +117,7 @@ async function uploadStream(retryCount = 0) {
     throw new Error("Failed to upload stream after multiple attempts.");
   }
 
-  const stream = new ReadableStream(
+  const stream = new ReadableStream<Uint8Array>(
     {
       async pull(controller) {
         await pullCallbackForStreamUpload(controller);
@@ -119,58 +133,89 @@ async function uploadStream(retryCount = 0) {
 }
 
 async function pullCallbackForStreamUpload(
-  controller: ReadableStreamDefaultController,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  shouldWaitForStateChange = true,
 ) {
-  const index = useUploadStore
-    .getState()
-    .recordings.at(0)
-    ?.chunks.findIndex(
-      (chunkWithState) => chunkWithState.gotEnqueuedToUploadStream,
-    );
-  if (index === undefined) {
+  const recording = useUploadStore.getState().recordings.at(0);
+  if (!recording) {
     throw new Error("No recording found to upload. This should not happen.");
   }
-  if (index === -1) {
-    // No chunk found that has not yet been enqueued to the upload stream, so we wait until there is one.
-    // This resolve will be triggered when a new chunk is added to the recording via the addChunkAndTryUpload function.
+
+  const chunkIndex = recording.chunks.findIndex(
+    (chunkWithState) => !chunkWithState.gotEnqueuedToUploadStream,
+  );
+  if (chunkIndex === -1) {
+    if (recording.isComplete) {
+      controller.close();
+      return;
+    }
+    if (!shouldWaitForStateChange) {
+      return;
+    }
+    // The recording is still in progress, the uploading is not complete, but there is not a new chunk to enqueue.
+    // This resolve will be triggered when addChunkAndTryUpload changes the recording state, or when the timeout elapses.
     await new Promise<void>((resolve) => {
       wakeUpStream = resolve;
+      setTimeout(() => {
+        // Every resolve is unique, so the timer does not need to be cleared.
+        if (wakeUpStream === resolve) {
+          wakeUpStream = null;
+          resolve();
+        }
+      }, 1000);
     });
-    return;
+    return pullCallbackForStreamUpload(controller, false);
   }
+
+  const chunkBytes = new Uint8Array(
+    await recording.chunks[chunkIndex].chunk.arrayBuffer(),
+  );
   useUploadStore
     .getState()
-    .setChunkAsEnqueuedToUploadStreamForFirstRecording(index);
-  controller.enqueue(
-    useUploadStore.getState().recordings.at(0)!.chunks[index].chunk,
-  );
-  if (useUploadStore.getState().recordings.at(0)!.isComplete) {
+    .setChunkAsEnqueuedToUploadStreamForFirstRecording(chunkIndex);
+
+  controller.enqueue(chunkBytes);
+
+  const updatedRecording = useUploadStore.getState().recordings.at(0);
+  if (
+    updatedRecording?.isComplete &&
+    updatedRecording.chunks.every(
+      (chunkWithState) => chunkWithState.gotEnqueuedToUploadStream,
+    )
+  ) {
     controller.close();
   }
 }
 
 async function initiateUploadStream(
-  stream: ReadableStream,
+  stream: ReadableStream<Uint8Array>,
   mimeType: string,
   retryCount: number,
 ) {
   try {
-    const response = await fetch("/api/v1/upload-stream", {
-      method: "POST",
-      headers: {
-        "Content-Type": mimeType,
+    console.log("Starting stream upload with MIME type:", mimeType);
+    const response = await fetch(
+      "https://localhost:3001/api/v1/upload/upload-stream",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": mimeType,
+        },
+        body: stream,
+        // @ts-expect-error - duplex is required in Chrome for streaming bodies
+        duplex: "half",
       },
-      body: stream,
-      // @ts-expect-error - duplex is required in Chrome for streaming bodies
-      duplex: "half",
-    });
+    );
     if (!response.ok) {
       throw new Error(`Stream upload failed with status ${response.status}`);
     }
     const result = await response.json();
     console.log("Stream upload successful, server response:", result);
     useUploadStore.getState().removeFirstRecordingInQueue();
+
     // TODO call some callback function to get the id to the db somehow, or have the video service communicate with the web-app somehow
+
+    addChunkAndTryUpload(null); // Start the next upload if there is one
   } catch (error) {
     console.error("Stream upload failed:", error);
     useUploadStore.getState().resetChunksStreamingStateForFirstRecording();
