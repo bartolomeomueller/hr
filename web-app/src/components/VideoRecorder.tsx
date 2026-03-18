@@ -1,24 +1,7 @@
-import type { RecordingChunk } from "@/stores/uploadStore";
-import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { addChunkAndTryUpload } from "@/services/UploadService";
+import type { RecordingChunk } from "@/stores/uploadStore";
 
-export const Route = createFileRoute("/videotest")({
-  component: RouteComponent,
-});
-
-function RouteComponent() {
-  return (
-    <VideoRecorder
-      maxDurationMs={3 * 60 * 1000}
-      maxOvertimeMs={60 * 1000}
-      hasRecording={false}
-      transferNewChunk={addChunkAndTryUpload}
-    />
-  );
-}
-
-function VideoRecorder({
+export function VideoRecorder({
   maxDurationMs,
   maxOvertimeMs,
   hasRecording,
@@ -207,7 +190,7 @@ function VideoRecorder({
         </p>
       )}
 
-      <div className="w-full max-w-2xl overflow-hidden rounded-xl border border-slate-700 bg-slate-800">
+      <div className="w-full max-w-2xl overflow-hidden rounded-xl bg-slate-800 shadow-lg">
         <video
           ref={videoRef}
           className="aspect-video w-full object-cover"
