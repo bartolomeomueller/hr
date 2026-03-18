@@ -2,19 +2,19 @@ import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import type z from "zod";
 import { useCandidateFlowForm } from "@/components/CandidateFlowFormContext";
-import { TextPayloadType } from "@/db/payload-types";
+import { TextQuestionPayloadType } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
-import type { InterviewStepSelectSchema } from "@/orpc/schema";
+import type { AnswerSelectSchema } from "@/orpc/schema";
 
 export function Interview({
   uuid,
   roleSlug,
-  questionSetVersion,
+  flowVersion,
   onResourceNotFound,
 }: {
   uuid: string;
   roleSlug: string;
-  questionSetVersion: number;
+  flowVersion: number;
   onResourceNotFound: () => never;
 }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -33,10 +33,10 @@ export function Interview({
   );
 
   const questionsQuery = useSuspenseQuery(
-    orpc.getQuestionsByRoleSlugAndQuestionSetVersion.queryOptions({
+    orpc.getQuestionsByRoleSlugAndFlowVersion.queryOptions({
       input: {
         roleSlug,
-        questionSetVersion,
+        flowVersion,
       },
     }),
   );
@@ -148,15 +148,15 @@ export function Interview({
   }, [hideForm]);
 
   const saveInverviewStepMutation = useMutation<
-    z.infer<typeof InterviewStepSelectSchema>,
+    z.infer<typeof AnswerSelectSchema>,
     Error,
     Pick<
-      z.infer<typeof InterviewStepSelectSchema>,
+      z.infer<typeof AnswerSelectSchema>,
       "interviewUuid" | "questionUuid" | "answerPayload"
     >,
     { previousData: typeof interviewRelatedDataQuery.data | undefined }
   >({
-    ...orpc.saveInterviewStep.mutationOptions(),
+    ...orpc.saveAnswer.mutationOptions(),
     onMutate: async (variables, context) => {
       await context.client.cancelQueries({
         queryKey: interviewRelatedDataQueryOptions.queryKey,
@@ -165,20 +165,20 @@ export function Interview({
         interviewRelatedDataQueryOptions.queryKey,
       );
 
-      // if questionUuid is already in steps, then update it, otherwise append
-      const existingStepIndex = previousData?.steps.findIndex(
+      // if questionUuid is already in answers, then update it, otherwise append
+      const existingStepIndex = previousData?.answers.findIndex(
         (step) => step.questionUuid === variables.questionUuid,
       );
-      let steps = previousData?.steps ?? [];
+      let answers = previousData?.answers ?? [];
       if (existingStepIndex !== undefined && existingStepIndex >= 0) {
-        steps[existingStepIndex] = {
-          ...steps[existingStepIndex],
+        answers[existingStepIndex] = {
+          ...answers[existingStepIndex],
           answerPayload: variables.answerPayload,
           answeredAt: new Date(),
         };
       } else {
-        steps = [
-          ...steps,
+        answers = [
+          ...answers,
           {
             uuid: "optimistic-interview-step-uuid",
             interviewUuid: variables.interviewUuid,
@@ -195,7 +195,7 @@ export function Interview({
           if (!oldData) return oldData;
           return {
             ...oldData,
-            steps,
+            answers,
           };
         },
       );
@@ -221,11 +221,11 @@ export function Interview({
   }
 
   if (
-    interviewRelatedData.interview.questionSetUuid !==
-    questionsData.questionSet.uuid
+    interviewRelatedData.interview.flowVersionUuid !==
+    questionsData.flowVersion.uuid
   )
     throw new Error(
-      "Mismatched question set data. This should never happen, please try again.",
+      "Mismatched flow version data. This should never happen, please try again.",
     ); // TODO think about a better error handling strategy
 
   // In this case, only the CandidateGreetingForm will be shown
@@ -233,7 +233,7 @@ export function Interview({
     return null;
   }
 
-  const currentInterviewStep = interviewRelatedData.steps.length + 1;
+  const currentInterviewStep = interviewRelatedData.answers.length + 1;
   const currentQuestion = questionsData.questions.find(
     (question) => question.position === currentInterviewStep,
   );
@@ -244,9 +244,9 @@ export function Interview({
   switch (currentQuestionType) {
     case "text":
       currentQuestionPayload = currentQuestionPayload as z.infer<
-        typeof TextPayloadType
+        typeof TextQuestionPayloadType
       >;
-      currentQuestionPayload = TextPayloadType.parse(
+      currentQuestionPayload = TextQuestionPayloadType.parse(
         currentQuestion.questionPayload,
       );
       break;
@@ -262,14 +262,16 @@ export function Interview({
       <p>
         Question {currentInterviewStep} of {questionsData.questions.length}
       </p>
-      {currentQuestionType === "text" && <p>{currentQuestionPayload.text}</p>}
-      {currentQuestion.answerType === "text" && (
+      {currentQuestionType === "text" && (
+        <p>{currentQuestionPayload.question}</p>
+      )}
+      {currentQuestionType === "text" && (
         <TextAnswer
           onSubmit={(text) => {
             saveInverviewStepMutation.mutate({
               interviewUuid: interviewRelatedData.interview.uuid,
               questionUuid: currentQuestion.uuid,
-              answerPayload: { text },
+              answerPayload: { answer: text },
             });
           }}
         />

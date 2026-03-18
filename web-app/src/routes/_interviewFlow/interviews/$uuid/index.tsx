@@ -4,11 +4,11 @@ import z from "zod";
 import { GenericLoader } from "@/components/GenericLoader";
 import { Interview } from "@/components/Interview";
 import { orpc } from "@/orpc/client";
-import { QuestionSetSelectSchema, RoleSelectSchema } from "@/orpc/schema";
+import { FlowVersionSelectSchema, RoleSelectSchema } from "@/orpc/schema";
 
 const InterviewSearch = z.object({
   slug: RoleSelectSchema.shape.slug.optional(),
-  version: QuestionSetSelectSchema.shape.version.optional(),
+  version: FlowVersionSelectSchema.shape.version.optional(),
 });
 
 export const Route = createFileRoute("/_interviewFlow/interviews/$uuid/")({
@@ -20,10 +20,10 @@ export const Route = createFileRoute("/_interviewFlow/interviews/$uuid/")({
     if (deps.search.slug && deps.search.version) {
       // The user got to this route via the role page, this is the normal flow, we can use streaming ssr
       context.queryClient.ensureQueryData(
-        orpc.getQuestionsByRoleSlugAndQuestionSetVersion.queryOptions({
+        orpc.getQuestionsByRoleSlugAndFlowVersion.queryOptions({
           input: {
             roleSlug: deps.search.slug,
-            questionSetVersion: deps.search.version,
+            flowVersion: deps.search.version,
           },
         }),
       );
@@ -42,24 +42,22 @@ export const Route = createFileRoute("/_interviewFlow/interviews/$uuid/")({
       if (!interviewRelatedData) {
         throw notFound({ routeId: Route.id, data: { uuid } });
       }
-      const roleSlugAndQuestionSetVersion =
-        await context.queryClient.fetchQuery(
-          orpc.getRoleSlugAndQuestionSetVersionByInterviewUuid.queryOptions({
-            input: { uuid },
-          }),
-        );
-      if (!roleSlugAndQuestionSetVersion) {
+      const roleSlugAndFlowVersion = await context.queryClient.fetchQuery(
+        orpc.getRoleSlugAndFlowVersionByInterviewUuid.queryOptions({
+          input: { uuid },
+        }),
+      );
+      if (!roleSlugAndFlowVersion) {
         throw notFound({
           routeId: Route.id,
           data: { uuid },
         });
       }
       context.queryClient.ensureQueryData(
-        orpc.getQuestionsByRoleSlugAndQuestionSetVersion.queryOptions({
+        orpc.getQuestionsByRoleSlugAndFlowVersion.queryOptions({
           input: {
-            roleSlug: roleSlugAndQuestionSetVersion.roleSlug,
-            questionSetVersion:
-              roleSlugAndQuestionSetVersion.questionSetVersion,
+            roleSlug: roleSlugAndFlowVersion.roleSlug,
+            flowVersion: roleSlugAndFlowVersion.flowVersion,
           },
         }),
       );
@@ -92,7 +90,7 @@ function RouteComponent() {
       <Interview
         uuid={uuid}
         roleSlug={search.slug ?? ""} // FIXME
-        questionSetVersion={search.version ?? -1} // FIXME
+        flowVersion={search.version ?? -1} // FIXME
         onResourceNotFound={handleResourceNotFound}
       />
     </Suspense>

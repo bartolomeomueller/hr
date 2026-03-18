@@ -5,11 +5,12 @@ import {
 } from "drizzle-zod";
 import { z } from "zod";
 import {
+  Answer,
   Candidate,
+  FlowStep,
+  FlowVersion,
   Interview,
-  InterviewStep,
   Question,
-  QuestionSet,
   Role,
 } from "@/db/schema";
 
@@ -17,9 +18,13 @@ export const RoleSelectSchema = createSelectSchema(Role);
 export const RoleInsertSchema = createInsertSchema(Role);
 export const RoleUpdateSchema = createUpdateSchema(Role);
 
-export const QuestionSetSelectSchema = createSelectSchema(QuestionSet);
-export const QuestionSetInsertSchema = createInsertSchema(QuestionSet);
-export const QuestionSetUpdateSchema = createUpdateSchema(QuestionSet);
+export const FlowVersionSelectSchema = createSelectSchema(FlowVersion);
+export const FlowVersionInsertSchema = createInsertSchema(FlowVersion);
+export const FlowVersionUpdateSchema = createUpdateSchema(FlowVersion);
+
+export const FlowStepSelectSchema = createSelectSchema(FlowStep);
+export const FlowStepInsertSchema = createInsertSchema(FlowStep);
+export const FlowStepUpdateSchema = createUpdateSchema(FlowStep);
 
 export const QuestionSelectSchema = createSelectSchema(Question);
 export const QuestionInsertSchema = createInsertSchema(Question);
@@ -33,12 +38,12 @@ export const InterviewSelectSchema = createSelectSchema(Interview);
 export const InterviewInsertSchema = createInsertSchema(Interview);
 export const InterviewUpdateSchema = createUpdateSchema(Interview);
 
-export const InterviewStepSelectSchema = createSelectSchema(InterviewStep);
-export const InterviewStepInsertSchema = createInsertSchema(InterviewStep);
-export const InterviewStepUpdateSchema = createUpdateSchema(InterviewStep);
+export const AnswerSelectSchema = createSelectSchema(Answer);
+export const AnswerInsertSchema = createInsertSchema(Answer);
+export const AnswerUpdateSchema = createUpdateSchema(Answer);
 
-export const InterviewWithCandidateAndStepsSchema = z.object({
+export const InterviewWithCandidateAndAnswersSchema = z.object({
   interview: InterviewSelectSchema,
   candidate: CandidateSelectSchema.nullable(),
-  steps: z.array(InterviewStepSelectSchema),
+  answers: z.array(AnswerSelectSchema),
 });

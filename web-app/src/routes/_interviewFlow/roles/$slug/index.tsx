@@ -9,7 +9,7 @@ export const Route = createFileRoute("/_interviewFlow/roles/$slug/")({
   loader: ({ params, context }) => {
     const { slug } = params;
     context.queryClient.ensureQueryData(
-      orpc.getRoleAndItsQuestionSetBySlug.queryOptions({
+      orpc.getRoleAndItsFlowVersionBySlug.queryOptions({
         input: { slug },
       }),
     );

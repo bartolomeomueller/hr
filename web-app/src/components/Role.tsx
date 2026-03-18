@@ -33,13 +33,13 @@ export function RoleContainer({
     useState(false);
   const { hideForm, showForm } = useCandidateFlowForm();
 
-  const roleQueryOptions = orpc.getRoleAndItsQuestionSetBySlug.queryOptions({
+  const roleQueryOptions = orpc.getRoleAndItsFlowVersionBySlug.queryOptions({
     input: { slug },
   });
   const roleQuery = useSuspenseQuery(roleQueryOptions);
 
   const createInterviewMutation = useMutation({
-    ...orpc.createInterviewForRoleAndQuestionSet.mutationOptions(),
+    ...orpc.createInterviewForRoleAndFlowVersion.mutationOptions(),
     onMutate: async (_variables, _context) => {
       setShowCandidateGreetingForm(true);
     },
@@ -58,7 +58,7 @@ export function RoleContainer({
       await onNavigateToInterview(
         data.uuid,
         slug, // TODO maybe update this somehow to a local variable
-        variables.questionSetVersion,
+        variables.flowVersion,
       );
     },
   });
@@ -79,19 +79,19 @@ export function RoleContainer({
     hideForm();
   }, [showCandidateGreetingForm, showForm, hideForm]);
 
-  const questionsByRoleSlugAndQuestionSetVersionQueryOptions =
-    orpc.getQuestionsByRoleSlugAndQuestionSetVersion.queryOptions({
+  const questionsByRoleSlugAndFlowVersionQueryOptions =
+    orpc.getQuestionsByRoleSlugAndFlowVersion.queryOptions({
       input: {
         roleSlug: slug,
-        // Defaults to invalid version, query is disabled until roleData.questionSet.version is defined
-        questionSetVersion: roleData?.questionSet.version ?? -1,
+        // Defaults to invalid version, query is disabled until roleData.flowVersion.version is defined
+        flowVersion: roleData?.flowVersion.version ?? -1,
       },
     });
 
-  const questionsAndQuestionSetQuery = useQuery({
-    ...questionsByRoleSlugAndQuestionSetVersionQueryOptions,
+  const questionsAndFlowVersionQuery = useQuery({
+    ...questionsByRoleSlugAndFlowVersionQueryOptions,
     queryFn: roleData
-      ? questionsByRoleSlugAndQuestionSetVersionQueryOptions.queryFn
+      ? questionsByRoleSlugAndFlowVersionQueryOptions.queryFn
       : skipToken,
   });
 
@@ -102,15 +102,14 @@ export function RoleContainer({
   const handleStartInterview = async () => {
     const interview = await createInterviewMutation.mutateAsync({
       roleUuid: roleData.role.uuid,
-      // Defaults to invalid version, query is disabled until roleData.questionSet.version is defined
-      questionSetVersion:
-        questionsAndQuestionSetQuery.data?.questionSet.version ?? -1,
+      // Defaults to invalid version, query is disabled until roleData.flowVersion.version is defined
+      flowVersion: questionsAndFlowVersionQuery.data?.flowVersion.version ?? -1,
     });
 
     await onNavigateToInterview(
       interview.uuid,
       slug,
-      roleData.questionSet.version,
+      roleData.flowVersion.version,
     );
   };
 
@@ -129,7 +128,7 @@ export function RoleContainer({
           className="disabled:cursor-not-allowed disabled:opacity-70"
           onClick={() => handleStartInterview()}
           disabled={
-            !questionsAndQuestionSetQuery.data ||
+            !questionsAndFlowVersionQuery.data ||
             createInterviewMutation.isPending
           }
         >

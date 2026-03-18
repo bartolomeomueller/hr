@@ -4,10 +4,12 @@ import { Pool } from "pg";
 
 import * as schema from "./schema";
 import {
+  Answer,
+  Candidate,
+  FlowStep,
+  FlowVersion,
   Interview,
-  InterviewStep,
   Question,
-  QuestionSet,
   Role,
 } from "./schema";
 
@@ -30,10 +32,12 @@ async function seed() {
     const db = drizzle(pool, { schema });
 
     try {
-      await db.delete(InterviewStep);
+      await db.delete(Answer);
       await db.delete(Interview);
+      await db.delete(Candidate);
       await db.delete(Question);
-      await db.delete(QuestionSet);
+      await db.delete(FlowStep);
+      await db.delete(FlowVersion);
       await db.delete(Role);
     } catch (error) {
       throw new Error(`Failed to clear roles table: ${String(error)}`);
@@ -53,36 +57,44 @@ async function seed() {
     }
 
     try {
-      const [questionSet] = await db
-        .insert(QuestionSet)
+      const [flowVersion] = await db
+        .insert(FlowVersion)
         .values({
           roleUuid: role.uuid,
           version: 1,
         })
         .returning();
 
+      const [introStep] = await db
+        .insert(FlowStep)
+        .values({
+          flowVersionUuid: flowVersion.uuid,
+          position: 1,
+          kind: "question_block",
+        })
+        .returning();
+
+      const [techStackStep] = await db
+        .insert(FlowStep)
+        .values({
+          flowVersionUuid: flowVersion.uuid,
+          position: 2,
+          kind: "video",
+        })
+        .returning();
+
       await db.insert(Question).values([
         {
-          questionSetUuid: questionSet.uuid,
+          flowStepUuid: introStep.uuid,
           position: 1,
           questionType: "text",
           questionPayload: {
             text: "Dies ist eine Beispiel-Frage?",
           },
-          answerType: "text",
         },
         {
-          questionSetUuid: questionSet.uuid,
+          flowStepUuid: introStep.uuid,
           position: 2,
-          questionType: "text",
-          questionPayload: {
-            text: "Welche Technologien würdest du für die Entwicklung einer Webanwendung verwenden?",
-          },
-          answerType: "video",
-        },
-        {
-          questionSetUuid: questionSet.uuid,
-          position: 3,
           questionType: "multiple_choice",
           questionPayload: {
             prompt:
@@ -93,11 +105,10 @@ async function seed() {
             minLabel: "Einsteiger",
             maxLabel: "Experte",
           },
-          answerType: "number",
         },
         {
-          questionSetUuid: questionSet.uuid,
-          position: 4,
+          flowStepUuid: introStep.uuid,
+          position: 3,
           questionType: "pick",
           questionPayload: {
             prompt: "Welche Arbeitsweise passt am besten zu dir?",
@@ -107,7 +118,14 @@ async function seed() {
               "Remote-first",
             ],
           },
-          answerType: "single_choice",
+        },
+        {
+          flowStepUuid: techStackStep.uuid,
+          position: 1,
+          questionType: "text",
+          questionPayload: {
+            text: "Welche Technologien würdest du für die Entwicklung einer Webanwendung verwenden?",
+          },
         },
       ]);
     } catch (error) {

@@ -8,4 +8,6 @@ The `web-app` project uses streaming ssr. Do not make route loaders async just t
 
 For the `video-service/`: Please assume docker compose is running this service at all times.
 
+Do not delete any comments you do not directly solve.
+
 If you stumble upon something, that was not clear to you or I correct you on something about the project, please propose a change to this file to reflect that correction.

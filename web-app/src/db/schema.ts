@@ -2,12 +2,18 @@ import { sql } from "drizzle-orm";
 import {
   integer,
   jsonb,
+  pgEnum,
   pgTable,
   text,
   timestamp,
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
+
+export const flowStepKindEnum = pgEnum("flow_step_kind", [
+  "video",
+  "question_block",
+]);
 
 export const Role = pgTable("role", {
   uuid: uuid()
@@ -17,9 +23,8 @@ export const Role = pgTable("role", {
   roleName: text("role_name").notNull(),
 });
 
-// TODO run cleanup query every night to delete orphaned question sets, but do not delete the vids of questions that still exist
-export const QuestionSet = pgTable(
-  "question_set",
+export const FlowVersion = pgTable(
+  "flow_version",
   {
     uuid: uuid()
       .default(sql`uuidv7()`)
@@ -33,9 +38,29 @@ export const QuestionSet = pgTable(
       .defaultNow(),
   },
   (table) => [
-    unique("question_set_role_uuid_version_unique").on(
+    unique("flow_version_role_uuid_version_unique").on(
       table.roleUuid,
       table.version,
+    ),
+  ],
+);
+
+export const FlowStep = pgTable(
+  "flow_step",
+  {
+    uuid: uuid()
+      .default(sql`uuidv7()`)
+      .primaryKey(),
+    flowVersionUuid: uuid("flow_version_uuid")
+      .notNull()
+      .references(() => FlowVersion.uuid, { onDelete: "restrict" }),
+    position: integer("position").notNull(),
+    kind: flowStepKindEnum("kind").notNull(),
+  },
+  (table) => [
+    unique("flow_step_flow_version_uuid_position_unique").on(
+      table.flowVersionUuid,
+      table.position,
     ),
   ],
 );
@@ -46,18 +71,17 @@ export const Question = pgTable(
     uuid: uuid()
       .default(sql`uuidv7()`)
       .primaryKey(),
-    questionSetUuid: uuid("question_set_uuid")
+    flowStepUuid: uuid("flow_step_uuid")
       .notNull()
       // prevent video questions from being orphaned
-      .references(() => QuestionSet.uuid, { onDelete: "restrict" }),
+      .references(() => FlowStep.uuid, { onDelete: "restrict" }),
     position: integer("position").notNull(),
     questionType: text("question_type").notNull(),
     questionPayload: jsonb("question_payload").notNull().default("{}"),
-    answerType: text("answer_type").notNull(),
   },
   (table) => [
-    unique("question_question_set_uuid_position_unique").on(
-      table.questionSetUuid,
+    unique("question_flow_step_uuid_position_unique").on(
+      table.flowStepUuid,
       table.position,
     ),
   ],
@@ -75,16 +99,16 @@ export const Interview = pgTable("interview", {
   uuid: uuid()
     .default(sql`uuidv7()`)
     .primaryKey(),
-  questionSetUuid: uuid("question_set_uuid")
+  flowVersionUuid: uuid("flow_version_uuid")
     .notNull()
-    .references(() => QuestionSet.uuid, { onDelete: "restrict" }),
+    .references(() => FlowVersion.uuid, { onDelete: "restrict" }),
   candidateUuid: uuid("candidate_uuid").references(() => Candidate.uuid, {
     onDelete: "cascade",
   }),
 });
 
-export const InterviewStep = pgTable(
-  "interview_step",
+export const Answer = pgTable(
+  "answer",
   {
     uuid: uuid()
       .default(sql`uuidv7()`)
@@ -102,7 +126,7 @@ export const InterviewStep = pgTable(
       .defaultNow(),
   },
   (table) => [
-    unique("interview_step_interview_question_unique").on(
+    unique("answer_interview_question_unique").on(
       table.interviewUuid,
       table.questionUuid,
     ),

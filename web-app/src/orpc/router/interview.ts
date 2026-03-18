@@ -2,36 +2,36 @@ import { os } from "@orpc/server";
 import { and, eq, sql } from "drizzle-orm";
 import z from "zod";
 import { db } from "@/db";
-import { Candidate, Interview, InterviewStep, QuestionSet } from "@/db/schema";
+import { Answer, Candidate, FlowVersion, Interview } from "@/db/schema";
 import {
+  AnswerSelectSchema,
   CandidateInsertSchema,
+  FlowVersionSelectSchema,
   InterviewSelectSchema,
-  InterviewStepSelectSchema,
-  InterviewWithCandidateAndStepsSchema,
-  QuestionSetSelectSchema,
+  InterviewWithCandidateAndAnswersSchema,
   RoleSelectSchema,
 } from "@/orpc/schema";
 import { debugMiddleware } from "../debug-middleware";
 
-export const createInterviewForRoleAndQuestionSet = os
+export const createInterviewForRoleAndFlowVersion = os
   .use(debugMiddleware)
   .input(
     z.object({
       roleUuid: RoleSelectSchema.shape.uuid,
-      questionSetVersion: QuestionSetSelectSchema.shape.version,
+      flowVersion: FlowVersionSelectSchema.shape.version,
     }),
   )
   // Only return the interview uuid to keep the api lean and not introduce unnecessary coupling between the frontend and backend.
   .output(InterviewSelectSchema.pick({ uuid: true }))
   .handler(async ({ input }) => {
     try {
-      const questionSetUuidSubquery = db
-        .select({ value: QuestionSet.uuid })
-        .from(QuestionSet)
+      const flowVersionUuidSubquery = db
+        .select({ value: FlowVersion.uuid })
+        .from(FlowVersion)
         .where(
           and(
-            eq(QuestionSet.roleUuid, input.roleUuid),
-            eq(QuestionSet.version, input.questionSetVersion),
+            eq(FlowVersion.roleUuid, input.roleUuid),
+            eq(FlowVersion.version, input.flowVersion),
           ),
         )
         .limit(1);
@@ -40,7 +40,7 @@ export const createInterviewForRoleAndQuestionSet = os
         .insert(Interview)
         .values({
           // Because of a drizzle limitation, this subquery needs to be casted to sql
-          questionSetUuid: sql`${questionSetUuidSubquery}`,
+          flowVersionUuid: sql`${flowVersionUuidSubquery}`,
         })
         .returning({
           uuid: Interview.uuid,
@@ -57,7 +57,7 @@ export const createInterviewForRoleAndQuestionSet = os
 export const getInterviewRelatedDataByInterviewUuid = os
   .use(debugMiddleware)
   .input(InterviewSelectSchema.pick({ uuid: true }))
-  .output(InterviewWithCandidateAndStepsSchema.nullable())
+  .output(InterviewWithCandidateAndAnswersSchema.nullable())
   .handler(async ({ input }) => {
     try {
       return await db.transaction(async (_) => {
@@ -66,10 +66,10 @@ export const getInterviewRelatedDataByInterviewUuid = os
             interview: Interview,
             candidate: Candidate,
             // TODO look into if this works as soon as it can be tested
-            // steps: sql`(
-            //   SELECT json_agg(steps.*)
-            //   FROM ${InterviewStep} AS steps
-            //   WHERE steps.interview_uuid = ${Interview.uuid}
+            // answers: sql`(
+            //   SELECT json_agg(answers.*)
+            //   FROM ${Answer} AS answers
+            //   WHERE answers.interview_uuid = ${Interview.uuid}
             // )`,
           })
           .from(Interview)
@@ -79,14 +79,14 @@ export const getInterviewRelatedDataByInterviewUuid = os
 
         if (!roleAndInterview) return null;
 
-        const steps = await db.query.InterviewStep.findMany({
-          where: eq(InterviewStep.interviewUuid, input.uuid),
+        const answers = await db.query.Answer.findMany({
+          where: eq(Answer.interviewUuid, input.uuid),
         });
 
         return {
           interview: roleAndInterview.interview,
           candidate: roleAndInterview.candidate,
-          steps,
+          answers,
         };
       });
     } catch (error) {
@@ -96,46 +96,46 @@ export const getInterviewRelatedDataByInterviewUuid = os
     }
   });
 
-export const saveInterviewStep = os
+export const saveAnswer = os
   .use(debugMiddleware)
   .input(
-    InterviewStepSelectSchema.pick({
+    AnswerSelectSchema.pick({
       interviewUuid: true,
       questionUuid: true,
       answerPayload: true,
     }),
   )
-  .output(InterviewStepSelectSchema)
+  .output(AnswerSelectSchema)
   .handler(async ({ input }) => {
     try {
       const [existingStep] = await db
         .select({
-          uuid: InterviewStep.uuid,
+          uuid: Answer.uuid,
         })
-        .from(InterviewStep)
+        .from(Answer)
         .where(
           and(
-            eq(InterviewStep.interviewUuid, input.interviewUuid),
-            eq(InterviewStep.questionUuid, input.questionUuid),
+            eq(Answer.interviewUuid, input.interviewUuid),
+            eq(Answer.questionUuid, input.questionUuid),
           ),
         )
         .limit(1);
 
       if (existingStep) {
         const [updatedStep] = await db
-          .update(InterviewStep)
+          .update(Answer)
           .set({
             answerPayload: input.answerPayload,
             answeredAt: new Date(),
           })
-          .where(eq(InterviewStep.uuid, existingStep.uuid))
+          .where(eq(Answer.uuid, existingStep.uuid))
           .returning();
 
         return updatedStep;
       }
 
       const [insertedStep] = await db
-        .insert(InterviewStep)
+        .insert(Answer)
         .values({
           interviewUuid: input.interviewUuid,
           questionUuid: input.questionUuid,
