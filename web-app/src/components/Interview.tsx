@@ -2,9 +2,9 @@ import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import type z from "zod";
 import { useCandidateFlowForm } from "@/components/CandidateFlowFormContext";
-import { TextQuestionPayloadType } from "@/db/payload-types";
+import { QuestionType } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
-import type { AnswerSelectSchema } from "@/orpc/schema";
+import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 
 export function Interview({
   uuid,
@@ -18,6 +18,7 @@ export function Interview({
   onResourceNotFound: () => never;
 }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [currentFlowStep, setCurrentFlowStep] = useState(1); // TODO think about whether to put this as a search param
   const { hideForm, showForm } = useCandidateFlowForm();
 
   // NOTE both queries will not run in parallel
@@ -233,54 +234,63 @@ export function Interview({
     return null;
   }
 
-  const currentInterviewStep = interviewRelatedData.answers.length + 1;
-  const currentQuestion = questionsData.questions.find(
-    (question) => question.position === currentInterviewStep,
+  const currentFlowStepData = questionsData.flowSteps.find(
+    (step) => step.position === currentFlowStep,
   );
-  if (!currentQuestion)
-    throw new Error("Current question not found. This should never happen.");
-  const currentQuestionType = currentQuestion.questionType;
-  let currentQuestionPayload = currentQuestion.questionPayload;
-  switch (currentQuestionType) {
-    case "text":
-      currentQuestionPayload = currentQuestionPayload as z.infer<
-        typeof TextQuestionPayloadType
-      >;
-      currentQuestionPayload = TextQuestionPayloadType.parse(
-        currentQuestion.questionPayload,
-      );
-      break;
-    default:
-      throw new Error(
-        `Question type ${currentQuestionType} not supported yet.`,
-      );
-  }
+  if (!currentFlowStepData)
+    throw new Error(
+      "Current flow step does not exist in the provided flow steps. This should never happen, please report it.",
+    );
+  const currentFlowStepKind = currentFlowStepData.kind;
+  if (!currentFlowStepKind)
+    throw new Error(
+      "Current flow step does not exist in the provided flow steps. This should never happen, please report it.",
+    );
+  const currentFlowStepQuestions = questionsData.questions.filter(
+    (question) => question.flowStepUuid === currentFlowStepData.uuid,
+  );
 
   return (
     <div>
       <h2>{questionsData.role.roleName}</h2>
-      <p>
-        Question {currentInterviewStep} of {questionsData.questions.length}
-      </p>
-      {currentQuestionType === "text" && (
-        <p>{currentQuestionPayload.question}</p>
+      {currentFlowStepKind === "question_block" && (
+        <QuestionBlock questions={currentFlowStepQuestions} />
       )}
-      {currentQuestionType === "text" && (
-        <TextAnswer
-          onSubmit={(text) => {
-            saveInverviewStepMutation.mutate({
-              interviewUuid: interviewRelatedData.interview.uuid,
-              questionUuid: currentQuestion.uuid,
-              answerPayload: { answer: text },
-            });
-          }}
-        />
+      {currentFlowStepKind === "video" && (
+        <p>Video question type not supported yet.</p>
       )}
     </div>
   );
 }
 
-function TextAnswer({ onSubmit }: { onSubmit: (text: string) => void }) {
+function QuestionBlock({
+  questions,
+}: {
+  questions: Array<z.infer<typeof QuestionSelectSchema>>;
+}) {
+  return (
+    <div>
+      {questions.map((question) => {
+        switch (question.questionType) {
+          case QuestionType.video:
+            throw new Error("This is a bug, please report it");
+          case QuestionType.text:
+            return <TextQuestion key={question.uuid} onSubmit={(_) => {}} />;
+          case QuestionType.single_choice:
+            throw new Error("This question type is not supported yet.");
+          case QuestionType.multiple_choice:
+            throw new Error("This question type is not supported yet.");
+          default:
+            throw new Error(
+              `Question type ${question.questionType} not supported yet. Please report this bug.`,
+            );
+        }
+      })}
+    </div>
+  );
+}
+
+function TextQuestion({ onSubmit }: { onSubmit: (text: string) => void }) {
   const [text, setText] = useState("");
 
   return (
@@ -298,6 +308,35 @@ function TextAnswer({ onSubmit }: { onSubmit: (text: string) => void }) {
         required
       />
       <button type="submit">Weiter</button>
+    </form>
+  );
+}
+
+function SingleChoiceQuestion({
+  onSubmit,
+}: {
+  onSubmit: (selectedOption: string) => void;
+}) {
+  const [option, setOption] = useState("");
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit(option);
+      }}
+    >
+      <label>
+        <input
+          type="radio"
+          name="option"
+          value="option1"
+          checked={option === "option1"}
+          onChange={(event) => setOption(event.target.value)}
+          required
+        />
+        Option 1
+      </label>
     </form>
   );
 }

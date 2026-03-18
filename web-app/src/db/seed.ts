@@ -89,34 +89,43 @@ async function seed() {
           position: 1,
           questionType: "text",
           questionPayload: {
-            text: "Dies ist eine Beispiel-Frage?",
+            question: "Dies ist eine Beispiel-Frage?",
           },
         },
         {
           flowStepUuid: introStep.uuid,
           position: 2,
-          questionType: "multiple_choice",
+          questionType: "single_choice",
           questionPayload: {
-            prompt:
+            question:
               "Wie würdest du deine Expertise in React auf einer Skala von 1 bis 10 bewerten?",
-            min: 1,
-            max: 10,
-            step: 1,
-            minLabel: "Einsteiger",
-            maxLabel: "Experte",
+            options: [
+              "1 - Anfänger",
+              "2 - Grundkenntnisse",
+              "3 - Fortgeschrittene Kenntnisse",
+              "4 - Gute Kenntnisse",
+              "5 - Sehr gute Kenntnisse",
+              "6 - Experte",
+              "7 - Senior Experte",
+              "8 - Lead Experte",
+              "9 - Principal Experte",
+              "10 - Weltklasse Experte",
+            ],
           },
         },
         {
           flowStepUuid: introStep.uuid,
           position: 3,
-          questionType: "pick",
+          questionType: "multiple_choice",
           questionPayload: {
-            prompt: "Welche Arbeitsweise passt am besten zu dir?",
+            question: "Welche Arbeitsweisen passen gut zu dir?",
             options: [
               "Teamarbeit vor Ort",
               "Hybrid mit flexiblen Tagen",
               "Remote-first",
             ],
+            minSelections: 1,
+            maxSelections: 2,
           },
         },
         {
@@ -124,7 +133,8 @@ async function seed() {
           position: 1,
           questionType: "text",
           questionPayload: {
-            text: "Welche Technologien würdest du für die Entwicklung einer Webanwendung verwenden?",
+            question:
+              "Welche Technologien würdest du für die Entwicklung einer Webanwendung verwenden?",
           },
         },
       ]);

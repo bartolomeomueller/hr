@@ -23,6 +23,12 @@ export const QuestionPayloadType = z.xor([
   SingleChoiceQuestionPayloadType,
   MultipleChoiceQuestionPayloadType,
 ]);
+export enum QuestionType {
+  video = "video",
+  text = "text",
+  single_choice = "single_choice",
+  multiple_choice = "multiple_choice",
+}
 
 export const VideoAnswerPayloadType = z.object({
   videoUuid: z.string(),
@@ -43,3 +49,9 @@ export const AnswerPayloadType = z.xor([
   SingleChoiceAnswerPayloadType,
   MultipleChoiceAnswerPayloadType,
 ]);
+export enum AnswerType {
+  video = "video",
+  text = "text",
+  single_choice = "single_choice",
+  multiple_choice = "multiple_choice",
+}
