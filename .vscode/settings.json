@@ -8,6 +8,7 @@
   "files.readonlyInclude": {
     "**/routeTree.gen.ts": true
   },
+  "biome.lsp.bin": "./web-app/node_modules/.bin/biome",
   "editor.codeActionsOnSave": {
     "source.fixAll.biome": "explicit",
     "source.organizeImports.biome": "explicit"
