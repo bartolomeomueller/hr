@@ -107,6 +107,12 @@ export const getQuestionsByRoleSlugAndFlowVersion = os
 
       if (!result) return null;
 
+      // Because of the joins, there is one row for each question, so flow steps are duplicated
+      // This keeps the order of flow steps intact, but removes duplicates
+      result.flowSteps = [
+        ...new Map(result.flowSteps.map((step) => [step.uuid, step])).values(),
+      ];
+
       return result;
     } catch (error) {
       throw new Error(

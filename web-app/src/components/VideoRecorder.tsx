@@ -4,12 +4,10 @@ import type { RecordingChunk } from "@/stores/uploadStore";
 export function VideoRecorder({
   maxDurationSec,
   maxOvertimeSec,
-  hasRecording, // TODO think about this is necessary
   transferNewChunk,
 }: {
   maxDurationSec: number;
   maxOvertimeSec: number;
-  hasRecording: boolean;
   transferNewChunk: (data: RecordingChunk) => Promise<void>;
 }) {
   const maxRecordingSec = maxDurationSec + maxOvertimeSec;
@@ -238,7 +236,7 @@ export function VideoRecorder({
             onClick={startRecording}
             className="rounded-lg bg-cyan-500 px-6 py-3 font-semibold text-white shadow-lg shadow-cyan-500/30 transition-colors hover:bg-cyan-600"
           >
-            {hasRecording ? "Record Again" : "Start Recording"}
+            Start Recording
           </button>
         ) : (
           <button

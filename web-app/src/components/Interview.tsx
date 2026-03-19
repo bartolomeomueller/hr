@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useCandidateFlowForm } from "@/components/CandidateFlowFormContext";
 import { orpc } from "@/orpc/client";
 import { QuestionBlock } from "./QuestionBlock";
+import { VideoQuestion } from "./VideoQuestion";
 
 export function Interview({
   uuid,
@@ -184,6 +185,34 @@ export function Interview({
   return (
     <div>
       <h2>{questionsData.role.roleName}</h2>
+      <div>
+        <button
+          type="button"
+          className="disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() =>
+            setCurrentFlowStep((prev) => {
+              if (prev === 1) return prev;
+              return prev - 1;
+            })
+          }
+          disabled={currentFlowStep === 1}
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          className="disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() =>
+            setCurrentFlowStep((prev) => {
+              if (prev === questionsData.flowSteps.length) return prev;
+              return prev + 1;
+            })
+          }
+          disabled={currentFlowStep === questionsData.flowSteps.length}
+        >
+          Next
+        </button>
+      </div>
       {currentFlowStepKind === "question_block" && (
         <QuestionBlock
           questions={currentFlowStepQuestions}
@@ -195,7 +224,14 @@ export function Interview({
         />
       )}
       {currentFlowStepKind === "video" && (
-        <p>Video question type not supported yet.</p>
+        <VideoQuestion
+          questions={currentFlowStepQuestions}
+          interviewUuid={interviewRelatedData.interview.uuid}
+          queryKeyToInvalidateAnswers={
+            interviewRelatedDataQueryOptions.queryKey
+          }
+          answers={interviewRelatedData.answers}
+        />
       )}
     </div>
   );

@@ -11,7 +11,6 @@ function RouteComponent() {
     <VideoRecorder
       maxDurationSec={3 * 60}
       maxOvertimeSec={60}
-      hasRecording={false}
       transferNewChunk={addChunkAndTryUpload}
     />
   );

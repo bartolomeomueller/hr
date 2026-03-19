@@ -18,55 +18,52 @@ export function QuestionBlock({
   answers: Array<z.infer<typeof AnswerSelectSchema>>;
 }) {
   return (
-    <div>
-      {/* Add on submit handler to force devounce actions to run */}
-      <form>
-        {questions.map((question) => {
-          const answer = answers.find((a) => a.questionUuid === question.uuid);
+    <form>
+      {questions.map((question) => {
+        const answer = answers.find((a) => a.questionUuid === question.uuid); // undefined if no answer was given yet
 
-          switch (question.questionType) {
-            case QuestionType.video:
-              throw new Error("This is a bug, please report it");
-            case QuestionType.text: {
-              return (
-                <TextQuestion
-                  key={question.uuid}
-                  question={question}
-                  interviewUuid={interviewUuid}
-                  queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
-                  answer={answer}
-                />
-              );
-            }
-            case QuestionType.single_choice: {
-              return (
-                <SingleChoiceQuestion
-                  key={question.uuid}
-                  question={question}
-                  interviewUuid={interviewUuid}
-                  queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
-                  answer={answer}
-                />
-              );
-            }
-            case QuestionType.multiple_choice: {
-              return (
-                <MultipleChoiceQuestion
-                  key={question.uuid}
-                  question={question}
-                  interviewUuid={interviewUuid}
-                  queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
-                  answer={answer}
-                />
-              );
-            }
-            default:
-              throw new Error(
-                `Question type ${question.questionType} is not supported. Please report this bug.`,
-              );
+        switch (question.questionType) {
+          case QuestionType.video:
+            throw new Error("This is a bug, please report it");
+          case QuestionType.text: {
+            return (
+              <TextQuestion
+                key={question.uuid}
+                question={question}
+                interviewUuid={interviewUuid}
+                queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+                answer={answer}
+              />
+            );
           }
-        })}
-      </form>
-    </div>
+          case QuestionType.single_choice: {
+            return (
+              <SingleChoiceQuestion
+                key={question.uuid}
+                question={question}
+                interviewUuid={interviewUuid}
+                queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+                answer={answer}
+              />
+            );
+          }
+          case QuestionType.multiple_choice: {
+            return (
+              <MultipleChoiceQuestion
+                key={question.uuid}
+                question={question}
+                interviewUuid={interviewUuid}
+                queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+                answer={answer}
+              />
+            );
+          }
+          default:
+            throw new Error(
+              `Question type ${question.questionType} is not supported. Please report this bug.`,
+            );
+        }
+      })}
+    </form>
   );
 }
