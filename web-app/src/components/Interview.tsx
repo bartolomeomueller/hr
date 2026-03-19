@@ -7,8 +7,10 @@ import { useEffect, useId, useRef, useState } from "react";
 import type z from "zod";
 import { useCandidateFlowForm } from "@/components/CandidateFlowFormContext";
 import {
+  MultipleChoiceAnswerPayloadType,
   MultipleChoiceQuestionPayloadType,
   QuestionType,
+  SingleChoiceAnswerPayloadType,
   SingleChoiceQuestionPayloadType,
   TextAnswerPayloadType,
   TextQuestionPayloadType,
@@ -200,7 +202,9 @@ export function Interview({
         <QuestionBlock
           questions={currentFlowStepQuestions}
           interviewUuid={interviewRelatedData.interview.uuid}
-          queryKeyToInvalidate={interviewRelatedDataQueryOptions.queryKey}
+          queryKeyToInvalidateAnswers={
+            interviewRelatedDataQueryOptions.queryKey
+          }
           answers={interviewRelatedData.answers}
         />
       )}
@@ -214,12 +218,12 @@ export function Interview({
 function QuestionBlock({
   questions,
   interviewUuid,
-  queryKeyToInvalidate,
+  queryKeyToInvalidateAnswers,
   answers,
 }: {
   questions: Array<z.infer<typeof QuestionSelectSchema>>;
   interviewUuid: string;
-  queryKeyToInvalidate: QueryKey;
+  queryKeyToInvalidateAnswers: QueryKey;
   answers: Array<z.infer<typeof AnswerSelectSchema>>;
 }) {
   return (
@@ -233,53 +237,35 @@ function QuestionBlock({
             case QuestionType.video:
               throw new Error("This is a bug, please report it");
             case QuestionType.text: {
-              const result = TextQuestionPayloadType.safeParse(
-                question.questionPayload,
-              );
-              if (!result.success)
-                throw new Error(
-                  `Question payload does not match expected type for text question. This should never happen, please report it. ${result.error.message}`,
-                );
               return (
                 <TextQuestion
                   key={question.uuid}
-                  questionPayload={result.data}
                   question={question}
                   interviewUuid={interviewUuid}
-                  queryKeyToInvalidate={queryKeyToInvalidate}
+                  queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
                   answer={answer}
                 />
               );
             }
             case QuestionType.single_choice: {
-              const result = SingleChoiceQuestionPayloadType.safeParse(
-                question.questionPayload,
-              );
-              if (!result.success)
-                throw new Error(
-                  `Question payload does not match expected type for single choice question. This should never happen, please report it. ${result.error.message}`,
-                );
               return (
                 <SingleChoiceQuestion
                   key={question.uuid}
-                  questionPayload={result.data}
-                  onSubmit={(_) => {}}
+                  question={question}
+                  interviewUuid={interviewUuid}
+                  queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+                  answer={answer}
                 />
               );
             }
             case QuestionType.multiple_choice: {
-              const result = MultipleChoiceQuestionPayloadType.safeParse(
-                question.questionPayload,
-              );
-              if (!result.success)
-                throw new Error(
-                  `Question payload does not match expected type for multiple choice question. This should never happen, please report it. ${result.error.message}`,
-                );
               return (
                 <MultipleChoiceQuestion
                   key={question.uuid}
-                  questionPayload={result.data}
-                  onSubmit={(_) => {}}
+                  question={question}
+                  interviewUuid={interviewUuid}
+                  queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+                  answer={answer}
                 />
               );
             }
@@ -295,18 +281,25 @@ function QuestionBlock({
 }
 
 function TextQuestion({
-  questionPayload,
   question,
   interviewUuid,
-  queryKeyToInvalidate,
+  queryKeyToInvalidateAnswers,
   answer,
 }: {
-  questionPayload: z.infer<typeof TextQuestionPayloadType>;
   question: z.infer<typeof QuestionSelectSchema>;
   interviewUuid: string;
-  queryKeyToInvalidate: QueryKey;
+  queryKeyToInvalidateAnswers: QueryKey;
   answer: z.infer<typeof AnswerSelectSchema> | undefined;
 }) {
+  const questionPayloadResult = TextQuestionPayloadType.safeParse(
+    question.questionPayload,
+  );
+  if (!questionPayloadResult.success)
+    throw new Error(
+      `Question payload does not match expected type for text question. This should never happen, please report it. ${questionPayloadResult.error.message}`,
+    );
+  const questionPayload = questionPayloadResult.data;
+
   const id = useId();
   const answerPayloadParseResult = TextAnswerPayloadType.safeParse(
     answer?.answerPayload,
@@ -326,8 +319,9 @@ function TextQuestion({
     // isPending is false as soon as the new (previously invalidated) query data arrives, since we are returning the promise
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
-        queryKey: queryKeyToInvalidate,
+        queryKey: queryKeyToInvalidateAnswers,
       }),
+    retry: 1,
   });
 
   const debounceFunction = (answer: string) => {
@@ -395,29 +389,51 @@ function TextQuestion({
   );
 }
 
-// With fewer than 10 options, radio buttons are used
+// TODO With fewer than 10 options, radio buttons are used, with more a dropdown
 function SingleChoiceQuestion({
-  questionPayload,
-  onSubmit,
+  question,
+  interviewUuid,
+  queryKeyToInvalidateAnswers,
+  answer,
 }: {
-  questionPayload: z.infer<typeof SingleChoiceQuestionPayloadType>;
-  onSubmit: (selectedOption: string) => void;
+  question: z.infer<typeof QuestionSelectSchema>;
+  interviewUuid: string;
+  queryKeyToInvalidateAnswers: QueryKey;
+  answer: z.infer<typeof AnswerSelectSchema> | undefined;
 }) {
+  const questionPayloadResult = SingleChoiceQuestionPayloadType.safeParse(
+    question.questionPayload,
+  );
+  if (!questionPayloadResult.success)
+    throw new Error(
+      `Question payload does not match expected type for single choice question. This should never happen, please report it. ${questionPayloadResult.error.message}`,
+    );
+  const questionPayload = questionPayloadResult.data;
+
   const name = useId();
-  const [selectedOption, setSelectedOption] = useState("");
+  const answerPayloadParseResult = SingleChoiceAnswerPayloadType.safeParse(
+    answer?.answerPayload,
+  );
+  // useState is only initialized on mount, so it will not be updated by invalidated queries
+  const [selectedOption, setSelectedOption] = useState(
+    answerPayloadParseResult.success
+      ? answerPayloadParseResult.data.selectedOption
+      : "",
+  );
+  const [mutationError, setMutationError] = useState<string | null>(null);
+
+  const { mutate } = useMutation({
+    ...orpc.saveAnswer.mutationOptions(),
+    // isPending is false as soon as the new (previously invalidated) query data arrives, since we are returning the promise
+    onSettled: (_data, _error, _variables, _onMutateResult, context) =>
+      context.client.invalidateQueries({
+        queryKey: queryKeyToInvalidateAnswers,
+      }),
+    retry: 1,
+  });
 
   return (
-    <div
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!questionPayload.options.includes(selectedOption)) {
-          throw new Error(
-            "Selected option is invalid. You are not allowed to modify the HTML.",
-          );
-        }
-        onSubmit(selectedOption);
-      }}
-    >
+    <div>
       <fieldset>
         <legend>{questionPayload.question}</legend>
         {questionPayload.options.map((option) => (
@@ -427,43 +443,93 @@ function SingleChoiceQuestion({
               name={name}
               value={option}
               checked={option === selectedOption}
-              onChange={(event) => setSelectedOption(event.target.value)}
               required
+              onChange={(event) => {
+                setSelectedOption(event.target.value);
+                setMutationError(null);
+                mutate(
+                  {
+                    interviewUuid: interviewUuid,
+                    questionUuid: question.uuid,
+                    answerPayload: { selectedOption: event.target.value },
+                  },
+                  {
+                    onError: (
+                      _error,
+                      _variables,
+                      _onMutateResult,
+                      _context,
+                    ) => {
+                      setMutationError(
+                        "Could not save your answer. Please modify your answer to trigger a new save attempt.",
+                      );
+                    },
+                  },
+                );
+              }}
             />
             {option}
           </label>
         ))}
       </fieldset>
+      <p
+        className={mutationError ? "text-red-500" : "invisible"}
+        // NOTE go over these accessibility attributes, when time is available
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
+        aria-hidden={!mutationError}
+      >
+        {mutationError ?? "\u00A0"} {/* non breaking space*/}
+      </p>
     </div>
   );
 }
 
 // TODO implement min and max selections logic
 function MultipleChoiceQuestion({
-  questionPayload,
-  onSubmit,
+  question,
+  interviewUuid,
+  queryKeyToInvalidateAnswers,
+  answer,
 }: {
-  questionPayload: z.infer<typeof MultipleChoiceQuestionPayloadType>;
-  onSubmit: (selectedOptions: Array<string>) => void;
+  question: z.infer<typeof QuestionSelectSchema>;
+  interviewUuid: string;
+  queryKeyToInvalidateAnswers: QueryKey;
+  answer: z.infer<typeof AnswerSelectSchema> | undefined;
 }) {
+  const questionPayloadResult = MultipleChoiceQuestionPayloadType.safeParse(
+    question.questionPayload,
+  );
+  if (!questionPayloadResult.success)
+    throw new Error(
+      `Question payload does not match expected type for multiple choice question. This should never happen, please report it. ${questionPayloadResult.error.message}`,
+    );
+  const questionPayload = questionPayloadResult.data;
+
   const name = useId();
-  const [selectedOptions, setSelectedOptions] = useState<Array<string>>([]);
+  const answerPayloadParseResult = MultipleChoiceAnswerPayloadType.safeParse(
+    answer?.answerPayload,
+  );
+  const [selectedOptions, setSelectedOptions] = useState(
+    answerPayloadParseResult.success
+      ? answerPayloadParseResult.data.selectedOptions
+      : [],
+  );
+  const [mutationError, setMutationError] = useState<string | null>(null);
+
+  const { mutate } = useMutation({
+    ...orpc.saveAnswer.mutationOptions(),
+    // isPending is false as soon as the new (previously invalidated) query data arrives, since we are returning the promise
+    onSettled: (_data, _error, _variables, _onMutateResult, context) =>
+      context.client.invalidateQueries({
+        queryKey: queryKeyToInvalidateAnswers,
+      }),
+    retry: 1,
+  });
 
   return (
-    <div
-      onSubmit={(event) => {
-        event.preventDefault();
-        // Verify that all selected options are valid
-        for (const selectedOption of selectedOptions) {
-          if (!questionPayload.options.includes(selectedOption)) {
-            throw new Error(
-              "One or more selected options are invalid. You are not allowed to modify the HTML.",
-            );
-          }
-        }
-        onSubmit(selectedOptions);
-      }}
-    >
+    <div>
       <fieldset>
         <legend>{questionPayload.question}</legend>
         {questionPayload.options.map((option) => (
@@ -474,19 +540,51 @@ function MultipleChoiceQuestion({
               value={option}
               checked={selectedOptions.includes(option)}
               onChange={(event) => {
-                if (event.target.checked) {
-                  setSelectedOptions((prev) => [...prev, option]);
-                } else {
-                  setSelectedOptions((prev) =>
-                    prev.filter((selectedOption) => selectedOption !== option),
-                  );
-                }
+                const nextSelectedOptions = event.target.checked
+                  ? [...selectedOptions, option]
+                  : selectedOptions.filter(
+                      (selectedOption) => selectedOption !== option,
+                    );
+
+                setSelectedOptions(nextSelectedOptions);
+                setMutationError(null);
+                mutate(
+                  {
+                    interviewUuid: interviewUuid,
+                    questionUuid: question.uuid,
+                    answerPayload: {
+                      selectedOptions: nextSelectedOptions,
+                    },
+                  },
+                  {
+                    onError: (
+                      _error,
+                      _variables,
+                      _onMutateResult,
+                      _context,
+                    ) => {
+                      setMutationError(
+                        "Could not save your answer. Please modify your answer to trigger a new save attempt.",
+                      );
+                    },
+                  },
+                );
               }}
             />
             {option}
           </label>
         ))}
       </fieldset>
+      <p
+        className={mutationError ? "text-red-500" : "invisible"}
+        // NOTE go over these accessibility attributes, when time is available
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
+        aria-hidden={!mutationError}
+      >
+        {mutationError ?? "\u00A0"} {/* non breaking space*/}
+      </p>
     </div>
   );
 }
