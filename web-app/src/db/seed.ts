@@ -1,7 +1,6 @@
 import { config } from "dotenv";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-
 import * as schema from "./schema";
 import {
   Answer,
@@ -135,6 +134,8 @@ async function seed() {
           questionPayload: {
             question:
               "Welche Technologien würdest du für die Entwicklung einer Webanwendung verwenden?",
+            maxDurationSeconds: 3 * 60,
+            maxOvertimeSeconds: 60,
           },
         },
       ]);

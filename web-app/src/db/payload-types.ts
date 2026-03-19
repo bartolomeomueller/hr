@@ -2,6 +2,8 @@ import z from "zod";
 
 export const VideoQuestionPayloadType = z.object({
   question: z.string(),
+  maxDurationSeconds: z.number(),
+  maxOvertimeSeconds: z.number(), // This should never be 0, at least 10 seconds
 });
 export const TextQuestionPayloadType = z.object({
   question: z.string(),
@@ -13,7 +15,7 @@ export const SingleChoiceQuestionPayloadType = z.object({
 export const MultipleChoiceQuestionPayloadType = z.object({
   question: z.string(),
   options: z.array(z.string()),
-  minSelections: z.number().optional(),
+  minSelections: z.number().optional(), // TODO think about whether to make them required
   maxSelections: z.number().optional(),
 });
 

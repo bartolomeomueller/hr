@@ -9,8 +9,8 @@ export const Route = createFileRoute("/videorecordertest")({
 function RouteComponent() {
   return (
     <VideoRecorder
-      maxDurationMs={3 * 60 * 1000}
-      maxOvertimeMs={60 * 1000}
+      maxDurationSec={3 * 60}
+      maxOvertimeSec={60}
       hasRecording={false}
       transferNewChunk={addChunkAndTryUpload}
     />

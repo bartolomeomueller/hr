@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export function VideoRecorder() {
+export function MimeTypesOld() {
   const [mimeType, setMimeType] = useState<string | null>(
     "video/webm;codecs=av1",
   );

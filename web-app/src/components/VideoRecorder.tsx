@@ -2,17 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RecordingChunk } from "@/stores/uploadStore";
 
 export function VideoRecorder({
-  maxDurationMs,
-  maxOvertimeMs,
-  hasRecording,
+  maxDurationSec,
+  maxOvertimeSec,
+  hasRecording, // TODO think about this is necessary
   transferNewChunk,
 }: {
-  maxDurationMs: number;
-  maxOvertimeMs: number;
+  maxDurationSec: number;
+  maxOvertimeSec: number;
   hasRecording: boolean;
   transferNewChunk: (data: RecordingChunk) => Promise<void>;
 }) {
-  const maxRecordingMs = maxDurationMs + maxOvertimeMs;
+  const maxRecordingSec = maxDurationSec + maxOvertimeSec;
 
   const streamRef = useRef<MediaStream | null>(null); // Asking a user to allow camera/microphone access will result in this stream.
   const videoRef = useRef<HTMLVideoElement>(null); // The <video> element where the stream will be shown before and while recording.
@@ -22,7 +22,7 @@ export function VideoRecorder({
   const currentRecordingIdRef = useRef<string | null>(null); // The recordingId that should be used for the current recording, so that all chunks get the same id.
 
   const [isRecording, setIsRecording] = useState(false);
-  const [timeFromLimitMs, setTimeFromLimitMs] = useState(maxDurationMs);
+  const [timeFromLimitSec, setTimeFromLimitSec] = useState(maxDurationSec);
   const [error, setError] = useState<string | null>(null);
 
   const ensurePreviewStream = useCallback(async () => {
@@ -94,7 +94,7 @@ export function VideoRecorder({
 
   const startRecording = useCallback(async () => {
     setError(null);
-    setTimeFromLimitMs(maxDurationMs);
+    setTimeFromLimitSec(maxDurationSec);
     currentRecordingIdRef.current = `optimistic-recording-id-${Date.now()}`;
 
     const stream = await ensurePreviewStream();
@@ -124,9 +124,15 @@ export function VideoRecorder({
     console.log("MediaRecorder created with mimeType:", mediaRecorder.mimeType);
 
     mediaRecorder.ondataavailable = (event) => {
+      if (!currentRecordingIdRef.current) {
+        throw new Error(
+          "This is a bug, please report it. No recording ID found for new chunk.",
+        );
+      }
+
       if (event.data.size > 0) {
         transferNewChunk({
-          recordingId: currentRecordingIdRef.current!,
+          recordingId: currentRecordingIdRef.current,
           chunk: event.data,
           mimeType,
           isLastChunk: false,
@@ -135,8 +141,14 @@ export function VideoRecorder({
     };
 
     mediaRecorder.onstop = () => {
+      if (!currentRecordingIdRef.current) {
+        throw new Error(
+          "This is a bug, please report it. No recording ID found for last chunk.",
+        );
+      }
+
       transferNewChunk({
-        recordingId: currentRecordingIdRef.current!,
+        recordingId: currentRecordingIdRef.current,
         chunk: new Blob(),
         mimeType,
         isLastChunk: true,
@@ -154,11 +166,11 @@ export function VideoRecorder({
       const startTime = startTimeRef.current;
       if (startTime == null) return;
 
-      const elapsedMs = performance.now() - startTime;
-      const clampedElapsedMs = Math.min(elapsedMs, maxRecordingMs);
-      setTimeFromLimitMs(maxDurationMs - clampedElapsedMs);
+      const elapsedSec = (performance.now() - startTime) / 1000;
+      const clampedElapsedSec = Math.min(elapsedSec, maxRecordingSec);
+      setTimeFromLimitSec(maxDurationSec - clampedElapsedSec);
 
-      if (elapsedMs >= maxRecordingMs) {
+      if (elapsedSec >= maxRecordingSec) {
         stopRecording();
       }
     };
@@ -168,16 +180,16 @@ export function VideoRecorder({
   }, [
     ensurePreviewStream,
     stopRecording,
-    maxDurationMs,
-    maxRecordingMs,
+    maxDurationSec,
+    maxRecordingSec,
     transferNewChunk,
   ]);
 
-  const isOvertime = timeFromLimitMs < 0;
-  const absTimeMs = Math.abs(timeFromLimitMs);
+  const isOvertime = timeFromLimitSec < 0;
+  const absTimeSec = Math.abs(timeFromLimitSec);
   const totalSeconds = isOvertime
-    ? Math.floor(absTimeMs / 1000)
-    : Math.ceil(absTimeMs / 1000);
+    ? Math.floor(absTimeSec)
+    : Math.ceil(absTimeSec);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   const formattedTime = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
