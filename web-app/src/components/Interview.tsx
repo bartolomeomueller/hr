@@ -1,17 +1,8 @@
-import {
-  type QueryKey,
-  useMutation,
-  useSuspenseQuery,
-} from "@tanstack/react-query";
+import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import type z from "zod";
 import { useCandidateFlowForm } from "@/components/CandidateFlowFormContext";
-import { QuestionType } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
-import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
-import { MultipleChoiceQuestion } from "./MultipleChoiceQuestion";
-import { SingleChoiceQuestion } from "./SingleChoiceQuestion";
-import { TextQuestion } from "./TextQuestion";
+import { QuestionBlock } from "./QuestionBlock";
 
 export function Interview({
   uuid,
@@ -166,8 +157,8 @@ export function Interview({
     questionsData.flowVersion.uuid
   )
     throw new Error(
-      "Mismatched flow version data. This should never happen, please try again.",
-    ); // TODO think about a better error handling strategy
+      "Mismatched flow version data. This should never happen, please report this bug.",
+    );
 
   // In this case, only the CandidateGreetingForm will be shown
   if (interviewRelatedData.candidate === null) {
@@ -206,71 +197,6 @@ export function Interview({
       {currentFlowStepKind === "video" && (
         <p>Video question type not supported yet.</p>
       )}
-    </div>
-  );
-}
-
-function QuestionBlock({
-  questions,
-  interviewUuid,
-  queryKeyToInvalidateAnswers,
-  answers,
-}: {
-  questions: Array<z.infer<typeof QuestionSelectSchema>>;
-  interviewUuid: string;
-  queryKeyToInvalidateAnswers: QueryKey;
-  answers: Array<z.infer<typeof AnswerSelectSchema>>;
-}) {
-  return (
-    <div>
-      {/* Add on submit handler to force devounce actions to run */}
-      <form>
-        {questions.map((question) => {
-          const answer = answers.find((a) => a.questionUuid === question.uuid);
-
-          switch (question.questionType) {
-            case QuestionType.video:
-              throw new Error("This is a bug, please report it");
-            case QuestionType.text: {
-              return (
-                <TextQuestion
-                  key={question.uuid}
-                  question={question}
-                  interviewUuid={interviewUuid}
-                  queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
-                  answer={answer}
-                />
-              );
-            }
-            case QuestionType.single_choice: {
-              return (
-                <SingleChoiceQuestion
-                  key={question.uuid}
-                  question={question}
-                  interviewUuid={interviewUuid}
-                  queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
-                  answer={answer}
-                />
-              );
-            }
-            case QuestionType.multiple_choice: {
-              return (
-                <MultipleChoiceQuestion
-                  key={question.uuid}
-                  question={question}
-                  interviewUuid={interviewUuid}
-                  queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
-                  answer={answer}
-                />
-              );
-            }
-            default:
-              throw new Error(
-                `Question type ${question.questionType} is not supported. Please report this bug.`,
-              );
-          }
-        })}
-      </form>
     </div>
   );
 }
