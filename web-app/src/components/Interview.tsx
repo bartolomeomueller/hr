@@ -1,8 +1,15 @@
+import { onError } from "@orpc/client";
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { use, useEffect, useId, useRef, useState } from "react";
 import type z from "zod";
 import { useCandidateFlowForm } from "@/components/CandidateFlowFormContext";
-import { QuestionType } from "@/db/payload-types";
+import {
+  MultipleChoiceQuestionPayloadType,
+  QuestionType,
+  SingleChoiceQuestionPayloadType,
+  TextAnswerPayloadType,
+  TextQuestionPayloadType,
+} from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 
@@ -148,73 +155,6 @@ export function Interview({
     };
   }, [hideForm]);
 
-  const saveInverviewStepMutation = useMutation<
-    z.infer<typeof AnswerSelectSchema>,
-    Error,
-    Pick<
-      z.infer<typeof AnswerSelectSchema>,
-      "interviewUuid" | "questionUuid" | "answerPayload"
-    >,
-    { previousData: typeof interviewRelatedDataQuery.data | undefined }
-  >({
-    ...orpc.saveAnswer.mutationOptions(),
-    onMutate: async (variables, context) => {
-      await context.client.cancelQueries({
-        queryKey: interviewRelatedDataQueryOptions.queryKey,
-      });
-      const previousData = context.client.getQueryData(
-        interviewRelatedDataQueryOptions.queryKey,
-      );
-
-      // if questionUuid is already in answers, then update it, otherwise append
-      const existingStepIndex = previousData?.answers.findIndex(
-        (step) => step.questionUuid === variables.questionUuid,
-      );
-      let answers = previousData?.answers ?? [];
-      if (existingStepIndex !== undefined && existingStepIndex >= 0) {
-        answers[existingStepIndex] = {
-          ...answers[existingStepIndex],
-          answerPayload: variables.answerPayload,
-          answeredAt: new Date(),
-        };
-      } else {
-        answers = [
-          ...answers,
-          {
-            uuid: "optimistic-interview-step-uuid",
-            interviewUuid: variables.interviewUuid,
-            questionUuid: variables.questionUuid,
-            answerPayload: variables.answerPayload,
-            answeredAt: new Date(),
-          },
-        ];
-      }
-
-      context.client.setQueryData(
-        interviewRelatedDataQueryOptions.queryKey,
-        (oldData) => {
-          if (!oldData) return oldData;
-          return {
-            ...oldData,
-            answers,
-          };
-        },
-      );
-      return { previousData };
-    },
-    onError: (_error, _variables, onMutateResult, context) => {
-      context.client.setQueryData(
-        interviewRelatedDataQueryOptions.queryKey,
-        onMutateResult?.previousData,
-      );
-    },
-    onSettled: (_data, _error, _variables, _onMutateResult, context) => {
-      context.client.invalidateQueries({
-        queryKey: interviewRelatedDataQueryOptions.queryKey,
-      });
-    },
-  });
-
   const interviewRelatedData = interviewRelatedDataQuery.data;
   const questionsData = questionsQuery.data;
   if (!interviewRelatedData || !questionsData) {
@@ -254,7 +194,12 @@ export function Interview({
     <div>
       <h2>{questionsData.role.roleName}</h2>
       {currentFlowStepKind === "question_block" && (
-        <QuestionBlock questions={currentFlowStepQuestions} />
+        <QuestionBlock
+          questions={currentFlowStepQuestions}
+          interviewUuid={interviewRelatedData.interview.uuid}
+          queryKeyToInvalidate={interviewRelatedDataQueryOptions.queryKey}
+          answers={interviewRelatedData.answers}
+        />
       )}
       {currentFlowStepKind === "video" && (
         <p>Video question type not supported yet.</p>
@@ -265,78 +210,280 @@ export function Interview({
 
 function QuestionBlock({
   questions,
+  interviewUuid,
+  queryKeyToInvalidate,
+  answers,
 }: {
   questions: Array<z.infer<typeof QuestionSelectSchema>>;
+  interviewUuid: string;
+  queryKeyToInvalidate: Array<unknown>;
+  answers: Array<z.infer<typeof AnswerSelectSchema>>;
 }) {
   return (
     <div>
-      {questions.map((question) => {
-        switch (question.questionType) {
-          case QuestionType.video:
-            throw new Error("This is a bug, please report it");
-          case QuestionType.text:
-            return <TextQuestion key={question.uuid} onSubmit={(_) => {}} />;
-          case QuestionType.single_choice:
-            throw new Error("This question type is not supported yet.");
-          case QuestionType.multiple_choice:
-            throw new Error("This question type is not supported yet.");
-          default:
-            throw new Error(
-              `Question type ${question.questionType} not supported yet. Please report this bug.`,
-            );
-        }
-      })}
+      {/* Add on submit handler to force devounce actions to run */}
+      <form>
+        {questions.map((question) => {
+          const answer = answers.find((a) => a.questionUuid === question.uuid);
+
+          switch (question.questionType) {
+            case QuestionType.video:
+              throw new Error("This is a bug, please report it");
+            case QuestionType.text: {
+              const result = TextQuestionPayloadType.safeParse(
+                question.questionPayload,
+              );
+              if (!result.success)
+                throw new Error(
+                  `Question payload does not match expected type for text question. This should never happen, please report it. ${result.error.message}`,
+                );
+              return (
+                <TextQuestion
+                  key={question.uuid}
+                  questionPayload={result.data}
+                  question={question}
+                  interviewUuid={interviewUuid}
+                  queryKeyToInvalidate={queryKeyToInvalidate}
+                  answer={answer}
+                />
+              );
+            }
+            case QuestionType.single_choice: {
+              const result = SingleChoiceQuestionPayloadType.safeParse(
+                question.questionPayload,
+              );
+              if (!result.success)
+                throw new Error(
+                  `Question payload does not match expected type for single choice question. This should never happen, please report it. ${result.error.message}`,
+                );
+              return (
+                <SingleChoiceQuestion
+                  key={question.uuid}
+                  questionPayload={result.data}
+                  onSubmit={(_) => {}}
+                />
+              );
+            }
+            case QuestionType.multiple_choice: {
+              const result = MultipleChoiceQuestionPayloadType.safeParse(
+                question.questionPayload,
+              );
+              if (!result.success)
+                throw new Error(
+                  `Question payload does not match expected type for multiple choice question. This should never happen, please report it. ${result.error.message}`,
+                );
+              return (
+                <MultipleChoiceQuestion
+                  key={question.uuid}
+                  questionPayload={result.data}
+                  onSubmit={(_) => {}}
+                />
+              );
+            }
+            default:
+              throw new Error(
+                `Question type ${question.questionType} is not supported. Please report this bug.`,
+              );
+          }
+        })}
+      </form>
     </div>
   );
 }
 
-function TextQuestion({ onSubmit }: { onSubmit: (text: string) => void }) {
-  const [text, setText] = useState("");
+function TextQuestion({
+  questionPayload,
+  question,
+  interviewUuid,
+  queryKeyToInvalidate,
+  answer,
+}: {
+  questionPayload: z.infer<typeof TextQuestionPayloadType>;
+  question: z.infer<typeof QuestionSelectSchema>;
+  interviewUuid: string;
+  queryKeyToInvalidate: Array<unknown>;
+  answer: z.infer<typeof AnswerSelectSchema> | undefined;
+}) {
+  const id = useId();
+  const answerPayloadParseResult = TextAnswerPayloadType.safeParse(
+    answer?.answerPayload,
+  );
+  // useState is only initialized on mount, so it will not be updated by invalidated queries
+  const [answerState, setAnswerState] = useState(
+    answerPayloadParseResult.success
+      ? answerPayloadParseResult.data.answer
+      : "",
+  );
+  const answerStateRef = useRef<string>(answerState);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+
+  const { mutate } = useMutation({
+    ...orpc.saveAnswer.mutationOptions(),
+    // isPending is false as soon as the new (previously invalidated) query data arrives, since we are returning the promise
+    onSettled: (_data, _error, _variables, _onMutateResult, context) =>
+      context.client.invalidateQueries({
+        queryKey: queryKeyToInvalidate,
+      }),
+  });
+
+  const debounceFunction = (answer: string) => {
+    mutate(
+      {
+        interviewUuid: interviewUuid,
+        questionUuid: question.uuid,
+        answerPayload: { answer },
+      },
+      {
+        onError: (_error, _variables, _onMutateResult, _context) => {
+          setMutationError(
+            "Could not save your answer. Please modify your answer to trigger a new save attempt.",
+          );
+        },
+      },
+    );
+  };
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+        debounceFunction(answerStateRef.current);
+      }
+    };
+    // biome-ignore lint/correctness/useExhaustiveDependencies: React Compiler
+  }, [debounceFunction]);
+
+  const onChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setAnswerState(event.target.value);
+    answerStateRef.current = event.target.value;
+    setMutationError(null);
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    debounceTimeoutRef.current = setTimeout(() => {
+      debounceFunction(event.target.value);
+      debounceTimeoutRef.current = null;
+    }, 1000);
+  };
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSubmit(text);
-      }}
-    >
+    <div>
+      <label htmlFor={id}>{questionPayload.question}</label>
       <input
         type="text"
         name="answer"
-        value={text}
-        onChange={(event) => setText(event.target.value)}
+        id={id}
+        value={answerState}
+        onChange={onChange}
         required
       />
-      <button type="submit">Weiter</button>
-    </form>
+      <p
+        className={mutationError ? "text-red-500" : "invisible"}
+        // NOTE go over these accessibility attributes, when time is available
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
+        aria-hidden={!mutationError}
+      >
+        {mutationError ?? "\u00A0"} {/* non breaking space*/}
+      </p>
+    </div>
   );
 }
 
+// With fewer than 10 options, radio buttons are used
 function SingleChoiceQuestion({
+  questionPayload,
   onSubmit,
 }: {
+  questionPayload: z.infer<typeof SingleChoiceQuestionPayloadType>;
   onSubmit: (selectedOption: string) => void;
 }) {
-  const [option, setOption] = useState("");
+  const name = useId();
+  const [selectedOption, setSelectedOption] = useState("");
 
   return (
-    <form
+    <div
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit(option);
+        if (!questionPayload.options.includes(selectedOption)) {
+          throw new Error(
+            "Selected option is invalid. You are not allowed to modify the HTML.",
+          );
+        }
+        onSubmit(selectedOption);
       }}
     >
-      <label>
-        <input
-          type="radio"
-          name="option"
-          value="option1"
-          checked={option === "option1"}
-          onChange={(event) => setOption(event.target.value)}
-          required
-        />
-        Option 1
-      </label>
-    </form>
+      <fieldset>
+        <legend>{questionPayload.question}</legend>
+        {questionPayload.options.map((option) => (
+          <label key={option}>
+            <input
+              type="radio"
+              name={name}
+              value={option}
+              checked={option === selectedOption}
+              onChange={(event) => setSelectedOption(event.target.value)}
+              required
+            />
+            {option}
+          </label>
+        ))}
+      </fieldset>
+    </div>
+  );
+}
+
+// TODO implement min and max selections logic
+function MultipleChoiceQuestion({
+  questionPayload,
+  onSubmit,
+}: {
+  questionPayload: z.infer<typeof MultipleChoiceQuestionPayloadType>;
+  onSubmit: (selectedOptions: Array<string>) => void;
+}) {
+  const name = useId();
+  const [selectedOptions, setSelectedOptions] = useState<Array<string>>([]);
+
+  return (
+    <div
+      onSubmit={(event) => {
+        event.preventDefault();
+        // Verify that all selected options are valid
+        for (const selectedOption of selectedOptions) {
+          if (!questionPayload.options.includes(selectedOption)) {
+            throw new Error(
+              "One or more selected options are invalid. You are not allowed to modify the HTML.",
+            );
+          }
+        }
+        onSubmit(selectedOptions);
+      }}
+    >
+      <fieldset>
+        <legend>{questionPayload.question}</legend>
+        {questionPayload.options.map((option) => (
+          <label key={option}>
+            <input
+              type="checkbox"
+              name={name}
+              value={option}
+              checked={selectedOptions.includes(option)}
+              onChange={(event) => {
+                if (event.target.checked) {
+                  setSelectedOptions((prev) => [...prev, option]);
+                } else {
+                  setSelectedOptions((prev) =>
+                    prev.filter((selectedOption) => selectedOption !== option),
+                  );
+                }
+              }}
+            />
+            {option}
+          </label>
+        ))}
+      </fieldset>
+    </div>
   );
 }
