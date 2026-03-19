@@ -1,6 +1,9 @@
-import { onError } from "@orpc/client";
-import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
-import { use, useEffect, useId, useRef, useState } from "react";
+import {
+  type QueryKey,
+  useMutation,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
+import { useEffect, useId, useRef, useState } from "react";
 import type z from "zod";
 import { useCandidateFlowForm } from "@/components/CandidateFlowFormContext";
 import {
@@ -216,7 +219,7 @@ function QuestionBlock({
 }: {
   questions: Array<z.infer<typeof QuestionSelectSchema>>;
   interviewUuid: string;
-  queryKeyToInvalidate: Array<unknown>;
+  queryKeyToInvalidate: QueryKey;
   answers: Array<z.infer<typeof AnswerSelectSchema>>;
 }) {
   return (
@@ -301,7 +304,7 @@ function TextQuestion({
   questionPayload: z.infer<typeof TextQuestionPayloadType>;
   question: z.infer<typeof QuestionSelectSchema>;
   interviewUuid: string;
-  queryKeyToInvalidate: Array<unknown>;
+  queryKeyToInvalidate: QueryKey;
   answer: z.infer<typeof AnswerSelectSchema> | undefined;
 }) {
   const id = useId();
