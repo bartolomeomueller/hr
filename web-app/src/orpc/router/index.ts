@@ -10,6 +10,10 @@ import {
   getRoleAndItsFlowVersionBySlug,
   getRoleSlugAndFlowVersionByInterviewUuid,
 } from "./role";
+import {
+  createPresignedS3TestDownloadUrl,
+  createPresignedS3TestUploadUrl,
+} from "./storage";
 
 export default {
   // These exports are sorted in the order of intended usage in the interview process.
@@ -23,4 +27,8 @@ export default {
 
   // Helper functions for the interview process
   getRoleSlugAndFlowVersionByInterviewUuid,
+
+  // Test utilities
+  createPresignedS3TestDownloadUrl,
+  createPresignedS3TestUploadUrl,
 };
