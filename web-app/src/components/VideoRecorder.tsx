@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { RecordingChunk } from "@/stores/uploadStore";
+import type { RecorderChunk } from "@/stores/uploadStore";
 
 export function VideoRecorder({
   maxDurationSec,
@@ -8,7 +8,7 @@ export function VideoRecorder({
 }: {
   maxDurationSec: number;
   maxOvertimeSec: number;
-  transferNewChunk: (data: RecordingChunk) => Promise<void>;
+  transferNewChunk: (data: RecorderChunk) => Promise<void>;
 }) {
   const maxRecordingSec = maxDurationSec + maxOvertimeSec;
 
@@ -129,7 +129,7 @@ export function VideoRecorder({
       }
 
       if (event.data.size > 0) {
-        transferNewChunk({
+        void transferNewChunk({
           recordingId: currentRecordingIdRef.current,
           chunk: event.data,
           mimeType,
@@ -145,7 +145,7 @@ export function VideoRecorder({
         );
       }
 
-      transferNewChunk({
+      void transferNewChunk({
         recordingId: currentRecordingIdRef.current,
         chunk: new Blob(),
         mimeType,

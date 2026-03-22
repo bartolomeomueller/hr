@@ -1,26 +1,30 @@
 import { os } from "@orpc/server";
-import { v7 as uuidv7 } from "uuid";
+import z from "zod";
 import {
   createPresignedStreamDownloadUrl,
-  createPresignedStreamUploadUrl,
+  createPresignedUploadUrl,
 } from "@/lib/s3";
 import {
   CreatePresignedS3TestDownloadUrlInputSchema,
-  CreatePresignedS3TestUploadUrlInputSchema,
   PresignedS3TestDownloadSchema,
-  PresignedS3TestUploadSchema,
 } from "@/orpc/schema";
 import { debugMiddleware } from "../debug-middleware";
 
-export const createPresignedS3TestUploadUrl = os
+export const createPresignedS3WebmUploadUrl = os
   .use(debugMiddleware)
-  .input(CreatePresignedS3TestUploadUrlInputSchema)
-  .output(PresignedS3TestUploadSchema)
+  .input(z.void())
+  .output(
+    z.object({
+      uuid: z.uuidv7(),
+      uploadUrl: z.url(),
+    }),
+  )
   .handler(async () => {
     try {
-      return await createPresignedStreamUploadUrl(
-        `videos/uploads/${uuidv7()}.svg`,
-        "image/svg+xml",
+      return await createPresignedUploadUrl(
+        `videos/uploads`,
+        "webm",
+        "video/webm",
       );
     } catch (error) {
       throw new Error(
@@ -29,6 +33,8 @@ export const createPresignedS3TestUploadUrl = os
     }
   });
 
+// TODO for download of video use a cookie or something else than presigned urls for download
+// TODO remove
 export const createPresignedS3TestDownloadUrl = os
   .use(debugMiddleware)
   .input(CreatePresignedS3TestDownloadUrlInputSchema)

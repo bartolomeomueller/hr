@@ -33,7 +33,8 @@ export enum QuestionType {
 }
 
 export const VideoAnswerPayloadType = z.object({
-  videoUuid: z.string(),
+  videoUuid: z.uuidv7(),
+  status: z.enum(["uploaded", "processed"]),
 });
 export const TextAnswerPayloadType = z.object({
   answer: z.string(),

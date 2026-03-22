@@ -1,11 +1,10 @@
-import { type QueryKey, useMutation } from "@tanstack/react-query";
+import type { QueryKey } from "@tanstack/react-query";
 import { useState } from "react";
 import type z from "zod";
 import {
   VideoAnswerPayloadType,
   VideoQuestionPayloadType,
 } from "@/db/payload-types";
-import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { addChunkAndTryUpload } from "@/services/UploadService";
 import { VideoRecorder } from "./VideoRecorder";
@@ -40,22 +39,11 @@ export function VideoQuestion({
   const answerPayloadParseResult = VideoAnswerPayloadType.safeParse(
     answer?.answerPayload,
   );
-  const [selectedOption, setSelectedOption] = useState(
+  const [previousRecordingUuid, setPreviousRecordingUuid] = useState(
     answerPayloadParseResult.success
       ? answerPayloadParseResult.data.videoUuid
       : "",
   );
-  const [mutationError, setMutationError] = useState<string | null>(null);
-
-  const { mutate } = useMutation({
-    ...orpc.saveAnswer.mutationOptions(),
-    // isPending is false as soon as the new (previously invalidated) query data arrives, since we are returning the promise
-    onSettled: (_data, _error, _variables, _onMutateResult, context) =>
-      context.client.invalidateQueries({
-        queryKey: queryKeyToInvalidateAnswers,
-      }),
-    retry: 1,
-  });
 
   return (
     <form>
@@ -63,7 +51,14 @@ export function VideoQuestion({
       <VideoRecorder
         maxDurationSec={questionPayload.maxDurationSeconds}
         maxOvertimeSec={questionPayload.maxOvertimeSeconds}
-        transferNewChunk={addChunkAndTryUpload}
+        transferNewChunk={(chunk) =>
+          addChunkAndTryUpload({
+            ...chunk,
+            interviewUuid,
+            questionUuid: question.uuid,
+            queryKeyToInvalidateAnswers,
+          })
+        }
       />
     </form>
   );

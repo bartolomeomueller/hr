@@ -1,7 +1,11 @@
+import type { QueryKey } from "@tanstack/react-query";
 import { create } from "zustand";
 
 export type Recording = {
   recordingId: string;
+  interviewUuid: string;
+  questionUuid: string;
+  queryKeyToInvalidateAnswers: QueryKey;
   mimeType: string;
   chunks: ChunkWithStreamingState[];
   isComplete: boolean;
@@ -13,11 +17,17 @@ export type ChunkWithStreamingState = {
   gotEnqueuedToUploadStream: boolean;
 };
 
-export type RecordingChunk = {
+export type RecorderChunk = {
   recordingId: string;
   mimeType: string;
   chunk: Blob;
   isLastChunk: boolean;
+};
+
+export type RecordingChunk = RecorderChunk & {
+  interviewUuid: string;
+  questionUuid: string;
+  queryKeyToInvalidateAnswers: QueryKey;
 };
 
 export type UploadStore = {
@@ -35,7 +45,7 @@ export const useUploadStore = create<UploadStore>((set) => ({
   recordings: [],
   addChunk: (chunk: RecordingChunk) =>
     set((state) => {
-      let exists = state.recordings.some(
+      const exists = state.recordings.some(
         (r) => r.recordingId === chunk.recordingId,
       );
       if (exists) {
@@ -63,6 +73,9 @@ export const useUploadStore = create<UploadStore>((set) => ({
           ...state.recordings,
           {
             recordingId: chunk.recordingId,
+            interviewUuid: chunk.interviewUuid,
+            questionUuid: chunk.questionUuid,
+            queryKeyToInvalidateAnswers: chunk.queryKeyToInvalidateAnswers,
             mimeType: chunk.mimeType,
             chunks: [{ chunk: chunk.chunk, gotEnqueuedToUploadStream: false }],
             isComplete: chunk.isLastChunk,

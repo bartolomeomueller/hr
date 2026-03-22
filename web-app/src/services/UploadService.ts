@@ -1,8 +1,12 @@
+import { getQueryClient } from "@/lib/query-client";
+import { client } from "@/orpc/client";
 import {
   type Recording,
   type RecordingChunk,
   useUploadStore,
 } from "@/stores/uploadStore";
+
+const PRESIGNED_WEBM_CONTENT_TYPE = "video/webm";
 
 // FIXME write tests for this service, it is too complicated
 
@@ -10,27 +14,27 @@ import {
 // available across browsers: https://wpt.fyi/interop-2026?feature=interop-2026-fetch&stable
 // This function was tested on Chrome and Firefox on 16.03.2026 and was working.
 // https://developer.chrome.com/docs/capabilities/web-apis/fetch-streaming-requests#feature_detection
-const supportsRequestStreams = (() => {
-  if (typeof ReadableStream === "undefined") {
-    return false;
-  }
-  try {
-    let duplexAccessed = false;
-    const request = new Request("", {
-      method: "POST",
-      body: new ReadableStream(),
-      get duplex() {
-        duplexAccessed = true;
-        return "half";
-      },
-    } as RequestInit & { duplex: "half" });
+// const supportsRequestStreams = (() => {
+//   if (typeof ReadableStream === "undefined") {
+//     return false;
+//   }
+//   try {
+//     let duplexAccessed = false;
+//     const request = new Request("", {
+//       method: "POST",
+//       body: new ReadableStream(),
+//       get duplex() {
+//         duplexAccessed = true;
+//         return "half";
+//       },
+//     } as RequestInit & { duplex: "half" });
 
-    return duplexAccessed && !request.headers.has("content-type");
-  } catch {
-    return false;
-  }
-})();
-// const supportsRequestStreams = false; // For testing
+//     return duplexAccessed && !request.headers.has("content-type");
+//   } catch {
+//     return false;
+//   }
+// })();
+const supportsRequestStreams = false; // For testing
 
 // TODO maybe implement if available then: tracking upload progress for fetch https://jakearchibald.com/2025/fetch-streams-not-for-progress/ -> otherwise have to use XMLHttpRequest
 
@@ -76,28 +80,35 @@ export async function addChunkAndTryUpload(chunk: RecordingChunk | null) {
 
 async function uploadBlob(recording: Recording, retryCount = 0) {
   try {
+    const { uploadUrl, uuid } = await client.createPresignedS3WebmUploadUrl();
     const blob = new Blob(
       recording.chunks.map((c) => c.chunk),
       { type: recording.mimeType },
     ); // The duplication is ok for memory usage
-    const response = await fetch(
-      "https://localhost:3001/api/v1/upload/upload-blob",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": recording.mimeType,
-        },
-        body: blob,
+    const response = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": PRESIGNED_WEBM_CONTENT_TYPE,
       },
-    );
+      body: blob,
+    });
     if (!response.ok) {
       throw new Error(`Upload failed with status ${response.status}`);
     }
 
-    const result = await response.json();
-    console.log("Upload successful, server response:", result);
+    console.log("Blob upload successful for video UUID:", uuid);
+    await client.saveAnswer({
+      interviewUuid: recording.interviewUuid,
+      questionUuid: recording.questionUuid,
+      answerPayload: {
+        videoUuid: uuid,
+        status: "uploaded",
+      },
+    });
 
-    // TODO call some callback function to get the id to the db somehow, or have the video service communicate with the web-app somehow
+    await getQueryClient().invalidateQueries({
+      queryKey: recording.queryKeyToInvalidateAnswers,
+    });
   } catch (error) {
     console.error("Blob upload failed:", error);
     if (retryCount < 3) {
@@ -119,6 +130,11 @@ async function uploadStream(retryCount = 0) {
     throw new Error("Failed to upload stream after multiple attempts.");
   }
 
+  const firstRecording = useUploadStore.getState().recordings.at(0);
+  if (!firstRecording) {
+    throw new Error("No recording found to upload. This should not happen.");
+  }
+
   const stream = new ReadableStream<Uint8Array>(
     {
       async pull(controller) {
@@ -127,11 +143,7 @@ async function uploadStream(retryCount = 0) {
     },
     new ByteLengthQueuingStrategy({ highWaterMark: 1024 * 1024 }),
   );
-  void initiateUploadStream(
-    stream,
-    useUploadStore.getState().recordings.at(0)!.mimeType,
-    retryCount + 1,
-  ); // Start the upload but don't await it, since it is a stream.
+  void initiateUploadStream(stream, firstRecording, retryCount + 1); // Start the upload but don't await it, since it is a stream.
 }
 
 async function pullCallbackForStreamUpload(
@@ -191,33 +203,39 @@ async function pullCallbackForStreamUpload(
 
 async function initiateUploadStream(
   stream: ReadableStream<Uint8Array>,
-  mimeType: string,
+  recording: Recording,
   retryCount: number,
 ) {
   try {
-    console.log("Starting stream upload with MIME type:", mimeType);
-    const response = await fetch(
-      "https://localhost:3001/api/v1/upload/upload-stream",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": mimeType,
-        },
-        body: stream,
-        // @ts-expect-error - duplex is required in Chrome for streaming bodies
-        duplex: "half",
+    const { uploadUrl, uuid } = await client.createPresignedS3WebmUploadUrl();
+    console.log("Starting stream upload with MIME type:", recording.mimeType);
+    const response = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": PRESIGNED_WEBM_CONTENT_TYPE,
       },
-    );
+      body: stream,
+      // @ts-expect-error - duplex is required in Chrome for streaming bodies
+      duplex: "half",
+    });
     if (!response.ok) {
       throw new Error(`Stream upload failed with status ${response.status}`);
     }
-    const result = await response.json();
-    console.log("Stream upload successful, server response:", result);
+    console.log("Stream upload successful for video UUID:", uuid);
+    await client.saveAnswer({
+      interviewUuid: recording.interviewUuid,
+      questionUuid: recording.questionUuid,
+      answerPayload: {
+        videoUuid: uuid,
+        status: "uploaded",
+      },
+    });
+    await getQueryClient().invalidateQueries({
+      queryKey: recording.queryKeyToInvalidateAnswers,
+    });
     useUploadStore.getState().removeFirstRecordingInQueue();
 
-    // TODO call some callback function to get the id to the db somehow, or have the video service communicate with the web-app somehow
-
-    addChunkAndTryUpload(null); // Start the next upload if there is one
+    void addChunkAndTryUpload(null); // Start the next upload if there is one
   } catch (error) {
     console.error("Stream upload failed:", error);
     useUploadStore.getState().resetChunksStreamingStateForFirstRecording();

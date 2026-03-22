@@ -12,7 +12,7 @@ import {
 } from "./role";
 import {
   createPresignedS3TestDownloadUrl,
-  createPresignedS3TestUploadUrl,
+  createPresignedS3WebmUploadUrl,
 } from "./storage";
 
 export default {
@@ -30,5 +30,5 @@ export default {
 
   // Test utilities
   createPresignedS3TestDownloadUrl,
-  createPresignedS3TestUploadUrl,
+  createPresignedS3WebmUploadUrl,
 };

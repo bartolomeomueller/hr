@@ -4,9 +4,10 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { v7 as uuidv7 } from "uuid";
 
-export const testS3Config = {
-  // TODO use credentials with less priveleges
+export const s3Config = {
+  // TODO use credentials with less priveleges and refactor them to env vars
   credentials: {
     accessKeyId: "admin",
     secretAccessKey: "key",
@@ -17,50 +18,49 @@ export const testS3Config = {
 } as const;
 
 const s3Client = new S3Client({
-  credentials: testS3Config.credentials,
-  endpoint: testS3Config.endpoint,
+  credentials: s3Config.credentials,
+  endpoint: s3Config.endpoint,
   forcePathStyle: true,
-  region: testS3Config.region,
+  region: s3Config.region,
 });
 
-export async function createPresignedStreamUploadUrl(
-  objectKey: string,
+export async function createPresignedUploadUrl(
+  prefix: string, // without leading or trailing slash
+  fileExtension: string, // without leading dot
   mimeType: string,
 ) {
+  const uuid = uuidv7();
   const uploadCommand = new PutObjectCommand({
-    Bucket: testS3Config.bucketName,
+    Bucket: s3Config.bucketName,
     ContentType: mimeType,
-    Key: objectKey,
+    Key: `${prefix}/${uuid}.${fileExtension}`,
   });
 
   // Does only local math, does not communicate with the bucket
   const uploadUrl = await getSignedUrl(s3Client, uploadCommand, {
-    expiresIn: 300,
+    expiresIn: 300, // URL expires in 5 minutes
   });
 
-  return {
-    bucketName: testS3Config.bucketName,
-    contentType: mimeType,
-    objectKey,
-    objectUrl: `${testS3Config.endpoint}/${testS3Config.bucketName}/${objectKey}`,
-    uploadUrl,
-  };
+  return { uuid, uploadUrl };
 }
 
-export async function createPresignedStreamDownloadUrl(objectKey: string) {
+export async function createPresignedStreamDownloadUrl(
+  objectKey: string,
+  expiresInSeconds = 300,
+) {
   const downloadCommand = new GetObjectCommand({
-    Bucket: testS3Config.bucketName,
+    Bucket: s3Config.bucketName,
     Key: objectKey,
   });
 
   const downloadUrl = await getSignedUrl(s3Client, downloadCommand, {
-    expiresIn: 300,
+    expiresIn: expiresInSeconds,
   });
 
   return {
-    bucketName: testS3Config.bucketName,
+    bucketName: s3Config.bucketName,
     downloadUrl,
     objectKey,
-    objectUrl: `${testS3Config.endpoint}/${testS3Config.bucketName}/${objectKey}`,
+    objectUrl: `${s3Config.endpoint}/${s3Config.bucketName}/${objectKey}`,
   };
 }
