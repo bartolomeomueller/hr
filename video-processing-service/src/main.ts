@@ -10,6 +10,7 @@ const s3UploadsPrefix = "videos/uploads";
 const s3ProcessedPrefix = "videos/processed";
 const s3BackupPrefix = "videos/backups";
 
+// TODO test failures and retries, does not seem to work correctly currently
 const worker = new Worker(
   "video-processing",
   async (job) => {
