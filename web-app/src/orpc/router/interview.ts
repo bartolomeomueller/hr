@@ -99,6 +99,7 @@ export const getInterviewRelatedDataByInterviewUuid = os
   });
 
 // NOTE maybe move to an upsert
+// FIXME use transaction
 export const saveAnswer = os
   .use(debugMiddleware)
   .input(
@@ -135,7 +136,7 @@ export const saveAnswer = os
       }
 
       if (existingStep) {
-        const [updatedStep] = await db
+        const [updatedAnswer] = await db
           .update(Answer)
           .set({
             answerPayload: input.answerPayload,
@@ -144,7 +145,7 @@ export const saveAnswer = os
           .where(eq(Answer.uuid, existingStep.uuid))
           .returning();
 
-        return updatedStep;
+        return updatedAnswer;
       }
 
       const [insertedStep] = await db
