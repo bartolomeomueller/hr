@@ -57,3 +57,8 @@ services:
     command: '--web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml'
     depends_on:
       - s3
+
+  nginx:
+    build: ./nginx
+    ports:
+      - "3001:443"

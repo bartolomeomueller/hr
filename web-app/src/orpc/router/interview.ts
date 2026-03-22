@@ -2,7 +2,9 @@ import { os } from "@orpc/server";
 import { and, eq, sql } from "drizzle-orm";
 import z from "zod";
 import { db } from "@/db";
+import { VideoAnswerPayloadType } from "@/db/payload-types";
 import { Answer, Candidate, FlowVersion, Interview } from "@/db/schema";
+import { videoProcessingQueue } from "@/lib/bullmq";
 import {
   AnswerSelectSchema,
   CandidateInsertSchema,
@@ -96,6 +98,7 @@ export const getInterviewRelatedDataByInterviewUuid = os
     }
   });
 
+// NOTE maybe move to an upsert
 export const saveAnswer = os
   .use(debugMiddleware)
   .input(
@@ -120,6 +123,16 @@ export const saveAnswer = os
           ),
         )
         .limit(1);
+
+      // TODO move this to a correct place
+      const videoAnswerPayloadResult = VideoAnswerPayloadType.safeParse(
+        input.answerPayload,
+      );
+      if (videoAnswerPayloadResult.success) {
+        await videoProcessingQueue.add("video-processing", {
+          uuid: videoAnswerPayloadResult.data.videoUuid,
+        });
+      }
 
       if (existingStep) {
         const [updatedStep] = await db

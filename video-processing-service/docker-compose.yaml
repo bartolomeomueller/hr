@@ -1,0 +1,10 @@
+services:
+  # video-processing-service:
+  #   build: .
+  #   depends_on:
+  #     - redis
+
+  redis:
+    image: redis:8.6.1-trixie
+    ports:
+      - "6379:6379"

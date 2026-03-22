@@ -1,4 +1,4 @@
-import { mkdir, rmdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { Worker } from "bullmq";
 import processVideo from "./processVideo.js";
 import { recursiveStreamingUpload, streamingDownload } from "./s3.js";
@@ -10,10 +10,14 @@ const s3UploadsPrefix = "videos/uploads";
 const s3ProcessedPrefix = "videos/processed";
 const s3BackupPrefix = "videos/backups";
 
-const worker = new Worker("video-processing", async (job) => {
-  const { uuid } = job.data;
-  await executeProcessingJob(uuid);
-});
+const worker = new Worker(
+  "video-processing",
+  async (job) => {
+    const { uuid } = job.data;
+    await executeProcessingJob(uuid);
+  },
+  { connection: { host: "localhost", port: 6379 } },
+);
 
 async function executeProcessingJob(uuid: string): Promise<void> {
   try {
@@ -32,7 +36,9 @@ async function executeProcessingJob(uuid: string): Promise<void> {
       localDirectory: processedVideoDir,
       uploadPrefix: s3ProcessedPrefix,
     });
+    console.log(`Successfully processed and uploaded video ${uuid}`);
     // await backupInBucket(fileToProcess, processedVideoDir);
+    // TODO update state in database somehow
   } catch (error) {
     console.error(`Error processing video ${uuid}:`, error);
     throw error; // Let BullMQ handle retries
@@ -40,8 +46,8 @@ async function executeProcessingJob(uuid: string): Promise<void> {
 }
 
 async function cleanupAndSetup() {
-  await rmdir(downloadsDir);
-  await rmdir(processedDir);
+  await rm(downloadsDir, { recursive: true, force: true });
+  await rm(processedDir, { recursive: true, force: true });
 
   await mkdir(downloadsDir, { recursive: true });
   await mkdir(processedDir, { recursive: true });

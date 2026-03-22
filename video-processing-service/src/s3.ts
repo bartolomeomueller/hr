@@ -3,7 +3,6 @@ import { readdir } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import { sdkStreamMixin } from "@aws-sdk/util-stream-node";
 import pLimit from "p-limit";
 
 export const s3Config = {
@@ -40,8 +39,12 @@ export async function streamingDownload({
         Key: `${downloadPrefix}/${uuid}.webm`,
       }),
     );
+    if (!response.Body) {
+      throw new Error(`Missing S3 body for video ${uuid}`);
+    }
+
     const writer = createWriteStream(`${downloadsDir}/${uuid}.webm`);
-    await pipeline(sdkStreamMixin(response.Body), writer);
+    await pipeline(response.Body as NodeJS.ReadableStream, writer);
     return `${downloadsDir}/${uuid}.webm`;
   } catch (error) {
     console.error(`Error downloading video ${uuid} from S3:`, error);
@@ -62,7 +65,7 @@ export async function recursiveStreamingUpload({
 
   const sortedFiles = files.sort();
   // Manifest is the last file when sorting all dash files.
-  if (sortedFiles.at(sortedFiles.length - 1) === "manifest.mpd")
+  if (sortedFiles.at(-1) !== "manifest.mpd")
     // So that users cannot access the manifest before all segments are uploaded.
     throw new Error("Manifest file should be uploaded last.");
 
@@ -77,7 +80,7 @@ export async function recursiveStreamingUpload({
       const uploadParams = {
         Bucket: s3Config.bucketName,
         Key: `${uploadPrefix}/${uuid}/${file}`,
-        Body: sdkStreamMixin(fileStream),
+        Body: fileStream,
       };
 
       return new Upload({
@@ -87,7 +90,7 @@ export async function recursiveStreamingUpload({
         // explicit defaults
         queueSize: 4, // upload concurrency of parts/chunks per file
         partSize: 5 * 1024 * 1024, // default size
-        leavePartsOnError: false, // upload all or nothing
+        leavePartsOnError: false, // upload all or nothing of the file
       }).done();
     }),
   );
