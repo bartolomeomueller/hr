@@ -14,15 +14,15 @@ services:
       timeout: 5s
       retries: 5
 
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    env_file: docker-compose.env
-    ports:
-      - "5050:5050"
-    depends_on:
-      - postgres
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   env_file: docker-compose.env
+  #   ports:
+  #     - "5050:5050"
+  #   depends_on:
+  #     - postgres
+  #   volumes:
+  #     - pgadmin_data:/var/lib/pgadmin
 
 volumes:
   postgres_data:
