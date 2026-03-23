@@ -4,11 +4,16 @@ import z from "zod";
 import { GenericLoader } from "@/components/GenericLoader";
 import { Interview } from "@/components/Interview";
 import { orpc } from "@/orpc/client";
-import { FlowVersionSelectSchema, RoleSelectSchema } from "@/orpc/schema";
+import {
+  FlowStepSelectSchema,
+  FlowVersionSelectSchema,
+  RoleSelectSchema,
+} from "@/orpc/schema";
 
 const InterviewSearch = z.object({
   slug: RoleSelectSchema.shape.slug.optional(),
   version: FlowVersionSelectSchema.shape.version.optional(),
+  step: FlowStepSelectSchema.shape.position.optional(),
 });
 
 export const Route = createFileRoute("/_interviewFlow/interviews/$uuid/")({
@@ -80,9 +85,19 @@ export const Route = createFileRoute("/_interviewFlow/interviews/$uuid/")({
 function RouteComponent() {
   const { uuid } = Route.useParams();
   const search = Route.useSearch();
+  const navigate = Route.useNavigate();
 
   const handleResourceNotFound = () => {
     throw notFound({ routeId: Route.id, data: { uuid } });
+  };
+
+  const handleFlowStepChange = (step: number) => {
+    void navigate({
+      search: (previousSearch) => ({
+        ...previousSearch,
+        step,
+      }),
+    });
   };
 
   return (
@@ -91,6 +106,8 @@ function RouteComponent() {
         uuid={uuid}
         roleSlug={search.slug ?? ""} // FIXME
         flowVersion={search.version ?? -1} // FIXME
+        currentFlowStep={search.step}
+        onFlowStepChange={handleFlowStepChange}
         onResourceNotFound={handleResourceNotFound}
       />
     </Suspense>

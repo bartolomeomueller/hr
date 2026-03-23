@@ -9,15 +9,18 @@ export function Interview({
   uuid,
   roleSlug,
   flowVersion,
+  currentFlowStep,
+  onFlowStepChange,
   onResourceNotFound,
 }: {
   uuid: string;
   roleSlug: string;
   flowVersion: number;
+  currentFlowStep?: number;
+  onFlowStepChange: (step: number) => void;
   onResourceNotFound: () => never;
 }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [currentFlowStep, setCurrentFlowStep] = useState(1); // TODO think about whether to put this as a search param
   const { hideForm, showForm } = useCandidateFlowForm();
 
   // NOTE both queries will not run in parallel
@@ -166,13 +169,19 @@ export function Interview({
     return null;
   }
 
-  const currentFlowStepData = questionsData.flowSteps.find(
-    (step) => step.position === currentFlowStep,
+  const flowSteps = questionsData.flowSteps;
+  const activeFlowStepPosition = currentFlowStep ?? flowSteps[0].position; // if search param is not yet defined
+  const activeFlowStepIndex = flowSteps.findIndex(
+    (step) => step.position === activeFlowStepPosition,
   );
-  if (!currentFlowStepData)
+  if (activeFlowStepIndex === -1)
     throw new Error(
-      "Current flow step does not exist in the provided flow steps. This should never happen, please report it.",
+      `Current flow step ${String(activeFlowStepPosition)} does not exist in the provided flow steps. Possible values are ${flowSteps
+        .map((step) => step.position)
+        .join(", ")}.`,
     );
+
+  const currentFlowStepData = flowSteps[activeFlowStepIndex];
   const currentFlowStepKind = currentFlowStepData.kind;
   if (!currentFlowStepKind)
     throw new Error(
@@ -181,6 +190,8 @@ export function Interview({
   const currentFlowStepQuestions = questionsData.questions.filter(
     (question) => question.flowStepUuid === currentFlowStepData.uuid,
   );
+  const previousFlowStep = flowSteps.at(activeFlowStepIndex - 1) ?? null;
+  const nextFlowStep = flowSteps.at(activeFlowStepIndex + 1) ?? null;
 
   return (
     <div>
@@ -189,26 +200,22 @@ export function Interview({
         <button
           type="button"
           className="disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={() =>
-            setCurrentFlowStep((prev) => {
-              if (prev === 1) return prev;
-              return prev - 1;
-            })
-          }
-          disabled={currentFlowStep === 1}
+          onClick={() => {
+            if (!previousFlowStep) return;
+            onFlowStepChange(previousFlowStep.position);
+          }}
+          disabled={!previousFlowStep}
         >
           Previous
         </button>
         <button
           type="button"
           className="disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={() =>
-            setCurrentFlowStep((prev) => {
-              if (prev === questionsData.flowSteps.length) return prev;
-              return prev + 1;
-            })
-          }
-          disabled={currentFlowStep === questionsData.flowSteps.length}
+          onClick={() => {
+            if (!nextFlowStep) return;
+            onFlowStepChange(nextFlowStep.position);
+          }}
+          disabled={!nextFlowStep}
         >
           Next
         </button>
