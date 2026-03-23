@@ -12,6 +12,7 @@ export function Interview({
   currentFlowStep,
   onFlowStepChange,
   onResourceNotFound,
+  finalizeInterview,
 }: {
   uuid: string;
   roleSlug: string;
@@ -19,6 +20,7 @@ export function Interview({
   currentFlowStep?: number;
   onFlowStepChange: (step: number) => void;
   onResourceNotFound: () => never;
+  finalizeInterview: () => void;
 }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const { hideForm, showForm } = useCandidateFlowForm();
@@ -210,12 +212,11 @@ export function Interview({
         </button>
         <button
           type="button"
-          className="disabled:cursor-not-allowed disabled:opacity-50"
+          className=""
           onClick={() => {
-            if (!nextFlowStep) return;
+            if (!nextFlowStep) return finalizeInterview();
             onFlowStepChange(nextFlowStep.position);
           }}
-          disabled={!nextFlowStep}
         >
           Next
         </button>

@@ -1,6 +1,7 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { Suspense } from "react";
 import z from "zod";
+import { FinalizeInterview } from "@/components/FinalizeInterview";
 import { GenericLoader } from "@/components/GenericLoader";
 import { Interview } from "@/components/Interview";
 import { orpc } from "@/orpc/client";
@@ -14,6 +15,7 @@ const InterviewSearch = z.object({
   slug: RoleSelectSchema.shape.slug.optional(),
   version: FlowVersionSelectSchema.shape.version.optional(),
   step: FlowStepSelectSchema.shape.position.optional(),
+  finalize: z.boolean().optional(),
 });
 
 export const Route = createFileRoute("/_interviewFlow/interviews/$uuid/")({
@@ -100,16 +102,35 @@ function RouteComponent() {
     });
   };
 
+  const finalizeInterview = () => {
+    void navigate({
+      search: (previousSearch) => ({
+        ...previousSearch,
+        step: undefined,
+        finalize: true,
+      }),
+    });
+  };
+
   return (
     <Suspense fallback={<GenericLoader />}>
-      <Interview
-        uuid={uuid}
-        roleSlug={search.slug ?? ""} // FIXME
-        flowVersion={search.version ?? -1} // FIXME
-        currentFlowStep={search.step}
-        onFlowStepChange={handleFlowStepChange}
-        onResourceNotFound={handleResourceNotFound}
-      />
+      {search.finalize ? (
+        <FinalizeInterview
+          roleSlug={search.slug ?? ""} // FIXME
+          flowVersion={search.version ?? -1} // FIXME
+          onResourceNotFound={handleResourceNotFound}
+        />
+      ) : (
+        <Interview
+          uuid={uuid}
+          roleSlug={search.slug ?? ""} // FIXME
+          flowVersion={search.version ?? -1} // FIXME
+          currentFlowStep={search.step}
+          onFlowStepChange={handleFlowStepChange}
+          onResourceNotFound={handleResourceNotFound}
+          finalizeInterview={finalizeInterview}
+        />
+      )}
     </Suspense>
   );
 }
