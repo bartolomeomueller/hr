@@ -24,16 +24,20 @@ const s3Client = new S3Client({
   region: s3Config.region,
 });
 
-export async function createPresignedUploadUrl(
-  prefix: string, // without leading or trailing slash
-  fileExtension: string, // without leading dot
-  mimeType: string,
-) {
+export async function createPresignedUploadUrl({
+  prefix,
+  fileExtension,
+  mimeType,
+}: {
+  prefix: string; // without leading or trailing slash
+  fileExtension: string; // with leading dot
+  mimeType: string;
+}) {
   const uuid = uuidv7();
   const uploadCommand = new PutObjectCommand({
     Bucket: s3Config.bucketName,
     ContentType: mimeType,
-    Key: `${prefix}/${uuid}.${fileExtension}`,
+    Key: `${prefix}/${uuid}${fileExtension}`,
   });
 
   // Does only local math, does not communicate with the bucket

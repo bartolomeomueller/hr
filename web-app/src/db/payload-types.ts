@@ -18,18 +18,24 @@ export const MultipleChoiceQuestionPayloadType = z.object({
   minSelections: z.number().optional(), // TODO think about whether to make them required
   maxSelections: z.number().optional(),
 });
+export const DocumentQuestionPayloadType = z.object({
+  prompt: z.string(),
+  maxUploads: z.number().min(1).max(20),
+});
 
 export const QuestionPayloadType = z.xor([
   VideoQuestionPayloadType,
   TextQuestionPayloadType,
   SingleChoiceQuestionPayloadType,
   MultipleChoiceQuestionPayloadType,
+  DocumentQuestionPayloadType,
 ]);
 export enum QuestionType {
   video = "video",
   text = "text",
   single_choice = "single_choice",
   multiple_choice = "multiple_choice",
+  document = "document",
 }
 
 export const VideoAnswerPayloadType = z.object({
@@ -45,16 +51,27 @@ export const SingleChoiceAnswerPayloadType = z.object({
 export const MultipleChoiceAnswerPayloadType = z.object({
   selectedOptions: z.array(z.string()),
 });
+export const DocumentAnswerPayloadType = z.object({
+  documents: z.array(
+    z.object({
+      documentUuid: z.uuidv7(),
+      fileName: z.string(),
+      mimeType: z.string(),
+    }),
+  ),
+});
 
 export const AnswerPayloadType = z.xor([
   VideoAnswerPayloadType,
   TextAnswerPayloadType,
   SingleChoiceAnswerPayloadType,
   MultipleChoiceAnswerPayloadType,
+  DocumentAnswerPayloadType,
 ]);
 export enum AnswerType {
   video = "video",
   text = "text",
   single_choice = "single_choice",
   multiple_choice = "multiple_choice",
+  document = "document",
 }

@@ -8,6 +8,8 @@ The `web-app` project uses streaming ssr. Do not make route loaders async just t
 
 For the `video-service/`: Please assume docker compose is running this service at all times.
 
+If possible, please try to write top down functions. So the main function is at the top of the file and the called functions in the main function are defined below it.
+
 Do not delete any comments you do not directly solve.
 Do not fix other stuff you encounter on your task, that I did not told you to fix. Just propose that you could fix it now after you finished your task.
 

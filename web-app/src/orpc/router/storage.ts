@@ -21,11 +21,11 @@ export const createPresignedS3WebmUploadUrl = os
   )
   .handler(async () => {
     try {
-      return await createPresignedUploadUrl(
-        `videos/uploads`,
-        "webm",
-        "video/webm",
-      );
+      return await createPresignedUploadUrl({
+        prefix: `videos/uploads`,
+        fileExtension: ".webm",
+        mimeType: "video/webm",
+      });
     } catch (error) {
       throw new Error(
         `Failed to generate presigned S3 upload URL: ${String(error)}`,
@@ -45,6 +45,33 @@ export const createPresignedS3TestDownloadUrl = os
     } catch (error) {
       throw new Error(
         `Failed to generate presigned S3 download URL for ${input.objectKey}: ${String(error)}`,
+      );
+    }
+  });
+
+export const createPresignedS3DocumentUploadUrl = os
+  .use(debugMiddleware)
+  .input(
+    z.object({
+      mimeType: z.string(),
+    }),
+  )
+  .output(
+    z.object({
+      uuid: z.uuidv7(),
+      uploadUrl: z.url(),
+    }),
+  )
+  .handler(async ({ input }) => {
+    try {
+      return await createPresignedUploadUrl({
+        prefix: `documents/uploads`,
+        fileExtension: "",
+        mimeType: input.mimeType,
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to generate presigned S3 upload URL: ${String(error)}`,
       );
     }
   });

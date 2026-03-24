@@ -11,6 +11,8 @@ import {
   RoleSelectSchema,
 } from "@/orpc/schema";
 
+// TODO prevent that a user may record a video but may not upload it, check availablity first of backend somehow
+
 const InterviewSearch = z.object({
   slug: RoleSelectSchema.shape.slug.optional(),
   version: FlowVersionSelectSchema.shape.version.optional(),

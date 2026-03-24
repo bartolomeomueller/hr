@@ -82,6 +82,15 @@ async function seed() {
         })
         .returning();
 
+      const [documentsStep] = await db
+        .insert(FlowStep)
+        .values({
+          flowVersionUuid: flowVersion.uuid,
+          position: 3,
+          kind: "question_block",
+        })
+        .returning();
+
       await db.insert(Question).values([
         {
           flowStepUuid: introStep.uuid,
@@ -138,6 +147,33 @@ async function seed() {
             maxOvertimeSeconds: 60,
           },
         },
+        {
+          flowStepUuid: documentsStep.uuid,
+          position: 1,
+          questionType: "document",
+          questionPayload: {
+            prompt: "Lege hier deinen Lebenslauf ab",
+            maxUploads: 1,
+          },
+        },
+        {
+          flowStepUuid: documentsStep.uuid,
+          position: 2,
+          questionType: "document",
+          questionPayload: {
+            prompt: "Lege hier deine Zeugnisse ab",
+            maxUploads: 10,
+          },
+        },
+        {
+          flowStepUuid: documentsStep.uuid,
+          position: 3,
+          questionType: "document",
+          questionPayload: {
+            prompt: "Lege hier deine Arbeitszeugnisse ab",
+            maxUploads: 10,
+          },
+        }
       ]);
     } catch (error) {
       throw new Error(`Failed to seed question rows: ${String(error)}`);

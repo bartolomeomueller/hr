@@ -5,6 +5,8 @@ import { orpc } from "@/orpc/client";
 import { QuestionBlock } from "./QuestionBlock";
 import { VideoQuestion } from "./VideoQuestion";
 
+// TODO think about what to do with the questions that have not been answered by a applicant, should they get an empty answer or no answer
+
 export function Interview({
   uuid,
   roleSlug,

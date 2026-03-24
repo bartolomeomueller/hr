@@ -11,6 +11,7 @@ import {
   getRoleSlugAndFlowVersionByInterviewUuid,
 } from "./role";
 import {
+  createPresignedS3DocumentUploadUrl,
   createPresignedS3TestDownloadUrl,
   createPresignedS3WebmUploadUrl,
 } from "./storage";
@@ -28,7 +29,8 @@ export default {
   // Helper functions for the interview process
   getRoleSlugAndFlowVersionByInterviewUuid,
 
-  // Test utilities
+  // Storage utilities
   createPresignedS3TestDownloadUrl,
   createPresignedS3WebmUploadUrl,
+  createPresignedS3DocumentUploadUrl,
 };

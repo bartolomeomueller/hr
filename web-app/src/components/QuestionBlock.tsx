@@ -2,6 +2,7 @@ import type { QueryKey } from "@tanstack/react-query";
 import type z from "zod";
 import { QuestionType } from "@/db/payload-types";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
+import { DocumentQuestion } from "./DocumentQuestion";
 import { MultipleChoiceQuestion } from "./MultipleChoiceQuestion";
 import { SingleChoiceQuestion } from "./SingleChoiceQuestion";
 import { TextQuestion } from "./TextQuestion";
@@ -50,6 +51,17 @@ export function QuestionBlock({
           case QuestionType.multiple_choice: {
             return (
               <MultipleChoiceQuestion
+                key={question.uuid}
+                question={question}
+                interviewUuid={interviewUuid}
+                queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+                answer={answer}
+              />
+            );
+          }
+          case QuestionType.document: {
+            return (
+              <DocumentQuestion
                 key={question.uuid}
                 question={question}
                 interviewUuid={interviewUuid}
