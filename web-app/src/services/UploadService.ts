@@ -6,6 +6,8 @@ import {
   useUploadStore,
 } from "@/stores/uploadStore";
 
+// TODO move this UploadService to use s3 part uploading
+
 const PRESIGNED_WEBM_CONTENT_TYPE = "video/webm";
 
 // FIXME write tests for this service, it is too complicated
