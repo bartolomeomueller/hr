@@ -1,14 +1,21 @@
 import { type QueryKey, useMutation } from "@tanstack/react-query";
 import { useId, useRef, useState } from "react";
 import type z from "zod";
+import { useShallow } from "zustand/shallow";
 import {
   DocumentAnswerPayloadType,
   DocumentQuestionPayloadType,
 } from "@/db/payload-types";
-import { client, orpc } from "@/orpc/client";
-import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
-import { documentUploadService } from "@/services/DocumentUploadService";
+import { orpc } from "@/orpc/client";
+import type {
+  AnswerSelectSchema,
+  InterviewWithCandidateAndAnswersSchema,
+  QuestionSelectSchema,
+} from "@/orpc/schema";
+import { documentUploadService } from "@/services/DocumentUploadService.client";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
+
+// NOTE implement option that you can get a mail later to upload your documents, if you currently do not have them
 
 export function DocumentQuestion({
   question,
@@ -34,14 +41,14 @@ export function DocumentQuestion({
   const answerPayloadParseResult = DocumentAnswerPayloadType.safeParse(
     answer?.answerPayload,
   );
-  // TODO think about whether i want updates from the query to be reflected in the component state as soon as they arrive
-  const [documents, setDocuments] = useState(
-    answerPayloadParseResult.success
-      ? answerPayloadParseResult.data.documents
-      : [],
-  );
+  const documents = answerPayloadParseResult.success
+    ? answerPayloadParseResult.data.documents
+    : [];
+
   const documentsToUpload = useDocumentUploadStore(
-    (state) => state.documentsToUpload,
+    useShallow((state) =>
+      state.getDocumentsToUploadForQuestionUuid(question.uuid),
+    ),
   );
   const [mutationError, setMutationError] = useState<string | null>(null);
 
@@ -57,6 +64,7 @@ export function DocumentQuestion({
           queryKeyToInvalidateAnswers,
         });
       useDocumentUploadStore.getState().addDocumentToUpload({
+        questionUuid: question.uuid,
         indexedDBId: fileIndex,
         fileName: nextFile.name,
         abortController,
@@ -64,29 +72,40 @@ export function DocumentQuestion({
     }
   }
 
-  const removeDocument = () => {};
-  const downloadDocument = () => {};
-
   return (
     <div>
       <label htmlFor={id}>{questionPayload.prompt}</label>
       <FileDragAndDrop
         id={id}
         appendFiles={appendFiles}
-        fileCount={documents.length}
+        remainingCapacity={questionPayload.maxUploads - documents.length}
       />
       {documents.map((document) => {
         return (
           <File
             key={document.documentUuid}
             fileName={document.fileName}
-            downloadDocument={downloadDocument}
-            removeDocument={removeDocument}
+            uploadedDocument={{
+              documentUuid: document.documentUuid,
+              interviewUuid,
+              questionUuid: question.uuid,
+            }}
+            queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
           />
         );
       })}
       {documentsToUpload.map((doc) => {
-        return <UploadingFile key={doc.indexedDBId} fileName={doc.fileName} />;
+        return (
+          <File
+            key={doc.indexedDBId}
+            fileName={doc.fileName}
+            uploadingDocument={{
+              progress: doc.progress,
+              abortController: doc.abortController,
+            }}
+            queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+          />
+        );
       })}
       <p
         className={mutationError ? "text-red-500" : "invisible"}
@@ -105,15 +124,14 @@ export function DocumentQuestion({
 function FileDragAndDrop({
   id,
   appendFiles,
-  fileCount,
+  remainingCapacity,
 }: {
   id: string;
   appendFiles: (files: File[]) => void;
-  fileCount: number;
+  remainingCapacity: number;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const remainingCapacity = getRemainingCapacity(fileCount);
 
   return (
     <div>
@@ -158,6 +176,7 @@ function FileDragAndDrop({
         {/* <Image src="/upload.svg" alt="Upload" width={80} height={80} /> */}
         <p>Ziehe deine Dateien hierher, klick hier oder füg sie ein</p>
       </button>
+      {/* Allow directories on click also */}
       <input
         type="file"
         id={id}
@@ -167,7 +186,7 @@ function FileDragAndDrop({
         onChange={(e) => {
           const files = e.target.files;
           if (files) {
-            appendFiles(normalizeFiles(files));
+            appendFiles(Array.from(files));
           }
           // The duplication will be checked by appendFiles TODO
           e.target.value = ""; // reset file input, so that the same file can be uploaded again
@@ -178,37 +197,164 @@ function FileDragAndDrop({
   );
 }
 
+// Either define uploadedDocument or define uploadingDocument
 function File({
+  uploadedDocument,
   fileName,
-  downloadDocument,
-  removeDocument,
+  uploadingDocument,
+  queryKeyToInvalidateAnswers,
 }: {
   fileName: string;
-  downloadDocument: () => void;
-  removeDocument: () => void;
+  uploadedDocument?: {
+    documentUuid: string;
+    interviewUuid: string;
+    questionUuid: string;
+  };
+  uploadingDocument?: {
+    progress: number;
+    abortController: AbortController;
+  };
+  queryKeyToInvalidateAnswers: QueryKey;
 }) {
-  return (
-    <div>
-      <div aria-hidden="true">📄</div>
-      <p className="bold">{fileName}</p>
-      <div>
-        <button type="button" onClick={downloadDocument}>
-          Download
-        </button>
-        <button type="button" onClick={removeDocument}>
-          Delete
-        </button>
-      </div>
-    </div>
-  );
-}
+  const [viewIsClicked, setViewIsClicked] = useState(false);
+  const preSignedUrlRef = useRef<Promise<{
+    url: string;
+    timestamp: number;
+  }> | null>(null);
+  const { mutateAsync: viewMutateAsync, isPending: viewIsPending } =
+    useMutation({
+      ...orpc.createPresignedS3DocumentDownloadUrlByUuid.mutationOptions(),
+      onMutate(_variables, _context) {
+        let resolve!: (value: { url: string; timestamp: number }) => void;
+        let reject!: (reason?: unknown) => void;
+        preSignedUrlRef.current = new Promise<{
+          url: string;
+          timestamp: number;
+        }>((res, rej) => {
+          resolve = res;
+          reject = rej;
+        });
+        return { resolve, reject };
+      },
+      // TODO add error indication to try again
+      onSuccess: (data, _variables, onMutateResult, _context) => {
+        onMutateResult.resolve({
+          url: data.downloadUrl,
+          timestamp: Date.now(),
+        });
+      },
+    });
+  const fetchNewPresignedUrlIfNeeded = async () => {
+    if (!uploadedDocument)
+      throw new Error(
+        "Document UUID should always be defined if this function is called.",
+      );
 
-function UploadingFile({ fileName }: { fileName: string }) {
+    // For the first time get a new presigned url
+    const currentPreSignedUrlPromise = preSignedUrlRef.current;
+    if (currentPreSignedUrlPromise == null) {
+      await viewMutateAsync({ documentUuid: uploadedDocument.documentUuid });
+      return;
+    }
+
+    // If we got here after the first time await the promise to the presigned url
+    const currentPreSignedUrl = await currentPreSignedUrlPromise;
+    const fourMinutesInMs = 4 * 60 * 1000;
+    // if the url is older than 4 minutes, get a new one
+    if (Date.now() - currentPreSignedUrl.timestamp > fourMinutesInMs) {
+      await viewMutateAsync({ documentUuid: uploadedDocument.documentUuid });
+      return;
+    }
+
+    // otherwise the url is still valid for longer than a minute
+  };
+
+  const { mutate: deletionMutate, isPending: deletionIsPending } = useMutation({
+    ...orpc.deleteDocumentFromObjectStorageAndFromAnswer.mutationOptions(),
+    // TODO add error indication to try again
+
+    // onSuccess update the query cache to remove the deleted document. Without this, the refetching by onSettled would be invalidated by later deletions.
+    // This would lead to documents coming back with full opacity, confusing the user, because the mutation is not pending anymore, but the data was also not yet updated.
+    onSuccess(data, _variables, _onMutateResult, context) {
+      context.client.setQueryData<
+        z.infer<typeof InterviewWithCandidateAndAnswersSchema>
+      >(queryKeyToInvalidateAnswers, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          answers: old.answers.map((answer) =>
+            answer.questionUuid === data.questionUuid ? data : answer,
+          ),
+        };
+      });
+    },
+    onSettled: (_data, _error, _variables, _onMutateResult, context) =>
+      context.client.invalidateQueries({
+        queryKey: queryKeyToInvalidateAnswers,
+      }),
+  });
+
   return (
-    <div>
+    <div
+      className={`flex ${deletionIsPending ? "pointer-events-none opacity-30" : ""}`}
+    >
       <div aria-hidden="true">📄</div>
       <p className="bold">{fileName}</p>
-      <p>Uploading...</p>
+      {uploadedDocument && (
+        <div>
+          <button
+            type="button"
+            onMouseEnter={fetchNewPresignedUrlIfNeeded}
+            onClick={async () => {
+              setViewIsClicked(true);
+              await fetchNewPresignedUrlIfNeeded();
+              if (preSignedUrlRef.current == null)
+                throw new Error(
+                  "Pre-signed URL is not available. This should not be possible. Please report this.",
+                );
+              setViewIsClicked(false);
+              window.open((await preSignedUrlRef.current).url, "_blank");
+            }}
+            disabled={viewIsClicked}
+          >
+            {/* Read it inverted :) */}
+            {!viewIsClicked || !viewIsPending ? "View" : "Loading..."}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              deletionMutate({
+                documentUuid: uploadedDocument.documentUuid,
+                interviewUuid: uploadedDocument.interviewUuid,
+                questionUuid: uploadedDocument.questionUuid,
+              })
+            }
+            disabled={deletionIsPending}
+          >
+            Delete
+          </button>
+        </div>
+      )}
+      {uploadingDocument && (
+        <>
+          <div>
+            {/* TODO implement the todo button */}
+            <button type="button">View</button>
+            <button
+              type="button"
+              onClick={() => uploadingDocument.abortController.abort()}
+            >
+              Cancel
+            </button>
+          </div>
+          <div className="mt-2 h-2.5 w-full rounded-full bg-gray-200">
+            <div
+              className="h-2.5 rounded-full bg-blue-600"
+              style={{ width: `${uploadingDocument.progress}%` }}
+            ></div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -221,26 +367,30 @@ async function getFilesFromDataTransferItems(
     return [];
   }
 
-  const collectedFiles: File[] = [];
-
+  // Make a snapshot of the entries, because awaiting too much will result in the items being cleared.
+  const entries: FileSystemEntry[] = [];
   for (const item of items) {
-    if (collectedFiles.length >= remainingCapacity) {
-      break;
-    }
-
     // If the item is a string (dragged text or HTML), skip it
     if (item.kind !== "file") {
       continue;
     }
-
     const entry = item.webkitGetAsEntry();
     if (entry) {
-      const nestedFiles = await getFilesFromDroppedEntry(
-        entry,
-        remainingCapacity - collectedFiles.length,
-      );
-      collectedFiles.push(...nestedFiles);
+      entries.push(entry);
     }
+  }
+
+  const collectedFiles: File[] = [];
+  for (const entry of entries) {
+    if (collectedFiles.length >= remainingCapacity) {
+      break;
+    }
+
+    const nestedFiles = await getFilesFromDroppedEntry(
+      entry,
+      remainingCapacity - collectedFiles.length,
+    );
+    collectedFiles.push(...nestedFiles);
   }
 
   return collectedFiles;
@@ -306,12 +456,4 @@ async function getFilesFromDirectoryEntry(
   }
 
   return collectedFiles;
-}
-
-function normalizeFiles(files: FileList | File[]): File[] {
-  return Array.from(files);
-}
-
-function getRemainingCapacity(currentFileCount: number): number {
-  return Math.max(0, MAX_DOCUMENT_COUNT - currentFileCount);
 }

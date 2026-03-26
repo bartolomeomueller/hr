@@ -1,4 +1,5 @@
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -7,7 +8,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v7 as uuidv7 } from "uuid";
 
 export const s3Config = {
-  // TODO use credentials with less priveleges and refactor them to env vars
+  // FIXME use credentials with less priveleges and refactor them to env vars
   credentials: {
     accessKeyId: "admin",
     secretAccessKey: "key",
@@ -24,20 +25,45 @@ const s3Client = new S3Client({
   region: s3Config.region,
 });
 
-export async function createPresignedUploadUrl({
-  prefix,
-  fileExtension,
+export async function createPresignedUploadUrlForDocument({
   mimeType,
 }: {
-  prefix: string; // without leading or trailing slash
-  fileExtension: string; // with leading dot
   mimeType: string;
 }) {
   const uuid = uuidv7();
+  const uploadUrl = await createPresignedUploadUrl({
+    objectKey: getObjectKeyForDocumentUuid(uuid),
+    mimeType,
+  });
+
+  return { uuid, uploadUrl };
+}
+
+export async function createPresignedUploadUrlForVideo({
+  mimeType,
+}: {
+  mimeType: string;
+}) {
+  const uuid = uuidv7();
+  const uploadUrl = await createPresignedUploadUrl({
+    objectKey: getObjectKeyForVideoUuid(uuid),
+    mimeType,
+  });
+
+  return { uuid, uploadUrl };
+}
+
+async function createPresignedUploadUrl({
+  objectKey,
+  mimeType,
+}: {
+  objectKey: string;
+  mimeType: string;
+}) {
   const uploadCommand = new PutObjectCommand({
     Bucket: s3Config.bucketName,
     ContentType: mimeType,
-    Key: `${prefix}/${uuid}${fileExtension}`,
+    Key: objectKey,
   });
 
   // Does only local math, does not communicate with the bucket
@@ -45,10 +71,10 @@ export async function createPresignedUploadUrl({
     expiresIn: 300, // URL expires in 5 minutes
   });
 
-  return { uuid, uploadUrl };
+  return uploadUrl;
 }
 
-export async function createPresignedStreamDownloadUrl(
+export async function createPresignedDownloadUrl(
   objectKey: string,
   expiresInSeconds = 300,
 ) {
@@ -67,4 +93,22 @@ export async function createPresignedStreamDownloadUrl(
     objectKey,
     objectUrl: `${s3Config.endpoint}/${s3Config.bucketName}/${objectKey}`,
   };
+}
+
+export async function deleteObject(objectKey: string) {
+  const deleteCommand = new DeleteObjectCommand({
+    Bucket: s3Config.bucketName,
+    Key: objectKey,
+  });
+
+  await s3Client.send(deleteCommand);
+}
+
+export function getObjectKeyForDocumentUuid(documentUuid: string) {
+  return `documents/uploads/${documentUuid}`;
+}
+
+// TODO remove the webm extension from the object key
+export function getObjectKeyForVideoUuid(videoUuid: string) {
+  return `videos/uploads/${videoUuid}.webm`;
 }

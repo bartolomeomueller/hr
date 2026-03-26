@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 export type Documents = {
+  questionUuid: string;
   indexedDBId: number;
   fileName: string;
   progress: number;
@@ -10,6 +11,7 @@ export type Documents = {
 
 export type DocumentUploadStore = {
   documentsToUpload: Documents[];
+  getDocumentsToUploadForQuestionUuid: (questionUuid: string) => Documents[];
   addDocumentToUpload: (
     document: Omit<Documents, "progress" | "hasFailed">,
   ) => void;
@@ -18,31 +20,39 @@ export type DocumentUploadStore = {
   setDocumentUploadAsFailed: (indexedDBId: number) => void;
 };
 
-export const useDocumentUploadStore = create<DocumentUploadStore>((set) => ({
-  documentsToUpload: [],
-  addDocumentToUpload: (document: Omit<Documents, "progress" | "hasFailed">) =>
-    set((state) => ({
-      documentsToUpload: [
-        ...state.documentsToUpload,
-        { ...document, progress: 0, hasFailed: false },
-      ],
-    })),
-  removeDocumentFromUpload: (indexedDBId: number) =>
-    set((state) => ({
-      documentsToUpload: state.documentsToUpload.filter(
-        (doc) => doc.indexedDBId !== indexedDBId,
+export const useDocumentUploadStore = create<DocumentUploadStore>(
+  (set, get) => ({
+    documentsToUpload: [],
+    getDocumentsToUploadForQuestionUuid: (questionUuid: string) =>
+      get().documentsToUpload.filter(
+        (doc) => doc.questionUuid === questionUuid,
       ),
-    })),
-  updateDocumentProgress: (indexedDBId: number, progress: number) =>
-    set((state) => ({
-      documentsToUpload: state.documentsToUpload.map((doc) =>
-        doc.indexedDBId === indexedDBId ? { ...doc, progress } : doc,
-      ),
-    })),
-  setDocumentUploadAsFailed: (indexedDBId: number) =>
-    set((state) => ({
-      documentsToUpload: state.documentsToUpload.map((doc) =>
-        doc.indexedDBId === indexedDBId ? { ...doc, hasFailed: true } : doc,
-      ),
-    })),
-}));
+    addDocumentToUpload: (
+      document: Omit<Documents, "progress" | "hasFailed">,
+    ) =>
+      set((state) => ({
+        documentsToUpload: [
+          ...state.documentsToUpload,
+          { ...document, progress: 0, hasFailed: false },
+        ],
+      })),
+    removeDocumentFromUpload: (indexedDBId: number) =>
+      set((state) => ({
+        documentsToUpload: state.documentsToUpload.filter(
+          (doc) => doc.indexedDBId !== indexedDBId,
+        ),
+      })),
+    updateDocumentProgress: (indexedDBId: number, progress: number) =>
+      set((state) => ({
+        documentsToUpload: state.documentsToUpload.map((doc) =>
+          doc.indexedDBId === indexedDBId ? { ...doc, progress } : doc,
+        ),
+      })),
+    setDocumentUploadAsFailed: (indexedDBId: number) =>
+      set((state) => ({
+        documentsToUpload: state.documentsToUpload.map((doc) =>
+          doc.indexedDBId === indexedDBId ? { ...doc, hasFailed: true } : doc,
+        ),
+      })),
+  }),
+);

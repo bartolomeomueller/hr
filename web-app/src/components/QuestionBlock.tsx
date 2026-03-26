@@ -1,4 +1,5 @@
 import type { QueryKey } from "@tanstack/react-query";
+import { ClientOnly } from "@tanstack/react-router";
 import type z from "zod";
 import { QuestionType } from "@/db/payload-types";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
@@ -61,13 +62,14 @@ export function QuestionBlock({
           }
           case QuestionType.document: {
             return (
-              <DocumentQuestion
-                key={question.uuid}
-                question={question}
-                interviewUuid={interviewUuid}
-                queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
-                answer={answer}
-              />
+              <ClientOnly key={question.uuid}>
+                <DocumentQuestion
+                  question={question}
+                  interviewUuid={interviewUuid}
+                  queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+                  answer={answer}
+                />
+              </ClientOnly>
             );
           }
           default:

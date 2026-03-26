@@ -1,3 +1,5 @@
+// In this file we only define schemas used by multiple orpc files.
+
 import {
   createInsertSchema,
   createSelectSchema,
@@ -41,25 +43,6 @@ export const InterviewUpdateSchema = createUpdateSchema(Interview);
 export const AnswerSelectSchema = createSelectSchema(Answer);
 export const AnswerInsertSchema = createInsertSchema(Answer);
 export const AnswerUpdateSchema = createUpdateSchema(Answer);
-
-// TODO refactor those both schemas
-export const CreatePresignedS3TestUploadUrlInputSchema = z.object({});
-export const CreatePresignedS3TestDownloadUrlInputSchema = z.object({
-  objectKey: z.string().min(1),
-});
-export const PresignedS3TestUploadSchema = z.object({
-  bucketName: z.string().min(1),
-  contentType: z.string(),
-  objectKey: z.string().min(1),
-  objectUrl: z.string().url(),
-  uploadUrl: z.string().url(),
-});
-export const PresignedS3TestDownloadSchema = z.object({
-  bucketName: z.string().min(1),
-  downloadUrl: z.string().url(),
-  objectKey: z.string().min(1),
-  objectUrl: z.string().url(),
-});
 
 export const InterviewWithCandidateAndAnswersSchema = z.object({
   interview: InterviewSelectSchema,

@@ -225,25 +225,22 @@ class DocumentUploadService {
       xhr.send(file);
     });
 
-    // FIXME this needs another endpoint to append the document to the answer instead of overwriting it
-    await client.saveAnswer({
+    await client.addNewDocumentToAnswer({
       interviewUuid,
       questionUuid,
-      answerPayload: {
-        documents: [
-          {
-            documentUuid: uuid,
-            fileName: file.name,
-            mimeType: file.type,
-          },
-        ],
+      document: {
+        documentUuid: uuid,
+        fileName: file.name,
+        mimeType: file.type,
       },
     });
     await this.deleteFileFromIndexedDB(fileIndex);
-    await getQueryClient().invalidateQueries({
-      queryKey: queryKeyToInvalidateAnswers,
-    });
-    // TODO remove the document from the upload store, without ui hickup
+    void (async () => {
+      await getQueryClient().invalidateQueries({
+        queryKey: queryKeyToInvalidateAnswers,
+      });
+      useDocumentUploadStore.getState().removeDocumentFromUpload(fileIndex);
+    })();
   }
 }
 
