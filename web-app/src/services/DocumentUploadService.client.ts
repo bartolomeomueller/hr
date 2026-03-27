@@ -1,6 +1,8 @@
 import type { QueryKey } from "@tanstack/react-query";
+import type z from "zod";
 import { getQueryClient } from "@/lib/query-client";
 import { client } from "@/orpc/client";
+import type { InterviewWithCandidateAndAnswersSchema } from "@/orpc/schema";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 
 const DB_NAME = "UploadDatabase";
@@ -128,11 +130,12 @@ class DocumentUploadService {
 
     const fileIndex = await this.storeFileInIndexedDB({ file });
 
+    // Already fetch a pre-signed url, so the upload can start immediately, when the pipeline gets to the upload step.
+    const preSignedUrlPromise = client.createPresignedS3DocumentUploadUrl({
+      mimeType: file.type,
+    });
+
     this.uploadPipeline = this.uploadPipeline
-      .catch(() => {
-        // The user will see the failed upload in the UI and may retry the upload
-        useDocumentUploadStore.getState().setDocumentUploadAsFailed(fileIndex);
-      })
       .then(async () => {
         await this.uploadDocument({
           fileIndex,
@@ -140,7 +143,12 @@ class DocumentUploadService {
           questionUuid,
           queryKeyToInvalidateAnswers,
           signal: abortController.signal,
+          preSignedUrlPromise,
         });
+      })
+      .catch(() => {
+        // The user will see the failed upload in the UI and may retry the upload
+        useDocumentUploadStore.getState().setDocumentUploadAsFailed(fileIndex);
       });
 
     return { fileIndex, abortController };
@@ -154,23 +162,51 @@ class DocumentUploadService {
     questionUuid,
     queryKeyToInvalidateAnswers,
     signal,
+    preSignedUrlPromise,
   }: {
     fileIndex: number;
     interviewUuid: string;
     questionUuid: string;
     queryKeyToInvalidateAnswers: QueryKey;
     signal: AbortSignal;
+    preSignedUrlPromise: Promise<{ uuid: string; uploadUrl: string }>;
   }) {
     if (signal.aborted) {
+      // TODO aborting does not work as expected
       return;
     }
 
     const file = await this.getFileFromIndexedDB(fileIndex);
-    const { uuid, uploadUrl } = await client.createPresignedS3DocumentUploadUrl(
-      {
-        mimeType: file.type,
-      },
+
+    // Check if the pre-signed URL is still valid. If not, get a new one.
+    // Url contains the information below as search params
+    // X-Amz-Date=20260326T193627Z&X-Amz-Expires=300
+    let { uploadUrl, uuid } = await preSignedUrlPromise;
+    const uploadUrlObj = new URL(uploadUrl);
+    const signDate = uploadUrlObj.searchParams.get("X-Amz-Date");
+    const expires = uploadUrlObj.searchParams.get("X-Amz-Expires");
+    if (!signDate || !expires) {
+      throw new Error("Invalid pre-signed URL: missing required parameters");
+    }
+    const signDateTime = new Date(
+      Date.UTC(
+        parseInt(signDate.substring(0, 4), 10), // year
+        parseInt(signDate.substring(4, 6), 10) - 1, // month (0-based)
+        parseInt(signDate.substring(6, 8), 10), // day
+        parseInt(signDate.substring(9, 11), 10), // hour
+        parseInt(signDate.substring(11, 13), 10), // minute
+        parseInt(signDate.substring(13, 15), 10), // second
+      ),
     );
+    if (
+      Date.now() >
+      signDateTime.getTime() + parseInt(expires, 10) * 1000 - 60 * 1000
+    ) {
+      // If the current time is past the expiration time minus a buffer (e.g., 1 minute), we consider the URL expired and get a new one.
+      ({ uploadUrl, uuid } = await client.createPresignedS3DocumentUploadUrl({
+        mimeType: file.type,
+      }));
+    }
 
     await new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -225,21 +261,34 @@ class DocumentUploadService {
       xhr.send(file);
     });
 
-    await client.addNewDocumentToAnswer({
-      interviewUuid,
-      questionUuid,
-      document: {
-        documentUuid: uuid,
-        fileName: file.name,
-        mimeType: file.type,
-      },
-    });
-    await this.deleteFileFromIndexedDB(fileIndex);
+    // Fire and forget the syncing to the ui, so the next upload can begin.
+    // TODO sync error handling with catch of pipeline
     void (async () => {
+      const updatedAnswer = await client.addNewDocumentToAnswer({
+        interviewUuid,
+        questionUuid,
+        document: {
+          documentUuid: uuid,
+          fileName: file.name,
+          mimeType: file.type,
+        },
+      });
+      await this.deleteFileFromIndexedDB(fileIndex);
+      useDocumentUploadStore.getState().removeDocumentFromUpload(fileIndex);
+      getQueryClient().setQueryData<
+        z.infer<typeof InterviewWithCandidateAndAnswersSchema>
+      >(queryKeyToInvalidateAnswers, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          answers: old.answers.map((answer) =>
+            answer.questionUuid === questionUuid ? updatedAnswer : answer,
+          ),
+        };
+      });
       await getQueryClient().invalidateQueries({
         queryKey: queryKeyToInvalidateAnswers,
       });
-      useDocumentUploadStore.getState().removeDocumentFromUpload(fileIndex);
     })();
   }
 }
