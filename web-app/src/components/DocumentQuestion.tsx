@@ -6,7 +6,8 @@ import {
   DocumentAnswerPayloadType,
   DocumentQuestionPayloadType,
 } from "@/db/payload-types";
-import { orpc } from "@/orpc/client";
+import { getQueryClient } from "@/lib/query-client";
+import { client, orpc } from "@/orpc/client";
 import type {
   AnswerSelectSchema,
   InterviewWithCandidateAndAnswersSchema,
@@ -52,13 +53,81 @@ export function DocumentQuestion({
   );
   const [mutationError, setMutationError] = useState<string | null>(null);
 
-  async function appendFiles(nextFiles: File[]) {
-    // TODO change this around, new files should be uploaded again, replacing the old ones, mind the db state here
+  async function appendFiles(nextFiles: File[], isSingleFileUpload: boolean) {
+    let filesToAddToUpload = nextFiles.sort(
+      (a, b) => a.name.localeCompare(b.name), // sort files by name to make the behavior deterministic, when we have to cut out files, because there are too many
+    );
 
-    for (const nextFile of nextFiles) {
+    if (isSingleFileUpload) {
+      // For single file upload, if there is already a document with the same name, we want to replace it.
+      filesToAddToUpload = nextFiles.slice(0, 1);
+      console.log("filesToAddToUpload", filesToAddToUpload[0]);
+      if (
+        documents.some(
+          (document) => document.fileName !== filesToAddToUpload[0].name,
+        )
+      ) {
+        const uploadedDocumentToReplace = documents.at(0);
+        console.log("uploadedDocumentToReplace", uploadedDocumentToReplace);
+        if (uploadedDocumentToReplace) {
+          // NOTE Think about what should happen if the deletion fails, because then we will violate the single file upload constraint. Just let it be and show the recruiter the last element of the array? Or make the replace atomic?
+          void (async () => {
+            const updatedAnswer =
+              await client.deleteDocumentFromObjectStorageAndFromAnswer({
+                interviewUuid,
+                questionUuid: question.uuid,
+                documentUuid: uploadedDocumentToReplace.documentUuid,
+              });
+            getQueryClient().setQueryData<
+              z.infer<typeof InterviewWithCandidateAndAnswersSchema>
+            >(queryKeyToInvalidateAnswers, (old) => {
+              if (!old) return old;
+              return {
+                ...old,
+                answers: old.answers.map((answer) =>
+                  answer.questionUuid === question.uuid
+                    ? updatedAnswer
+                    : answer,
+                ),
+              };
+            });
+            await getQueryClient().invalidateQueries({
+              queryKey: queryKeyToInvalidateAnswers,
+            });
+          })();
+        }
+      }
+      // If a file is already uploading, then remove the upload and start the new one.
+      if (documentsToUpload.at(0)) {
+        documentsToUpload.at(0)?.abortController.abort();
+      }
+    } else {
+      // For multiple file upload, if there is already a document with the same name, we want to keep it.
+      filesToAddToUpload = nextFiles.filter((file) => {
+        if (
+          documents.some((document) => document.fileName === file.name) ||
+          documentsToUpload.some((doc) => doc.fileName === file.name)
+        ) {
+          return false;
+        }
+        return true;
+      });
+      // If there are still too many files, cut them out
+      if (
+        filesToAddToUpload.length >
+        questionPayload.maxUploads - documents.length
+      ) {
+        filesToAddToUpload = filesToAddToUpload.slice(
+          0,
+          questionPayload.maxUploads - documents.length,
+        );
+      }
+    }
+
+    for (const fileToAddToUpload of filesToAddToUpload) {
       const { fileIndex, abortController } =
         await documentUploadService.addToUploadPipeline({
-          file: nextFile,
+          file: fileToAddToUpload,
           interviewUuid,
           questionUuid: question.uuid,
           queryKeyToInvalidateAnswers,
@@ -66,7 +135,7 @@ export function DocumentQuestion({
       useDocumentUploadStore.getState().addDocumentToUpload({
         questionUuid: question.uuid,
         indexedDBId: fileIndex,
-        fileName: nextFile.name,
+        fileName: fileToAddToUpload.name,
         abortController,
       });
     }
@@ -77,8 +146,8 @@ export function DocumentQuestion({
       <label htmlFor={id}>{questionPayload.prompt}</label>
       <FileDragAndDrop
         id={id}
+        isSingleFileUpload={questionPayload.maxUploads === 1}
         appendFiles={appendFiles}
-        remainingCapacity={questionPayload.maxUploads - documents.length}
       />
       {documents.map((document) => {
         return (
@@ -123,12 +192,12 @@ export function DocumentQuestion({
 
 function FileDragAndDrop({
   id,
+  isSingleFileUpload,
   appendFiles,
-  remainingCapacity,
 }: {
   id: string;
-  appendFiles: (files: File[]) => void;
-  remainingCapacity: number;
+  isSingleFileUpload: boolean;
+  appendFiles: (files: File[], isSingleFileUpload: boolean) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -154,9 +223,8 @@ function FileDragAndDrop({
           try {
             const nextFiles = await getFilesFromDataTransferItems(
               e.dataTransfer.items,
-              remainingCapacity,
             );
-            appendFiles(nextFiles);
+            appendFiles(nextFiles, isSingleFileUpload);
           } finally {
             setIsDragging(false);
           }
@@ -185,8 +253,9 @@ function FileDragAndDrop({
         ref={fileInputRef}
         onChange={(e) => {
           const files = e.target.files;
+
           if (files) {
-            appendFiles(Array.from(files));
+            appendFiles(Array.from(files), isSingleFileUpload);
           }
           // The duplication will be checked by appendFiles TODO
           e.target.value = ""; // reset file input, so that the same file can be uploaded again
@@ -361,12 +430,7 @@ function File({
 
 async function getFilesFromDataTransferItems(
   items: DataTransferItemList,
-  remainingCapacity: number,
 ): Promise<File[]> {
-  if (remainingCapacity <= 0) {
-    return [];
-  }
-
   // Make a snapshot of the entries, because awaiting too much will result in the items being cleared.
   const entries: FileSystemEntry[] = [];
   for (const item of items) {
@@ -382,14 +446,7 @@ async function getFilesFromDataTransferItems(
 
   const collectedFiles: File[] = [];
   for (const entry of entries) {
-    if (collectedFiles.length >= remainingCapacity) {
-      break;
-    }
-
-    const nestedFiles = await getFilesFromDroppedEntry(
-      entry,
-      remainingCapacity - collectedFiles.length,
-    );
+    const nestedFiles = await getFilesFromDroppedEntry(entry);
     collectedFiles.push(...nestedFiles);
   }
 
@@ -398,12 +455,7 @@ async function getFilesFromDataTransferItems(
 
 async function getFilesFromDroppedEntry(
   entry: FileSystemEntry,
-  remainingCapacity: number,
 ): Promise<File[]> {
-  if (remainingCapacity <= 0) {
-    return [];
-  }
-
   if (entry.isFile) {
     const file = await new Promise<File>((resolve) =>
       (entry as FileSystemFileEntry).file(resolve),
@@ -412,24 +464,16 @@ async function getFilesFromDroppedEntry(
     return [file];
   }
 
-  return getFilesFromDirectoryEntry(
-    entry as FileSystemDirectoryEntry,
-    remainingCapacity,
-  );
+  return getFilesFromDirectoryEntry(entry as FileSystemDirectoryEntry);
 }
 
 async function getFilesFromDirectoryEntry(
   entry: FileSystemDirectoryEntry,
-  remainingCapacity: number,
 ): Promise<File[]> {
-  if (remainingCapacity <= 0) {
-    return [];
-  }
-
   const reader = entry.createReader();
   const collectedFiles: File[] = [];
 
-  while (collectedFiles.length < remainingCapacity) {
+  while (true) {
     const entries = await new Promise<FileSystemEntry[]>((resolve) =>
       reader.readEntries(resolve),
     );
@@ -439,10 +483,6 @@ async function getFilesFromDirectoryEntry(
     }
 
     for (const nestedEntry of entries) {
-      if (collectedFiles.length >= remainingCapacity) {
-        break;
-      }
-
       // no nested directories will be searched
       if (!nestedEntry.isFile) {
         continue;
