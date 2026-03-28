@@ -1,10 +1,17 @@
 services:
-  # video-processing-service:
-  #   build: .
-  #   depends_on:
-  #     - redis
+  video-processing-service:
+    build:
+      context: .
+    depends_on:
+      - redis
+    restart: unless-stopped
 
   redis:
     image: redis:8.6.1-trixie
     ports:
       - "6379:6379"
+
+networks:
+  default:
+    name: hr-app-network
+    external: true

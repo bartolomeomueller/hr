@@ -12,7 +12,7 @@ export const s3Config = {
     secretAccessKey: "key",
   },
   bucketName: "hr-app-data",
-  endpoint: "http://localhost:8333",
+  endpoint: "http://s3:8333",
   region: "us-east-1", // is ignored by S3Client when using a custom endpoint
 } as const;
 

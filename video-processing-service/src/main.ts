@@ -17,7 +17,8 @@ const worker = new Worker(
     const { uuid } = job.data;
     await executeProcessingJob(uuid);
   },
-  { connection: { host: "localhost", port: 6379 } },
+  // TODO use env vars
+  { connection: { host: "redis", port: 6379 } },
 );
 
 async function executeProcessingJob(uuid: string): Promise<void> {

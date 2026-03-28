@@ -58,7 +58,7 @@ services:
     depends_on:
       - s3
 
-  nginx:
-    build: ./nginx
-    ports:
-      - "3001:443"
+networks:
+  default:
+    name: hr-app-network
+    external: true
