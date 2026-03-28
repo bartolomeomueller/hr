@@ -47,6 +47,7 @@
     "lucide-react": "^0.561.0",
     "nitro": "npm:nitro-nightly@latest",
     "pg": "^8.16.3",
+    "radix-ui": "^1.4.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "shaka-player": "^5.0.5",

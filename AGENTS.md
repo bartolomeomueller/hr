@@ -5,6 +5,7 @@ Generally: This is a greenfield project, feel free to make any breaking changes 
 For the `web-app/`:
 Please assume `pnpm dev` is running and do not use `pnpm build`.
 The `web-app` project uses streaming ssr. Do not make route loaders async just to await ensureQueryData; trigger ensureQueryData without awaiting/returning it, and do missing-data/notFound handling during render-time query consumption.
+For the design of the web app, please be minimalistic and elegant, use the defined colors in src/styles.css.
 
 For the `video-processing-service/`: Please assume docker compose is running this service at all times.
 

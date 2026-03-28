@@ -1,4 +1,7 @@
 import { useId, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function CandidateGreetingForm({
   canSubmit,
@@ -23,10 +26,13 @@ export function CandidateGreetingForm({
   };
 
   return (
+    // TODO think about using the react-hook-form library via shadcs field components
     <form onSubmit={handleSubmit}>
-      <p>Willkommen! Damit wir dich korrekt ansprechen können:</p>
-      <label htmlFor={nameId}>Wie dürfen wir dich nennen?</label>
-      <input
+      <p className="text-lg font-semibold">
+        Willkommen! Damit wir dich korrekt ansprechen können:
+      </p>
+      <Label htmlFor={nameId}>Wie dürfen wir dich nennen?</Label>
+      <Input
         id={nameId}
         name="name"
         type="text"
@@ -36,10 +42,10 @@ export function CandidateGreetingForm({
         required
       />
 
-      <label htmlFor={emailId}>
+      <Label htmlFor={emailId}>
         Unter welcher E-Mail willst du kontaktiert werden?
-      </label>
-      <input
+      </Label>
+      <Input
         id={emailId}
         name="email"
         type="email"
@@ -49,13 +55,13 @@ export function CandidateGreetingForm({
         required
       />
 
-      <button
+      <Button
         type="submit"
         disabled={!canSubmit}
         className="disabled:cursor-not-allowed disabled:opacity-70"
       >
         Los geht's!
-      </button>
+      </Button>
 
       {errorMessage ? <p>{errorMessage}</p> : null}
     </form>
