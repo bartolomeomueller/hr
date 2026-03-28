@@ -36,7 +36,7 @@ export async function streamingDownload({
     const response = await s3Client.send(
       new GetObjectCommand({
         Bucket: s3Config.bucketName,
-        Key: `${downloadPrefix}/${uuid}.webm`,
+        Key: `${downloadPrefix}/${uuid}`,
       }),
     );
     if (!response.Body) {

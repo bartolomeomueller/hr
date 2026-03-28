@@ -108,7 +108,6 @@ export function getObjectKeyForDocumentUuid(documentUuid: string) {
   return `documents/uploads/${documentUuid}`;
 }
 
-// TODO remove the webm extension from the object key
 export function getObjectKeyForVideoUuid(videoUuid: string) {
-  return `videos/uploads/${videoUuid}.webm`;
+  return `videos/uploads/${videoUuid}`;
 }
