@@ -1,8 +1,3 @@
-// For better performance this site creates a waterfall system of queries:
-// 1. In the Role component prefetch the role.
-// 2. Immediately show the CandidateGreeting component. Then create the interview via a mutation.
-// 3. On success of this mutation prefetch the queries for the interview related data and questions, which are needed for the interview component, and then navigate to the interview route.
-
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { orpc } from "@/orpc/client";
@@ -11,6 +6,10 @@ import {
   useCandidateFlowForm,
 } from "./CandidateFlowFormContext";
 
+// For better performance this site creates a waterfall system of queries:
+// 1. In the Role component prefetch the role.
+// 2. Immediately show the CandidateGreeting component. Then create the interview via a mutation.
+// 3. On success of this mutation prefetch the queries for the interview related data and questions, which are needed for the interview component, and then navigate to the interview route.
 // The user won't see the switch between the routes visually, because the interview route will show the CandidateGreeting component as well.
 export function CreateInterview({
   slug,
