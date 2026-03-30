@@ -1,4 +1,4 @@
-import { createFileRoute, notFound, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, notFound } from "@tanstack/react-router";
 import { Suspense } from "react";
 import { GenericLoader } from "@/components/GenericLoader";
 import { Role } from "@/components/Role";
@@ -37,23 +37,14 @@ export const Route = createFileRoute("/_interviewFlow/roles/$slug/")({
 
 function RouteComponent() {
   const { slug } = Route.useParams();
-  const navigate = useNavigate({ from: Route.fullPath });
 
   const handleResourceNotFound = () => {
     throw notFound({ routeId: Route.id, data: { slug } });
   };
 
-  const handleNavigateToInterview = async (uuid: string) => {
-    await navigate({ to: "/interviews/$uuid", params: { uuid } });
-  };
-
   return (
     <Suspense fallback={<GenericLoader />}>
-      <Role
-        slug={slug}
-        onResourceNotFound={handleResourceNotFound}
-        onNavigateToInterview={handleNavigateToInterview}
-      />
+      <Role slug={slug} onResourceNotFound={handleResourceNotFound} />
     </Suspense>
   );
 }
