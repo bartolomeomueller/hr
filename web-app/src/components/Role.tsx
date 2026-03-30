@@ -1,9 +1,4 @@
-import {
-  skipToken,
-  useMutation,
-  useQuery,
-  useSuspenseQuery,
-} from "@tanstack/react-query";
+import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
   candidateFlowNoopSubmit,
@@ -59,8 +54,6 @@ export function RoleContainer({
           }),
         ),
       ]);
-
-      await onNavigateToInterview(data.uuid);
     },
   });
 
@@ -84,7 +77,7 @@ export function RoleContainer({
     return onResourceNotFound();
   }
 
-  const handleStartInterview = async () => {
+  const handleStartInterview = async (): Promise<void> => {
     const interview = await createInterviewMutation.mutateAsync({
       roleUuid: roleData.role.uuid,
     });
