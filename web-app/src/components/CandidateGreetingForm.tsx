@@ -35,7 +35,6 @@ export function CandidateGreetingForm({
       // Rather only count a field as invalid, if it got blurred.
       // Tanstack Form's isBlurred and isTouched will stay true, once they got set, no matter what happens.
       onChange: formSchema,
-      // onSubmit: formSchema,
     },
     onSubmit: async ({ value }) => {
       await onSubmit(value);
