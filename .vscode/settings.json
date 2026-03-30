@@ -9,6 +9,7 @@
     "**/routeTree.gen.ts": true
   },
   "biome.lsp.bin": "./web-app/node_modules/.bin/biome",
+  "biome.configurationPath": "web-app/biome.json",
   "editor.codeActionsOnSave": {
     "source.fixAll.biome": "explicit",
     "source.organizeImports.biome": "explicit"

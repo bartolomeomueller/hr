@@ -1,9 +1,15 @@
 import { useForm } from "@tanstack/react-form";
-import { useId, useState } from "react";
+import z from "zod";
 import { Button } from "@/components/ui/button";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { SlideInFromTop } from "./ui/animation";
 
 export function CandidateGreetingForm({
   canSubmit,
@@ -14,87 +20,125 @@ export function CandidateGreetingForm({
   errorMessage: string | null;
   onSubmit: (values: { name: string; email: string }) => Promise<void>;
 }) {
-  const nameId = useId();
-  const emailId = useId();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-
-  const handleSubmit = async (event: SubmitEvent) => {
-    await onSubmit({
-      name: name.trim(),
-      email: email.trim(),
-    });
-  };
+  const formSchema = z.object({
+    name: z.string().min(5, "Bitte gib deinen Namen an."),
+    email: z.email("Bitte gib eine gültige E-Mail-Adresse an."),
+  });
 
   const form = useForm({
     defaultValues: {
       name: "",
       email: "",
     },
+    validators: {
+      // Using two separate validators here, just leads to persisting errors until they run again. They do not share their errors.
+      // Rather only count a field as invalid, if it got blurred.
+      // Tanstack Form's isBlurred and isTouched will stay true, once they got set, no matter what happens.
+      onChange: formSchema,
+      // onSubmit: formSchema,
+    },
+    onSubmit: async ({ value }) => {
+      await onSubmit(value);
+    },
   });
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        form.handleSubmit();
-      }}
-    >
-      <FieldGroup>
-        <p className="text-lg font-semibold">
-          Willkommen! Damit wir dich korrekt ansprechen können:
-        </p>
-        <form.Field
-          name="name"
-          children={(field) => {
-            const isInvalid =
-              field.state.meta.isTouched && !field.state.meta.isValid;
-            return (
-              <Field data-invalid={isInvalid}>
-                <FieldLabel htmlFor={field.name}>
-                  Wie dürfen wir dich nennen?
-                </FieldLabel>
-                <Input
-                  id={field.name}
-                  name={field.name}
-                  value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  aria-invalid={isInvalid}
-                  type="text"
-                  placeholder="Erika Mustermann"
-                  autoComplete="name"
-                  required
-                />
-              </Field>
-            );
-          }}
-        />
-        {/* <Label htmlFor={nameId}>Wie dürfen wir dich nennen?</Label>
-         */}
+    <div className="flex justify-center">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          form.handleSubmit();
+        }}
+        className="w-[75ch]"
+      >
+        <FieldGroup>
+          <p className="text-lg font-semibold">
+            Willkommen! Damit wir dich korrekt ansprechen können:
+          </p>
+          <form.Field
+            name="name"
+            children={(field) => {
+              const isInvalid =
+                field.state.meta.isBlurred && !field.state.meta.isValid;
+              return (
+                <Field data-invalid={isInvalid}>
+                  <FieldLabel htmlFor={field.name}>
+                    Wie dürfen wir dich nennen?
+                  </FieldLabel>
+                  <Input
+                    id={field.name}
+                    name={field.name}
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    onBlur={field.handleBlur}
+                    aria-invalid={isInvalid}
+                    type="text"
+                    placeholder="Erika Mustermann"
+                    autoComplete="name"
+                    required
+                  />
+                  <FieldDescription>
+                    Das ist der Name, unter dem wir dich und dein Unternehmen
+                    dich anprechen wird.
+                  </FieldDescription>
 
-        <Label htmlFor={emailId}>
-          Unter welcher E-Mail willst du kontaktiert werden?
-        </Label>
-        <Input
-          id={emailId}
-          name="email"
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          required
-        />
+                  <SlideInFromTop isVisible={isInvalid}>
+                    <FieldError errors={field.state.meta.errors} />
+                  </SlideInFromTop>
+                </Field>
+              );
+            }}
+          />
 
-        <Button
-          type="submit"
-          disabled={!canSubmit}
-          className="disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          Los geht's!
-        </Button>
+          <form.Field
+            name="email"
+            children={(field) => {
+              const isInvalid =
+                field.state.meta.isBlurred && !field.state.meta.isValid;
+              return (
+                <Field data-invalid={isInvalid}>
+                  <FieldLabel htmlFor={field.name}>
+                    Unter welcher E-Mail willst du kontaktiert werden?
+                  </FieldLabel>
+                  <Input
+                    id={field.name}
+                    name={field.name}
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    onBlur={field.handleBlur}
+                    aria-invalid={isInvalid}
+                    type="email"
+                    placeholder="erika.mustermann@example.com"
+                    autoComplete="email"
+                    required
+                  />
+                  <FieldDescription>
+                    Diese Email-Adresse werden wir nutzen, um dich zu
+                    kontaktieren. Wir werden dir keine Werbung schicken.
+                  </FieldDescription>
 
-        {errorMessage ? <p>{errorMessage}</p> : null}
-      </FieldGroup>
-    </form>
+                  <SlideInFromTop isVisible={isInvalid}>
+                    {isInvalid && (
+                      <FieldError errors={field.state.meta.errors} />
+                    )}
+                  </SlideInFromTop>
+                </Field>
+              );
+            }}
+          />
+
+          <form.Subscribe
+            selector={(state) => state.canSubmit}
+            children={(formCanSubmit) => (
+              <Button type="submit" disabled={!canSubmit || !formCanSubmit}>
+                Los geht's!
+              </Button>
+            )}
+          />
+
+          {errorMessage ? <p>{errorMessage}</p> : null}
+        </FieldGroup>
+      </form>
+    </div>
   );
 }

@@ -10,6 +10,7 @@ For the design of the web app, please be minimalistic and elegant, use the defin
 For the `video-processing-service/`: Please assume docker compose is running this service at all times.
 
 If possible, please try to write top down functions. So the main function is at the top of the file and the called functions in the main function are defined below it.
+If you only need a type at one place, do not introduce a new typescript type for it, just use an inline type definition.
 
 Do not delete any comments you do not directly solve.
 Do not fix other stuff you encounter on your task, that I did not told you to fix. Just propose that you could fix it after you finished your task.
