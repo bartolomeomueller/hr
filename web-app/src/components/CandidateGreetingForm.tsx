@@ -22,7 +22,7 @@ export function CandidateGreetingForm({
   onSubmit: (values: { name: string; email: string }) => Promise<void>;
 }) {
   const formSchema = z.object({
-    name: z.string().min(5, "Bitte gib deinen Namen an."),
+    name: z.string().min(1, "Bitte gib deinen Namen an."),
     email: z.email("Bitte gib eine gültige E-Mail-Adresse an."),
   });
 
