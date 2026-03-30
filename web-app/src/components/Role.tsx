@@ -13,7 +13,7 @@ import { Button } from "./ui/button";
 // 2. In the component create the interview via a mutation, but immediately switch to the CandidateGreeting component.
 // 3. On success of this mutation prefetch the queries for the interview related data and questions, which are needed for the interview component, and then navigate to the interview route.
 // The user won't see the switch between the routes visually, because the interview route will show the CandidateGreeting component as well.
-export function RoleContainer({
+export function Role({
   slug,
   onResourceNotFound,
   onNavigateToInterview,

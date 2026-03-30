@@ -1,7 +1,7 @@
 import { createFileRoute, notFound, useNavigate } from "@tanstack/react-router";
 import { Suspense } from "react";
 import { GenericLoader } from "@/components/GenericLoader";
-import { RoleContainer } from "@/components/Role";
+import { Role } from "@/components/Role";
 import { orpc } from "@/orpc/client";
 
 export const Route = createFileRoute("/_interviewFlow/roles/$slug/")({
@@ -43,21 +43,13 @@ function RouteComponent() {
     throw notFound({ routeId: Route.id, data: { slug } });
   };
 
-  const handleNavigateToInterview = async (
-    uuid: string,
-    slug: string,
-    version: number,
-  ) => {
-    await navigate({
-      to: "/interviews/$uuid",
-      params: { uuid },
-      search: { slug, version },
-    });
+  const handleNavigateToInterview = async (uuid: string) => {
+    await navigate({ to: "/interviews/$uuid", params: { uuid } });
   };
 
   return (
     <Suspense fallback={<GenericLoader />}>
-      <RoleContainer
+      <Role
         slug={slug}
         onResourceNotFound={handleResourceNotFound}
         onNavigateToInterview={handleNavigateToInterview}
