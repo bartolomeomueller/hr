@@ -9,16 +9,12 @@ import { VideoQuestion } from "./questions/VideoQuestion";
 
 export function Interview({
   uuid,
-  roleSlug,
-  flowVersion,
   currentFlowStep,
   onFlowStepChange,
   onResourceNotFound,
   finalizeInterview,
 }: {
   uuid: string;
-  roleSlug: string;
-  flowVersion: number;
   currentFlowStep?: number;
   onFlowStepChange: (step: number) => void;
   onResourceNotFound: () => never;
@@ -40,12 +36,7 @@ export function Interview({
   );
 
   const questionsQuery = useSuspenseQuery(
-    orpc.getQuestionsByRoleSlugAndFlowVersion.queryOptions({
-      input: {
-        roleSlug,
-        flowVersion,
-      },
-    }),
+    orpc.getQuestionsByInterviewUuid.queryOptions({ input: { uuid } }),
   );
 
   const addParticipantMutation = useMutation({

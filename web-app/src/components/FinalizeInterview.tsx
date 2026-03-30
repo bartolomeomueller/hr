@@ -4,23 +4,16 @@ import { orpc } from "@/orpc/client";
 import { useUploadStore } from "@/stores/uploadStore";
 
 export function FinalizeInterview({
-  roleSlug,
-  flowVersion,
+  uuid,
   onResourceNotFound,
 }: {
-  roleSlug: string;
-  flowVersion: number;
+  uuid: string;
   onResourceNotFound: () => never;
 }) {
   const uploadStore = useUploadStore((state) => state.recordings);
 
   const questionsQuery = useSuspenseQuery(
-    orpc.getQuestionsByRoleSlugAndFlowVersion.queryOptions({
-      input: {
-        roleSlug,
-        flowVersion,
-      },
-    }),
+    orpc.getQuestionsByInterviewUuid.queryOptions({ input: { uuid } }),
   );
 
   const questionsData = questionsQuery.data;

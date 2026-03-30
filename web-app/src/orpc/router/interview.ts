@@ -1,58 +1,117 @@
 import { os } from "@orpc/server";
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import z from "zod";
 import { db } from "@/db";
-import { VideoAnswerPayloadType } from "@/db/payload-types";
-import { Answer, Candidate, FlowVersion, Interview } from "@/db/schema";
-import { videoProcessingQueue } from "@/lib/bullmq";
 import {
-  AnswerSelectSchema,
+  Answer,
+  Candidate,
+  FlowStep,
+  FlowVersion,
+  Interview,
+  Question,
+  Role,
+} from "@/db/schema";
+import {
   CandidateInsertSchema,
+  FlowStepSelectSchema,
   FlowVersionSelectSchema,
   InterviewSelectSchema,
   InterviewWithCandidateAndAnswersSchema,
+  QuestionSelectSchema,
   RoleSelectSchema,
 } from "@/orpc/schema";
 import { debugMiddleware } from "../debug-middleware";
 
-export const createInterviewForRoleAndFlowVersion = os
+export const createInterviewForRoleUuid = os
   .use(debugMiddleware)
   .input(
     z.object({
       roleUuid: RoleSelectSchema.shape.uuid,
-      flowVersion: FlowVersionSelectSchema.shape.version,
     }),
   )
   // Only return the interview uuid to keep the api lean and not introduce unnecessary coupling between the frontend and backend.
   .output(InterviewSelectSchema.pick({ uuid: true }))
   .handler(async ({ input }) => {
-    try {
-      const flowVersionUuidSubquery = db
-        .select({ value: FlowVersion.uuid })
-        .from(FlowVersion)
-        .where(
-          and(
-            eq(FlowVersion.roleUuid, input.roleUuid),
-            eq(FlowVersion.version, input.flowVersion),
-          ),
-        )
-        .limit(1);
+    const flowVersionUuidSubquery = db
+      .select({ value: FlowVersion.uuid })
+      .from(FlowVersion)
+      .where(and(eq(FlowVersion.roleUuid, input.roleUuid)))
+      .orderBy(desc(FlowVersion.version))
+      .limit(1);
 
-      const interview = await db
-        .insert(Interview)
-        .values({
-          // Because of a drizzle limitation, this subquery needs to be casted to sql
-          flowVersionUuid: sql`${flowVersionUuidSubquery}`,
-        })
-        .returning({
-          uuid: Interview.uuid,
-        });
-      return interview[0];
-    } catch (error) {
-      throw new Error(
-        `Failed to create interview for role ${input.roleUuid}: ${String(error)}`,
-      );
-    }
+    const interview = await db
+      .insert(Interview)
+      .values({
+        // Because of a drizzle limitation, this subquery needs to be casted to sql
+        flowVersionUuid: sql`${flowVersionUuidSubquery}`,
+      })
+      .returning({
+        uuid: Interview.uuid,
+      });
+    return interview[0];
+  });
+
+export const getQuestionsByInterviewUuid = os
+  .use(debugMiddleware)
+  .input(InterviewSelectSchema.pick({ uuid: true }))
+  .output(
+    z
+      .object({
+        role: RoleSelectSchema,
+        flowVersion: FlowVersionSelectSchema,
+        flowSteps: z.array(FlowStepSelectSchema),
+        questions: z.array(QuestionSelectSchema),
+      })
+      .nullable(),
+  )
+  .handler(async ({ input }) => {
+    const [result] = await db
+      .select({
+        role: Role,
+        flowVersion: FlowVersion,
+        flowSteps: sql<z.infer<typeof FlowStepSelectSchema>[]>`
+            json_agg(
+              json_build_object(
+                'uuid', ${FlowStep.uuid},
+                'flowVersionUuid', ${FlowStep.flowVersionUuid},
+                'position', ${FlowStep.position},
+                'kind', ${FlowStep.kind}
+              )
+              order by ${FlowStep.position}
+            )
+          `,
+        questions: sql<z.infer<typeof QuestionSelectSchema>[]>`
+            json_agg(
+              json_build_object(
+                'uuid', ${Question.uuid},
+                'flowStepUuid', ${Question.flowStepUuid},
+                'position', ${Question.position},
+                'questionType', ${Question.questionType},
+                'questionPayload', ${Question.questionPayload}
+              )
+              order by ${Question.position}
+            )
+          `,
+      })
+      .from(FlowVersion)
+      .innerJoin(Role, eq(Role.uuid, FlowVersion.roleUuid))
+      .innerJoin(FlowStep, eq(FlowStep.flowVersionUuid, FlowVersion.uuid))
+      .innerJoin(Question, eq(Question.flowStepUuid, FlowStep.uuid))
+      .innerJoin(Interview, eq(Interview.flowVersionUuid, FlowVersion.uuid))
+      .where(eq(Interview.uuid, input.uuid))
+      // groupBy is not hierarchical, it just creates groups of rows with the same role and flow version
+      // It is not needed here, as there is only one interview and thus one role and flow version.
+      .groupBy(Role.uuid, FlowVersion.uuid);
+
+    if (!result) return null;
+
+    // Because of the joins, there is one row for each question, so flow steps are duplicated
+    // This keeps the order of flow steps intact, but removes duplicates
+    result.flowSteps = [
+      ...new Map(result.flowSteps.map((step) => [step.uuid, step])).values(),
+    ];
+
+    return result;
   });
 
 // NOTE Maybe have a look into json aggregation to make it one roundtrip for better performance

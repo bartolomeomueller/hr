@@ -5,17 +5,11 @@ import { FinalizeInterview } from "@/components/FinalizeInterview";
 import { GenericLoader } from "@/components/GenericLoader";
 import { Interview } from "@/components/Interview";
 import { orpc } from "@/orpc/client";
-import {
-  FlowStepSelectSchema,
-  FlowVersionSelectSchema,
-  RoleSelectSchema,
-} from "@/orpc/schema";
+import { FlowStepSelectSchema } from "@/orpc/schema";
 
 // TODO prevent that a user may record a video but may not upload it, check availablity first of backend somehow
 
 const InterviewSearch = z.object({
-  slug: RoleSelectSchema.shape.slug.optional(),
-  version: FlowVersionSelectSchema.shape.version.optional(),
   step: FlowStepSelectSchema.shape.position.optional(),
   finalize: z.boolean().optional(),
 });
@@ -26,51 +20,14 @@ export const Route = createFileRoute("/_interviewFlow/interviews/$uuid/")({
   loaderDeps: ({ search }) => ({ search }), // make search params available in the loader
   loader: async ({ params, context, deps }) => {
     const { uuid } = params;
-    if (deps.search.slug && deps.search.version) {
-      // The user got to this route via the role page, this is the normal flow, we can use streaming ssr
-      context.queryClient.ensureQueryData(
-        orpc.getQuestionsByRoleSlugAndFlowVersion.queryOptions({
-          input: {
-            roleSlug: deps.search.slug,
-            flowVersion: deps.search.version,
-          },
-        }),
-      );
-      context.queryClient.ensureQueryData(
-        orpc.getInterviewRelatedDataByInterviewUuid.queryOptions({
-          input: { uuid },
-        }),
-      );
-    } else {
-      // The user modified the created url manually. We cannot directly get all data, but we still get the data
-      const interviewRelatedData = await context.queryClient.fetchQuery(
-        orpc.getInterviewRelatedDataByInterviewUuid.queryOptions({
-          input: { uuid },
-        }),
-      );
-      if (!interviewRelatedData) {
-        throw notFound({ routeId: Route.id, data: { uuid } });
-      }
-      const roleSlugAndFlowVersion = await context.queryClient.fetchQuery(
-        orpc.getRoleSlugAndFlowVersionByInterviewUuid.queryOptions({
-          input: { uuid },
-        }),
-      );
-      if (!roleSlugAndFlowVersion) {
-        throw notFound({
-          routeId: Route.id,
-          data: { uuid },
-        });
-      }
-      context.queryClient.ensureQueryData(
-        orpc.getQuestionsByRoleSlugAndFlowVersion.queryOptions({
-          input: {
-            roleSlug: roleSlugAndFlowVersion.roleSlug,
-            flowVersion: roleSlugAndFlowVersion.flowVersion,
-          },
-        }),
-      );
-    }
+    context.queryClient.ensureQueryData(
+      orpc.getQuestionsByInterviewUuid.queryOptions({ input: { uuid } }),
+    );
+    context.queryClient.ensureQueryData(
+      orpc.getInterviewRelatedDataByInterviewUuid.queryOptions({
+        input: { uuid },
+      }),
+    );
   },
   // TODO clean this code up
   notFoundComponent: ({ data }) => {
@@ -118,15 +75,12 @@ function RouteComponent() {
     <Suspense fallback={<GenericLoader />}>
       {search.finalize ? (
         <FinalizeInterview
-          roleSlug={search.slug ?? ""} // FIXME
-          flowVersion={search.version ?? -1} // FIXME
+          uuid={uuid}
           onResourceNotFound={handleResourceNotFound}
         />
       ) : (
         <Interview
           uuid={uuid}
-          roleSlug={search.slug ?? ""} // FIXME
-          flowVersion={search.version ?? -1} // FIXME
           currentFlowStep={search.step}
           onFlowStepChange={handleFlowStepChange}
           onResourceNotFound={handleResourceNotFound}

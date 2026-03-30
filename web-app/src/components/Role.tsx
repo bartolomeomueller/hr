@@ -13,11 +13,11 @@ import { H1 } from "@/components/ui/typography";
 import { orpc } from "@/orpc/client";
 import { Button } from "./ui/button";
 
-// For maximum performance this site creates a waterfall system of queries:
+// For better performance this site creates a waterfall system of queries:
 // 1. In the loader of the route fetch the role.
-// 2. In the component fetch a stable question set (to not run into inconsistencies).
-//   This query is also used by the interview component, so it is prefetched here.
-// 3. In the component create the interview with the fetched questionset by query 2, but immediately switch to the interview component.
+// 2. In the component create the interview via a mutation, but immediately switch to the CandidateGreeting component.
+// 3. On success of this mutation prefetch the queries for the interview related data and questions, which are needed for the interview component, and then navigate to the interview route.
+// The user won't see the switch between the routes visually, because the interview route will show the CandidateGreeting component as well.
 export function RoleContainer({
   slug,
   onResourceNotFound,
@@ -25,11 +25,7 @@ export function RoleContainer({
 }: {
   slug: string;
   onResourceNotFound: () => never;
-  onNavigateToInterview: (
-    interviewUuid: string,
-    slug: string,
-    version: number,
-  ) => Promise<void>;
+  onNavigateToInterview: (interviewUuid: string) => Promise<void>;
 }) {
   const [showCandidateGreetingForm, setShowCandidateGreetingForm] =
     useState(false);
@@ -41,7 +37,7 @@ export function RoleContainer({
   const roleQuery = useSuspenseQuery(roleQueryOptions);
 
   const createInterviewMutation = useMutation({
-    ...orpc.createInterviewForRoleAndFlowVersion.mutationOptions(),
+    ...orpc.createInterviewForRoleUuid.mutationOptions(),
     onMutate: async (_variables, _context) => {
       setShowCandidateGreetingForm(true);
     },
@@ -49,19 +45,22 @@ export function RoleContainer({
       // FIXME
       setShowCandidateGreetingForm(false);
     },
-    onSuccess: async (data, variables, _onMutateResult, context) => {
-      // NOTE This round trip could be eliminated by a refactor
-      await context.client.fetchQuery(
-        orpc.getInterviewRelatedDataByInterviewUuid.queryOptions({
-          input: { uuid: data.uuid },
-        }),
-      );
+    onSuccess: async (data, _variables, _onMutateResult, context) => {
+      // NOTE This round trip could be eliminated by a refactor by letting the mutate function return the interview related data directly
+      await Promise.all([
+        context.client.fetchQuery(
+          orpc.getInterviewRelatedDataByInterviewUuid.queryOptions({
+            input: { uuid: data.uuid },
+          }),
+        ),
+        context.client.fetchQuery(
+          orpc.getQuestionsByInterviewUuid.queryOptions({
+            input: { uuid: data.uuid },
+          }),
+        ),
+      ]);
 
-      await onNavigateToInterview(
-        data.uuid,
-        slug, // TODO maybe update this somehow to a local variable or even better, just create an analogous query and preset it here and then refetch it immediately
-        variables.flowVersion,
-      );
+      await onNavigateToInterview(data.uuid);
     },
   });
 
@@ -81,22 +80,6 @@ export function RoleContainer({
     hideForm();
   }, [showCandidateGreetingForm, showForm, hideForm]);
 
-  const questionsByRoleSlugAndFlowVersionQueryOptions =
-    orpc.getQuestionsByRoleSlugAndFlowVersion.queryOptions({
-      input: {
-        roleSlug: slug,
-        // Defaults to invalid version, query is disabled until roleData.flowVersion.version is defined
-        flowVersion: roleData?.flowVersion.version ?? -1,
-      },
-    });
-
-  const questionsAndFlowVersionQuery = useQuery({
-    ...questionsByRoleSlugAndFlowVersionQueryOptions,
-    queryFn: roleData
-      ? questionsByRoleSlugAndFlowVersionQueryOptions.queryFn
-      : skipToken,
-  });
-
   if (!roleData) {
     return onResourceNotFound();
   }
@@ -104,15 +87,9 @@ export function RoleContainer({
   const handleStartInterview = async () => {
     const interview = await createInterviewMutation.mutateAsync({
       roleUuid: roleData.role.uuid,
-      // Defaults to invalid version, query is disabled until roleData.flowVersion.version is defined
-      flowVersion: questionsAndFlowVersionQuery.data?.flowVersion.version ?? -1,
     });
 
-    await onNavigateToInterview(
-      interview.uuid,
-      slug,
-      roleData.flowVersion.version,
-    );
+    await onNavigateToInterview(interview.uuid);
   };
 
   if (showCandidateGreetingForm) {
@@ -123,13 +100,11 @@ export function RoleContainer({
     <div className="flex justify-center">
       <div className="flex w-[75ch] flex-col items-center gap-8">
         <H1>{roleData.role.roleName}</H1>
+        {/* TODO handle click in with mouse middle button */}
         <Button
           type="button"
           onClick={() => handleStartInterview()}
-          disabled={
-            !questionsAndFlowVersionQuery.data ||
-            createInterviewMutation.isPending
-          }
+          disabled={createInterviewMutation.isPending}
         >
           {createInterviewMutation.isPending
             ? "Starting interview..."

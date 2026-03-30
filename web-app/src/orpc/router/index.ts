@@ -6,14 +6,11 @@ import {
 import { insertNewCandidateWithNameAndEmail } from "./candidate";
 import {
   addParticipantToInterview,
-  createInterviewForRoleAndFlowVersion,
+  createInterviewForRoleUuid,
   getInterviewRelatedDataByInterviewUuid,
+  getQuestionsByInterviewUuid,
 } from "./interview";
-import {
-  getQuestionsByRoleSlugAndFlowVersion,
-  getRoleAndItsFlowVersionBySlug,
-  getRoleSlugAndFlowVersionByInterviewUuid,
-} from "./role";
+import { getRoleAndItsFlowVersionBySlug } from "./role";
 import {
   createPresignedS3DocumentDownloadUrlByUuid,
   createPresignedS3DocumentUploadUrl,
@@ -23,18 +20,14 @@ import {
 export default {
   // These exports are sorted in the order of intended usage in the interview process.
   getRoleAndItsFlowVersionBySlug,
-  // TODO add function getQuestionsByInterviewUuid
-  getQuestionsByRoleSlugAndFlowVersion,
-  createInterviewForRoleAndFlowVersion,
+  createInterviewForRoleUuid,
+  getQuestionsByInterviewUuid,
   getInterviewRelatedDataByInterviewUuid,
   insertNewCandidateWithNameAndEmail,
   addParticipantToInterview,
   saveAnswer,
   addNewDocumentToAnswer,
   deleteDocumentFromObjectStorageAndFromAnswer,
-
-  // Helper functions for the interview process
-  getRoleSlugAndFlowVersionByInterviewUuid,
 
   // Storage utilities
   createPresignedS3DocumentDownloadUrlByUuid,
