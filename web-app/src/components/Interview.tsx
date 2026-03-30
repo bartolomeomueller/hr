@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useCandidateFlowForm } from "@/components/CandidateFlowFormContext";
 import { orpc } from "@/orpc/client";
 import { QuestionBlock } from "./questions/QuestionBlock";
-import { VideoQuestion } from "./VideoQuestion";
+import { VideoQuestion } from "./questions/VideoQuestion";
 
 // TODO think about what to do with the questions that have not been answered by a applicant, should they get an empty answer or no answer
 

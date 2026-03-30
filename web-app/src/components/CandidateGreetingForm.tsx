@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { SlideInFromTop } from "./ui/animation";
+import { Large } from "./ui/typography";
 
 export function CandidateGreetingForm({
   canSubmit,
@@ -51,9 +52,7 @@ export function CandidateGreetingForm({
         className="w-[75ch]"
       >
         <FieldGroup>
-          <p className="text-lg font-semibold">
-            Willkommen! Damit wir dich korrekt ansprechen können:
-          </p>
+          <Large>Willkommen! Damit wir dich korrekt ansprechen können:</Large>
           <form.Field
             name="name"
             children={(field) => {

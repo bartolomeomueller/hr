@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { VideoRecorder } from "@/components/VideoRecorder";
+import { VideoRecorder } from "@/components/questions/VideoRecorder";
 import { addChunkAndTryUpload } from "@/services/UploadService";
 
 export const Route = createFileRoute("/videorecordertest")({

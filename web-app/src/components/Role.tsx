@@ -9,7 +9,9 @@ import {
   candidateFlowNoopSubmit,
   useCandidateFlowForm,
 } from "@/components/CandidateFlowFormContext";
+import { H1 } from "@/components/ui/typography";
 import { orpc } from "@/orpc/client";
+import { Button } from "./ui/button";
 
 // For maximum performance this site creates a waterfall system of queries:
 // 1. In the loader of the route fetch the role.
@@ -57,7 +59,7 @@ export function RoleContainer({
 
       await onNavigateToInterview(
         data.uuid,
-        slug, // TODO maybe update this somehow to a local variable
+        slug, // TODO maybe update this somehow to a local variable or even better, just create an analogous query and preset it here and then refetch it immediately
         variables.flowVersion,
       );
     },
@@ -118,14 +120,11 @@ export function RoleContainer({
   }
 
   return (
-    <div>
-      <h2>
-        Role {roleData.role.uuid}: {roleData.role.roleName}
-      </h2>
-      <div>
-        <button
+    <div className="flex justify-center">
+      <div className="flex w-[75ch] flex-col items-center gap-8">
+        <H1>{roleData.role.roleName}</H1>
+        <Button
           type="button"
-          className="disabled:cursor-not-allowed disabled:opacity-70"
           onClick={() => handleStartInterview()}
           disabled={
             !questionsAndFlowVersionQuery.data ||
@@ -135,7 +134,7 @@ export function RoleContainer({
           {createInterviewMutation.isPending
             ? "Starting interview..."
             : "Start interview"}
-        </button>
+        </Button>
       </div>
     </div>
   );
