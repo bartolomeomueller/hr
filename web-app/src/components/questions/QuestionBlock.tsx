@@ -22,7 +22,7 @@ export function QuestionBlock({
   answers: Array<z.infer<typeof AnswerSelectSchema>>;
 }) {
   return (
-    <form>
+    <form className="flex flex-col gap-4">
       {questions.map((question) => {
         const answer = answers.find((a) => a.questionUuid === question.uuid); // undefined if no answer was given yet
 
@@ -33,6 +33,7 @@ export function QuestionBlock({
             return (
               <TextQuestion
                 key={question.uuid}
+                form={form}
                 question={question}
                 interviewUuid={interviewUuid}
                 queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
@@ -56,6 +57,7 @@ export function QuestionBlock({
             return (
               <MultipleChoiceQuestion
                 key={question.uuid}
+                form={form}
                 question={question}
                 interviewUuid={interviewUuid}
                 queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}

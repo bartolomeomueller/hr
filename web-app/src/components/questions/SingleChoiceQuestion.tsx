@@ -1,4 +1,8 @@
-import type { AnyFieldApi } from "@tanstack/react-form";
+import type {
+  AnyFieldApi,
+  AnyFormOptions,
+  FormApi,
+} from "@tanstack/react-form";
 import { type QueryKey, useMutation } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { toast } from "sonner";
@@ -45,16 +49,6 @@ export function SingleChoiceQuestion({
     );
   const questionPayload = questionPayloadResult.data;
 
-  const name = useId();
-  const answerPayloadParseResult = SingleChoiceAnswerPayloadType.safeParse(
-    answer?.answerPayload,
-  );
-  const [selectedOption, setSelectedOption] = useState(
-    answerPayloadParseResult.success
-      ? answerPayloadParseResult.data.selectedOption
-      : "",
-  );
-
   const { mutate } = useMutation({
     ...orpc.saveAnswer.mutationOptions(),
     onError() {
@@ -93,7 +87,9 @@ export function SingleChoiceQuestion({
           field.state.meta.isBlurred && !field.state.meta.isValid;
         return (
           <FieldSet>
-            <FieldLegend>{questionPayload.question}</FieldLegend>
+            <FieldLegend variant="label">
+              {questionPayload.question}
+            </FieldLegend>
             {/* <FieldDescription>{questionPayload.question}</FieldDescription> */}
             <RadioGroup
               name={field.name}
@@ -102,7 +98,12 @@ export function SingleChoiceQuestion({
               onBlur={field.handleBlur}
             >
               {questionPayload.options.map((option) => (
-                <FieldLabel key={option} htmlFor={option}>
+                <FieldLabel
+                  key={option}
+                  htmlFor={option}
+                  // The lint is wrong.
+                  className="[&>*]:data-[slot=field]:p-2"
+                >
                   <Field orientation="horizontal" data-invalid={isInvalid}>
                     <FieldContent>
                       <FieldTitle>{option}</FieldTitle>

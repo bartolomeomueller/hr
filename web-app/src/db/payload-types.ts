@@ -5,6 +5,7 @@ export const VideoQuestionPayloadType = z.object({
   maxDurationSeconds: z.number(),
   maxOvertimeSeconds: z.number(), // This should never be 0, at least 10 seconds
 });
+// TODO make switch long text or short text question
 export const TextQuestionPayloadType = z.object({
   question: z.string(),
 });

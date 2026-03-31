@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import type z from "zod";
 import { useCandidateFlowForm } from "@/components/CandidateFlowFormContext";
 import {
+  MultipleChoiceAnswerPayloadType,
   QuestionType,
   SingleChoiceAnswerPayloadType,
   TextAnswerPayloadType,
-  TextQuestionPayloadType,
 } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
@@ -290,9 +290,9 @@ function getFormOptions({
         const textAnswerPayloadResult = TextAnswerPayloadType.safeParse(
           answer.answerPayload,
         );
-        if (textAnswerPayloadResult.success) {
-          initialValue = textAnswerPayloadResult.data.answer;
-        }
+        if (!textAnswerPayloadResult.success)
+          throw new Error("Report this bug.");
+        initialValue = textAnswerPayloadResult.data.answer;
         break;
       }
       case QuestionType.single_choice: {
@@ -302,13 +302,22 @@ function getFormOptions({
         }
         const singleChoiceAnswerPayloadResult =
           SingleChoiceAnswerPayloadType.safeParse(answer.answerPayload);
-        if (singleChoiceAnswerPayloadResult.success) {
-          initialValue = singleChoiceAnswerPayloadResult.data.selectedOption;
-        }
+        if (!singleChoiceAnswerPayloadResult.success)
+          throw new Error("Report this bug.");
+        initialValue = singleChoiceAnswerPayloadResult.data.selectedOption;
         break;
       }
       case QuestionType.multiple_choice: {
-        initialValue = []; //TODO
+        if (!answer) {
+          initialValue = [];
+          break;
+        }
+        const multipleChoiceAnswerPayloadResult =
+          MultipleChoiceAnswerPayloadType.safeParse(answer.answerPayload);
+        if (!multipleChoiceAnswerPayloadResult.success)
+          throw new Error("Report this bug.");
+        initialValue =
+          multipleChoiceAnswerPayloadResult.data.selectedOptions ?? [];
         break;
       }
       case QuestionType.document: {
