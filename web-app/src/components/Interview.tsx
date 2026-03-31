@@ -1,9 +1,20 @@
+import { useForm } from "@tanstack/react-form";
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import type z from "zod";
 import { useCandidateFlowForm } from "@/components/CandidateFlowFormContext";
+import {
+  QuestionType,
+  SingleChoiceAnswerPayloadType,
+  TextAnswerPayloadType,
+  TextQuestionPayloadType,
+} from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
+import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { QuestionBlock } from "./questions/QuestionBlock";
 import { VideoQuestion } from "./questions/VideoQuestion";
+import { Button } from "./ui/button";
+import { H1 } from "./ui/typography";
 
 // TODO think about what to do with the questions that have not been answered by a applicant, should they get an empty answer or no answer
 
@@ -145,6 +156,14 @@ export function Interview({
     };
   }, [hideForm]);
 
+  // TODO maybe hook the buttons of next and previous to the form state, only let next button enabled if all required questions have an answer
+  const form = useForm(
+    getFormOptions({
+      questions: questionsQuery.data?.questions,
+      answers: interviewRelatedDataQuery.data?.answers,
+    }),
+  );
+
   const interviewRelatedData = interviewRelatedDataQuery.data;
   const questionsData = questionsQuery.data;
   if (!interviewRelatedData || !questionsData) {
@@ -185,55 +204,128 @@ export function Interview({
   const currentFlowStepQuestions = questionsData.questions.filter(
     (question) => question.flowStepUuid === currentFlowStepData.uuid,
   );
-  const previousFlowStep = flowSteps.at(activeFlowStepIndex - 1) ?? null;
+  const previousFlowStep =
+    activeFlowStepIndex > 0 ? flowSteps.at(activeFlowStepIndex - 1) : null;
   const nextFlowStep = flowSteps.at(activeFlowStepIndex + 1) ?? null;
 
   return (
-    <div>
-      <h2>{questionsData.role.roleName}</h2>
-      <div>
-        <button
-          type="button"
-          className="disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={() => {
-            if (!previousFlowStep) return;
-            onFlowStepChange(previousFlowStep.position);
-          }}
-          disabled={!previousFlowStep}
-        >
-          Previous
-        </button>
-        <button
-          type="button"
-          className=""
-          onClick={() => {
-            if (!nextFlowStep) return finalizeInterview();
-            onFlowStepChange(nextFlowStep.position);
-          }}
-        >
-          Next
-        </button>
+    <div className="flex justify-center px-2 sm:px-4 md:px-8">
+      <div className="flex w-full flex-col gap-2 lg:w-9/12">
+        <H1>{questionsData.role.roleName}</H1>
+        <div className="flex justify-between">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              if (!previousFlowStep) return;
+              onFlowStepChange(previousFlowStep.position);
+            }}
+            disabled={!previousFlowStep}
+          >
+            Previous
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              if (!nextFlowStep) return finalizeInterview();
+              onFlowStepChange(nextFlowStep.position);
+            }}
+          >
+            Next
+          </Button>
+        </div>
+        {currentFlowStepKind === "question_block" && (
+          <QuestionBlock
+            form={form}
+            questions={currentFlowStepQuestions}
+            interviewUuid={interviewRelatedData.interview.uuid}
+            queryKeyToInvalidateAnswers={
+              interviewRelatedDataQueryOptions.queryKey
+            }
+            answers={interviewRelatedData.answers}
+          />
+        )}
+        {currentFlowStepKind === "video" && (
+          <VideoQuestion
+            questions={currentFlowStepQuestions}
+            interviewUuid={interviewRelatedData.interview.uuid}
+            queryKeyToInvalidateAnswers={
+              interviewRelatedDataQueryOptions.queryKey
+            }
+            answers={interviewRelatedData.answers}
+          />
+        )}
       </div>
-      {currentFlowStepKind === "question_block" && (
-        <QuestionBlock
-          questions={currentFlowStepQuestions}
-          interviewUuid={interviewRelatedData.interview.uuid}
-          queryKeyToInvalidateAnswers={
-            interviewRelatedDataQueryOptions.queryKey
-          }
-          answers={interviewRelatedData.answers}
-        />
-      )}
-      {currentFlowStepKind === "video" && (
-        <VideoQuestion
-          questions={currentFlowStepQuestions}
-          interviewUuid={interviewRelatedData.interview.uuid}
-          queryKeyToInvalidateAnswers={
-            interviewRelatedDataQueryOptions.queryKey
-          }
-          answers={interviewRelatedData.answers}
-        />
-      )}
     </div>
   );
+}
+
+function getFormOptions({
+  questions,
+  answers,
+}: {
+  questions?: Array<z.infer<typeof QuestionSelectSchema>>;
+  answers?: Array<z.infer<typeof AnswerSelectSchema>>;
+}) {
+  // answers may be [] but not undefined
+  if (!questions || !answers)
+    throw new Error("Questions and answers are required to get form options");
+
+  const formOptions = questions.reduce((options, question) => {
+    const answer = answers.find((a) => a.questionUuid === question.uuid);
+
+    // biome-ignore lint/suspicious/noExplicitAny: Shut up
+    let initialValue: any;
+    switch (question.questionType) {
+      case QuestionType.video: {
+        initialValue = ""; //TODO
+        break;
+      }
+      case QuestionType.text: {
+        if (!answer) {
+          initialValue = "";
+          break;
+        }
+        const textAnswerPayloadResult = TextAnswerPayloadType.safeParse(
+          answer.answerPayload,
+        );
+        if (textAnswerPayloadResult.success) {
+          initialValue = textAnswerPayloadResult.data.answer;
+        }
+        break;
+      }
+      case QuestionType.single_choice: {
+        if (!answer) {
+          initialValue = "";
+          break;
+        }
+        const singleChoiceAnswerPayloadResult =
+          SingleChoiceAnswerPayloadType.safeParse(answer.answerPayload);
+        if (singleChoiceAnswerPayloadResult.success) {
+          initialValue = singleChoiceAnswerPayloadResult.data.selectedOption;
+        }
+        break;
+      }
+      case QuestionType.multiple_choice: {
+        initialValue = []; //TODO
+        break;
+      }
+      case QuestionType.document: {
+        initialValue = ""; //TODO
+        break;
+      }
+      default:
+        throw new Error(
+          `Unknown question type ${question.questionType}. This should never happen, please report it.`,
+        );
+    }
+
+    return {
+      ...options,
+      [question.uuid]: initialValue ?? "",
+    };
+  }, {});
+  console.log("Form options:", formOptions);
+  return { defaultValues: formOptions };
 }

@@ -9,11 +9,13 @@ import { SingleChoiceQuestion } from "./SingleChoiceQuestion";
 import { TextQuestion } from "./TextQuestion";
 
 export function QuestionBlock({
+  form,
   questions,
   interviewUuid,
   queryKeyToInvalidateAnswers,
   answers,
 }: {
+  form: any; // TODO: type this properly
   questions: Array<z.infer<typeof QuestionSelectSchema>>;
   interviewUuid: string;
   queryKeyToInvalidateAnswers: QueryKey;
@@ -42,6 +44,7 @@ export function QuestionBlock({
             return (
               <SingleChoiceQuestion
                 key={question.uuid}
+                form={form}
                 question={question}
                 interviewUuid={interviewUuid}
                 queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
