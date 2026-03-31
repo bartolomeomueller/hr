@@ -161,6 +161,11 @@ export function Interview({
     getFormOptions({
       questions: questionsQuery.data?.questions,
       answers: interviewRelatedDataQuery.data?.answers,
+      currentFlowStepUuid: questionsQuery.data?.flowSteps.find(
+        (step) =>
+          step.position ===
+          (currentFlowStep ?? questionsQuery.data?.flowSteps[0].position),
+      )?.uuid,
     }),
   );
 
@@ -264,15 +269,21 @@ export function Interview({
 function getFormOptions({
   questions,
   answers,
+  currentFlowStepUuid,
 }: {
   questions?: Array<z.infer<typeof QuestionSelectSchema>>;
   answers?: Array<z.infer<typeof AnswerSelectSchema>>;
+  currentFlowStepUuid?: string;
 }) {
   // answers may be [] but not undefined
   if (!questions || !answers)
     throw new Error("Questions and answers are required to get form options");
 
-  const formOptions = questions.reduce((options, question) => {
+  const currentQuestions = questions.filter(
+    (q) => q.flowStepUuid === currentFlowStepUuid,
+  );
+
+  const formOptions = currentQuestions.reduce((options, question) => {
     const answer = answers.find((a) => a.questionUuid === question.uuid);
 
     // biome-ignore lint/suspicious/noExplicitAny: Shut up
