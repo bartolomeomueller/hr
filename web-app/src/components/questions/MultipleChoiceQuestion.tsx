@@ -1,4 +1,4 @@
-import type { AnyFieldApi } from "@tanstack/react-form";
+import type { AnyFieldApi, useForm } from "@tanstack/react-form";
 import { type QueryKey, useMutation } from "@tanstack/react-query";
 import type z from "zod";
 import { MultipleChoiceQuestionPayloadType } from "@/db/payload-types";
@@ -21,7 +21,7 @@ export function MultipleChoiceQuestion({
   queryKeyToInvalidateAnswers,
   answer,
 }: {
-  form: any; // TODO: type this properly
+  form: ReturnType<typeof useForm>;
   question: z.infer<typeof QuestionSelectSchema>;
   interviewUuid: string;
   queryKeyToInvalidateAnswers: QueryKey;

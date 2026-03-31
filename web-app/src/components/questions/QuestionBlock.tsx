@@ -1,3 +1,4 @@
+import type { useForm } from "@tanstack/react-form";
 import type { QueryKey } from "@tanstack/react-query";
 import { ClientOnly } from "@tanstack/react-router";
 import type z from "zod";
@@ -15,7 +16,7 @@ export function QuestionBlock({
   queryKeyToInvalidateAnswers,
   answers,
 }: {
-  form: any; // TODO: type this properly
+  form: ReturnType<typeof useForm>;
   questions: Array<z.infer<typeof QuestionSelectSchema>>;
   interviewUuid: string;
   queryKeyToInvalidateAnswers: QueryKey;

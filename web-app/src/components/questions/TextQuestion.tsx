@@ -1,4 +1,4 @@
-import type { AnyFieldApi } from "@tanstack/react-form";
+import type { useForm } from "@tanstack/react-form";
 import { type QueryKey, useMutation } from "@tanstack/react-query";
 import z from "zod";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
@@ -15,7 +15,7 @@ export function TextQuestion({
   queryKeyToInvalidateAnswers,
   answer,
 }: {
-  form: any; // TODO: type this properly
+  form: ReturnType<typeof useForm>;
   question: z.infer<typeof QuestionSelectSchema>;
   interviewUuid: string;
   queryKeyToInvalidateAnswers: QueryKey;
@@ -58,7 +58,7 @@ export function TextQuestion({
           });
         },
       }}
-      children={(field: AnyFieldApi) => {
+      children={(field) => {
         const isInvalid =
           field.state.meta.isBlurred && !field.state.meta.isValid;
         return (
@@ -72,7 +72,7 @@ export function TextQuestion({
               type="text"
               id={field.name}
               name={field.name}
-              value={field.state.value}
+              value={field.state.value as string}
               // change later to without e
               onChange={(e) => field.handleChange(e.target.value)}
               onBlur={field.handleBlur}

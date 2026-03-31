@@ -1,24 +1,13 @@
-import type {
-  AnyFieldApi,
-  AnyFormOptions,
-  FormApi,
-} from "@tanstack/react-form";
+import type { AnyFieldApi, useForm } from "@tanstack/react-form";
 import { type QueryKey, useMutation } from "@tanstack/react-query";
-import { useId, useState } from "react";
 import { toast } from "sonner";
 import type z from "zod";
-import {
-  SingleChoiceAnswerPayloadType,
-  SingleChoiceQuestionPayloadType,
-} from "@/db/payload-types";
+import { SingleChoiceQuestionPayloadType } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
-import { SlideInFromTop } from "../ui/animation";
 import {
   Field,
   FieldContent,
-  FieldDescription,
-  FieldError,
   FieldLabel,
   FieldLegend,
   FieldSet,
@@ -34,7 +23,7 @@ export function SingleChoiceQuestion({
   queryKeyToInvalidateAnswers,
   answer,
 }: {
-  form: any; // TODO: type this properly
+  form: ReturnType<typeof useForm>;
   question: z.infer<typeof QuestionSelectSchema>;
   interviewUuid: string;
   queryKeyToInvalidateAnswers: QueryKey;
@@ -82,7 +71,7 @@ export function SingleChoiceQuestion({
           });
         },
       }}
-      children={(field: AnyFieldApi) => {
+      children={(field) => {
         const isInvalid =
           field.state.meta.isBlurred && !field.state.meta.isValid;
         return (
@@ -93,7 +82,7 @@ export function SingleChoiceQuestion({
             {/* <FieldDescription>{questionPayload.question}</FieldDescription> */}
             <RadioGroup
               name={field.name}
-              value={field.state.value}
+              value={field.state.value as string}
               onValueChange={field.handleChange}
               onBlur={field.handleBlur}
             >
