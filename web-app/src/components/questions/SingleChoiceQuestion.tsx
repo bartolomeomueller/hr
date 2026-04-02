@@ -59,6 +59,7 @@ export function SingleChoiceQuestion({
   return (
     <form.Field
       name={question.uuid}
+      // Listeners will be run even if the component unmounts
       listeners={{
         onChangeDebounceMs: 500,
         onChange: ({ value }) => {

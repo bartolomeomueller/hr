@@ -157,8 +157,8 @@ export function Interview({
   }, [hideForm]);
 
   // TODO maybe hook the buttons of next and previous to the form state, only let next button enabled if all required questions have an answer
-  const form = useForm(
-    getFormOptions({
+  const form = useForm({
+    defaultValues: getFormDefaultValues({
       questions: questionsQuery.data?.questions,
       answers: interviewRelatedDataQuery.data?.answers,
       currentFlowStepUuid: questionsQuery.data?.flowSteps.find(
@@ -167,7 +167,7 @@ export function Interview({
           (currentFlowStep ?? questionsQuery.data?.flowSteps[0].position),
       )?.uuid,
     }),
-  );
+  });
 
   const interviewRelatedData = interviewRelatedDataQuery.data;
   const questionsData = questionsQuery.data;
@@ -266,7 +266,7 @@ export function Interview({
   );
 }
 
-function getFormOptions({
+function getFormDefaultValues({
   questions,
   answers,
   currentFlowStepUuid,
@@ -274,7 +274,7 @@ function getFormOptions({
   questions?: Array<z.infer<typeof QuestionSelectSchema>>;
   answers?: Array<z.infer<typeof AnswerSelectSchema>>;
   currentFlowStepUuid?: string;
-}) {
+}): Record<string, string | string[]> {
   // answers may be [] but not undefined
   if (!questions || !answers)
     throw new Error("Questions and answers are required to get form options");
@@ -347,5 +347,5 @@ function getFormOptions({
     };
   }, {});
   console.log("Form options:", formOptions);
-  return { defaultValues: formOptions };
+  return formOptions;
 }
