@@ -1,5 +1,5 @@
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { orpc } from "@/orpc/client";
 import {
   candidateFlowNoopSubmit,
@@ -28,6 +28,7 @@ export function CreateInterview({
   const roleData = roleQuery.data;
   const roleUuid = roleData?.role.uuid;
 
+  const hasStartedMutation = useRef(false); // Because react in dev mode mounts components twice, we need to keep track of whether the mutation has already been started to avoid creating two interviews.
   const createInterviewMutation = useMutation({
     ...orpc.createInterviewForRoleUuid.mutationOptions(),
     onError: (_error, _variables, _context) => {
@@ -61,6 +62,8 @@ export function CreateInterview({
       onSubmit: candidateFlowNoopSubmit,
     });
     void (async () => {
+      if (hasStartedMutation.current) return;
+      hasStartedMutation.current = true;
       const interview = await createInterviewMutation.mutateAsync({
         roleUuid,
       });
@@ -68,9 +71,9 @@ export function CreateInterview({
       await onNavigateToInterview(interview.uuid);
     })();
   }, [
+    roleUuid,
     showForm,
     createInterviewMutation.mutateAsync,
-    roleUuid,
     onNavigateToInterview,
   ]);
 

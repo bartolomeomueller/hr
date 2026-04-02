@@ -289,7 +289,6 @@ export type InterviewFormType = ReactFormExtendedApi<
   unknown
 >;
 
-// TODO somehow export the form type
 function getFormDefaultValues({
   questions,
   answers,
@@ -310,8 +309,7 @@ function getFormDefaultValues({
   const formOptions = currentQuestions.reduce((options, question) => {
     const answer = answers.find((a) => a.questionUuid === question.uuid);
 
-    // biome-ignore lint/suspicious/noExplicitAny: Shut up
-    let initialValue: any;
+    let initialValue: string | string[];
     switch (question.questionType) {
       case QuestionType.video: {
         initialValue = ""; //TODO
