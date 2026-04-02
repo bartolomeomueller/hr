@@ -1,10 +1,10 @@
-import type { AnyFieldApi, useForm } from "@tanstack/react-form";
 import { type QueryKey, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type z from "zod";
 import { SingleChoiceQuestionPayloadType } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
+import type { InterviewFormType } from "../Interview";
 import {
   Field,
   FieldContent,
@@ -23,7 +23,7 @@ export function SingleChoiceQuestion({
   queryKeyToInvalidateAnswers,
   answer,
 }: {
-  form: ReturnType<typeof useForm>;
+  form: InterviewFormType;
   question: z.infer<typeof QuestionSelectSchema>;
   interviewUuid: string;
   queryKeyToInvalidateAnswers: QueryKey;

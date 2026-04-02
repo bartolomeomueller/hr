@@ -1,10 +1,10 @@
-import type { useForm } from "@tanstack/react-form";
 import { type QueryKey, useMutation } from "@tanstack/react-query";
 import z from "zod";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { TextQuestionPayloadType } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
+import type { InterviewFormType } from "../Interview";
 import { SlideInFromTop } from "../ui/animation";
 import { Input } from "../ui/input";
 
@@ -15,7 +15,7 @@ export function TextQuestion({
   queryKeyToInvalidateAnswers,
   answer,
 }: {
-  form: ReturnType<typeof useForm>;
+  form: InterviewFormType;
   question: z.infer<typeof QuestionSelectSchema>;
   interviewUuid: string;
   queryKeyToInvalidateAnswers: QueryKey;

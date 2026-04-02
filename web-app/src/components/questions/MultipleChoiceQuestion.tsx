@@ -1,9 +1,9 @@
-import type { AnyFieldApi, useForm } from "@tanstack/react-form";
 import { type QueryKey, useMutation } from "@tanstack/react-query";
 import type z from "zod";
 import { MultipleChoiceQuestionPayloadType } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
+import type { InterviewFormType } from "../Interview";
 import { Checkbox } from "../ui/checkbox";
 import {
   Field,
@@ -21,7 +21,7 @@ export function MultipleChoiceQuestion({
   queryKeyToInvalidateAnswers,
   answer,
 }: {
-  form: ReturnType<typeof useForm>;
+  form: InterviewFormType;
   question: z.infer<typeof QuestionSelectSchema>;
   interviewUuid: string;
   queryKeyToInvalidateAnswers: QueryKey;
@@ -62,7 +62,7 @@ export function MultipleChoiceQuestion({
           });
         },
       }}
-      children={(field: AnyFieldApi) => {
+      children={(field) => {
         const isInvalid =
           field.state.meta.isBlurred && !field.state.meta.isValid;
         return (

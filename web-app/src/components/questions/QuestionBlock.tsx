@@ -1,9 +1,9 @@
-import type { useForm } from "@tanstack/react-form";
 import type { QueryKey } from "@tanstack/react-query";
 import { ClientOnly } from "@tanstack/react-router";
 import type z from "zod";
 import { QuestionType } from "@/db/payload-types";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
+import type { InterviewFormType } from "../Interview";
 import { DocumentQuestion } from "./DocumentQuestion";
 import { MultipleChoiceQuestion } from "./MultipleChoiceQuestion";
 import { SingleChoiceQuestion } from "./SingleChoiceQuestion";
@@ -16,7 +16,7 @@ export function QuestionBlock({
   queryKeyToInvalidateAnswers,
   answers,
 }: {
-  form: ReturnType<typeof useForm>;
+  form: InterviewFormType;
   questions: Array<z.infer<typeof QuestionSelectSchema>>;
   interviewUuid: string;
   queryKeyToInvalidateAnswers: QueryKey;
