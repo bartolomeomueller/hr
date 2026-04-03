@@ -7,6 +7,7 @@ import {
 } from "@/db/payload-types";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { addChunkAndTryUpload } from "@/services/UploadService";
+import { Large } from "../ui/typography";
 import { VideoRecorder } from "./VideoRecorder";
 
 export function VideoQuestion({
@@ -46,8 +47,8 @@ export function VideoQuestion({
   );
 
   return (
-    <form>
-      <div>{questionPayload.question}</div>
+    <div className="flex flex-col gap-4">
+      <Large>{questionPayload.question}</Large>
       <VideoRecorder
         maxDurationSec={questionPayload.maxDurationSeconds}
         maxOvertimeSec={questionPayload.maxOvertimeSeconds}
@@ -60,6 +61,6 @@ export function VideoQuestion({
           })
         }
       />
-    </form>
+    </div>
   );
 }

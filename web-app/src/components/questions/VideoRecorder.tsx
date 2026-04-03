@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 import type { RecorderChunk } from "@/stores/uploadStore";
+import { Button } from "../ui/button";
 
 export function VideoRecorder({
   maxDurationSec,
@@ -193,14 +195,14 @@ export function VideoRecorder({
   const formattedTime = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 
   return (
-    <div className="flex w-full max-w-2xl flex-col items-center justify-center gap-8">
+    <div className="flex w-full flex-col items-center justify-center gap-4">
       {error && (
         <p className="rounded-lg border border-red-500 bg-red-500/10 px-4 py-3 text-red-400">
           {error}
         </p>
       )}
 
-      <div className="w-full max-w-2xl overflow-hidden rounded-xl bg-slate-800 shadow-lg">
+      <div className="w-full overflow-hidden rounded-xl shadow-lg">
         <video
           ref={videoRef}
           className="aspect-video w-full object-cover"
@@ -214,13 +216,13 @@ export function VideoRecorder({
 
       {isRecording && (
         <div className="flex items-center gap-3">
-          <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-red-500" />
           <span
-            className={
+            className={cn(
+              "font-mono",
               isOvertime
-                ? "animate-pulse font-mono text-lg text-red-400"
-                : "font-mono text-lg text-white"
-            }
+                ? "animate-pulse text-destructive-foreground"
+                : "text-lg",
+            )}
           >
             {isOvertime
               ? `Recording — +${formattedTime} overtime`
@@ -229,25 +231,15 @@ export function VideoRecorder({
         </div>
       )}
 
-      <div className="flex gap-4">
-        {!isRecording ? (
-          <button
-            type="button"
-            onClick={startRecording}
-            className="rounded-lg bg-cyan-500 px-6 py-3 font-semibold text-white shadow-lg shadow-cyan-500/30 transition-colors hover:bg-cyan-600"
-          >
-            Start Recording
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={stopRecording}
-            className="rounded-lg bg-red-500 px-6 py-3 font-semibold text-white shadow-lg shadow-red-500/30 transition-colors hover:bg-red-600"
-          >
-            Stop Recording
-          </button>
-        )}
-      </div>
+      {!isRecording ? (
+        <Button type="button" onClick={startRecording}>
+          Start Recording
+        </Button>
+      ) : (
+        <Button type="button" onClick={stopRecording} variant="destructive">
+          Stop Recording
+        </Button>
+      )}
     </div>
   );
 }

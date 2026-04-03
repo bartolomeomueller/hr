@@ -312,7 +312,7 @@ function getFormDefaultValues({
     let initialValue: string | string[];
     switch (question.questionType) {
       case QuestionType.video: {
-        initialValue = ""; //TODO
+        initialValue = ""; // TODO
         break;
       }
       case QuestionType.text: {
@@ -354,7 +354,7 @@ function getFormDefaultValues({
         break;
       }
       case QuestionType.document: {
-        initialValue = ""; //TODO
+        initialValue = ""; // TODO
         break;
       }
       default:

@@ -139,7 +139,7 @@ async function seed() {
         {
           flowStepUuid: techStackStep.uuid,
           position: 1,
-          questionType: "text",
+          questionType: "video",
           questionPayload: {
             question:
               "Welche Technologien würdest du für die Entwicklung einer Webanwendung verwenden?",
@@ -173,7 +173,7 @@ async function seed() {
             prompt: "Lege hier deine Arbeitszeugnisse ab",
             maxUploads: 10,
           },
-        }
+        },
       ]);
     } catch (error) {
       throw new Error(`Failed to seed question rows: ${String(error)}`);

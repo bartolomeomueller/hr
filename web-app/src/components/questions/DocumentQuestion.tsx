@@ -1,4 +1,5 @@
 import { type QueryKey, useMutation } from "@tanstack/react-query";
+import { Upload } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import type z from "zod";
 import { useShallow } from "zustand/shallow";
@@ -15,6 +16,8 @@ import type {
 } from "@/orpc/schema";
 import { documentUploadService } from "@/services/DocumentUploadService.client";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
+import { Button } from "../ui/button";
+import { Label } from "../ui/label";
 
 // NOTE implement option that you can get a mail later to upload your documents, if you currently do not have them
 
@@ -142,8 +145,8 @@ export function DocumentQuestion({
   }
 
   return (
-    <div>
-      <label htmlFor={id}>{questionPayload.prompt}</label>
+    <div className="flex flex-col gap-4">
+      <Label htmlFor={id}>{questionPayload.prompt}</Label>
       <FileDragAndDrop
         id={id}
         isSingleFileUpload={questionPayload.maxUploads === 1}
@@ -204,11 +207,12 @@ function FileDragAndDrop({
 
   return (
     <div>
-      <button
+      <Button
         // TODO think about whether supporting paste events for files and folders also
         type="button"
-        className={`flex h-20 flex-row items-center justify-center rounded-xl border border-gray-200 pt-5 pb-5 text-center text-lg shadow transition ${
-          isDragging ? "-translate-y-0.5 shadow-xl" : ""
+        variant="outline"
+        className={`flex h-20 w-full flex-row items-center justify-center rounded-xl border border-dashed border-gray-200 py-5 shadow transition ${
+          isDragging ? "-translate-y-0.5 border-solid shadow-xl" : ""
         }`}
         // onClick trigger the hidden file input
         onClick={() => {
@@ -241,9 +245,11 @@ function FileDragAndDrop({
           }
         }}
       >
-        {/* <Image src="/upload.svg" alt="Upload" width={80} height={80} /> */}
-        <p>Ziehe deine Dateien hierher, klick hier oder füg sie ein</p>
-      </button>
+        <Upload className="text-muted-foreground" />
+        <p className="text-muted-foreground">
+          Ziehe deine Dateien hierher, klick hier oder füg sie ein
+        </p>
+      </Button>
       {/* Allow directories on click also */}
       <input
         type="file"
