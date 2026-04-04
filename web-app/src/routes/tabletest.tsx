@@ -2,23 +2,28 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   type Column,
   type ColumnDef,
+  type ColumnFiltersState,
   flexRender,
   getCoreRowModel,
+  getFilteredRowModel,
   getSortedRowModel,
   type SortingState,
   useReactTable,
+  type VisibilityState,
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown, MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -235,6 +240,8 @@ export function DataTable<TData>({
   data: TData[];
 }) {
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
 
   const table = useReactTable({
     data,
@@ -242,69 +249,118 @@ export function DataTable<TData>({
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    getFilteredRowModel: getFilteredRowModel(),
+    onColumnVisibilityChange: setColumnVisibility,
     state: {
       sorting,
+      columnFilters,
+      columnVisibility,
     },
   });
 
   return (
-    <div className="overflow-hidden rounded-md border">
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
+    <div className="">
+      <div className="flex items-center py-4">
+        <Input
+          placeholder="Filter by name..."
+          value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
+          onChange={(event) =>
+            table.getColumn("name")?.setFilterValue(event.target.value)
+          }
+        />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="ml-auto">
+              Columns
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {table
+              .getAllColumns()
+              .filter((column) => column.getCanHide())
+              .map((column) => {
+                return (
+                  <DropdownMenuCheckboxItem
+                    key={column.id}
+                    className="capitalize"
+                    checked={column.getIsVisible()}
+                    onSelect={(event) => event.preventDefault()}
+                    onCheckedChange={(value) =>
+                      column.toggleVisibility(!!value)
+                    }
+                  >
+                    {column.id}
+                  </DropdownMenuCheckboxItem>
+                );
+              })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <div className="overflow-hidden rounded-md border">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() && "selected"}
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
                       )}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows?.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow
-                key={row.id}
-                data-state={row.getIsSelected() && "selected"}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
+                  No results.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+          <TableFooter>
+            {table.getFooterGroups().map((footerGroup) => (
+              <TableRow key={footerGroup.id}>
+                {footerGroup.headers.map((header) => (
+                  <TableCell key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.footer,
+                          header.getContext(),
+                        )}
                   </TableCell>
                 ))}
               </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={columns.length} className="h-24 text-center">
-                No results.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-        <TableFooter>
-          {table.getFooterGroups().map((footerGroup) => (
-            <TableRow key={footerGroup.id}>
-              {footerGroup.headers.map((header) => (
-                <TableCell key={header.id}>
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(
-                        header.column.columnDef.footer,
-                        header.getContext(),
-                      )}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableFooter>
-      </Table>
+            ))}
+          </TableFooter>
+        </Table>
+      </div>
     </div>
   );
 }
