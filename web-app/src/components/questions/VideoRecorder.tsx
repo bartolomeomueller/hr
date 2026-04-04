@@ -219,9 +219,7 @@ export function VideoRecorder({
           <span
             className={cn(
               "font-mono",
-              isOvertime
-                ? "animate-pulse text-destructive-foreground"
-                : "text-lg",
+              isOvertime ? "animate-pulse text-destructive" : "text-lg",
             )}
           >
             {isOvertime
