@@ -94,6 +94,7 @@ const columns: ColumnDef<UserWithAssessment>[] = [
         label="Name"
         column={column}
         sortedState={column.getIsSorted()}
+        sortIndex={column.getSortIndex()}
       />
     ),
     footer: (info) =>
@@ -107,6 +108,7 @@ const columns: ColumnDef<UserWithAssessment>[] = [
         label="Hard Skills"
         column={column}
         sortedState={column.getIsSorted()}
+        sortIndex={column.getSortIndex()}
       />
     ),
     footer: (info) =>
@@ -122,6 +124,7 @@ const columns: ColumnDef<UserWithAssessment>[] = [
         label="Soft Skills"
         column={column}
         sortedState={column.getIsSorted()}
+        sortIndex={column.getSortIndex()}
       />
     ),
     footer: (info) =>
@@ -137,6 +140,7 @@ const columns: ColumnDef<UserWithAssessment>[] = [
         label="Cultural Add"
         column={column}
         sortedState={column.getIsSorted()}
+        sortIndex={column.getSortIndex()}
       />
     ),
     footer: (info) =>
@@ -152,6 +156,7 @@ const columns: ColumnDef<UserWithAssessment>[] = [
         label="Potential"
         column={column}
         sortedState={column.getIsSorted()}
+        sortIndex={column.getSortIndex()}
       />
     ),
     footer: (info) =>
@@ -172,6 +177,7 @@ const columns: ColumnDef<UserWithAssessment>[] = [
         label="Total Score"
         column={column}
         sortedState={column.getIsSorted()}
+        sortIndex={column.getSortIndex()}
       />
     ),
     footer: (info) =>
@@ -307,10 +313,12 @@ export function SortingHeader({
   label,
   column,
   sortedState,
+  sortIndex,
 }: {
   label: string;
   column: Column<UserWithAssessment, unknown>;
   sortedState: false | "asc" | "desc";
+  sortIndex: number;
 }) {
   return (
     <Button
@@ -333,11 +341,26 @@ export function SortingHeader({
     >
       {label}
       {sortedState === "asc" ? (
-        <ArrowUp className="ml-2 h-4 w-4" />
+        <div className="ml-0.5 inline-flex items-start gap-0.5">
+          <ArrowUp className="h-4 w-4" />
+          <span className="-translate-y-0.5 font-mono text-[10px] leading-none text-muted-foreground">
+            {sortIndex + 1}
+          </span>
+        </div>
       ) : sortedState === "desc" ? (
-        <ArrowDown className="ml-2 h-4 w-4" />
+        <div className="ml-0.5 inline-flex items-start gap-0.5">
+          <ArrowDown className="h-4 w-4" />
+          <span className="-translate-y-0.5 font-mono text-[10px] leading-none text-muted-foreground">
+            {sortIndex + 1}
+          </span>
+        </div>
       ) : (
-        <ArrowUpDown className="ml-2 h-4 w-4" />
+        <div className="ml-0.5 inline-flex items-start gap-0.5">
+          <ArrowUpDown className="h-4 w-4" />
+          <span className="invisible -translate-y-0.5 font-mono text-[10px] leading-none">
+            0
+          </span>
+        </div>
       )}
     </Button>
   );
