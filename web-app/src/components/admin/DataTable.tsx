@@ -62,7 +62,7 @@ export function DataTable<TData>({
 
   return (
     <div className="">
-      <div className="flex items-center py-4">
+      <div className="flex items-center gap-2 py-4">
         <Input
           placeholder="Filter by name..."
           value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
@@ -70,33 +70,10 @@ export function DataTable<TData>({
             table.getColumn("name")?.setFilterValue(event.target.value)
           }
         />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="ml-auto">
-              Columns
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {table
-              .getAllColumns()
-              .filter((column) => column.getCanHide())
-              .map((column) => {
-                return (
-                  <DropdownMenuCheckboxItem
-                    key={column.id}
-                    className="capitalize"
-                    checked={column.getIsVisible()}
-                    onSelect={(event) => event.preventDefault()}
-                    onCheckedChange={(value) =>
-                      column.toggleVisibility(!!value)
-                    }
-                  >
-                    {column.id}
-                  </DropdownMenuCheckboxItem>
-                );
-              })}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <FilterColumns
+          columns={table.getAllColumns()}
+          columnVisibility={columnVisibility}
+        />
       </div>
       <div className="overflow-hidden rounded-md border">
         <Table>
@@ -170,15 +147,50 @@ export function DataTable<TData>({
   );
 }
 
+function FilterColumns<TData, TValue>({
+  columns,
+  columnVisibility,
+}: {
+  columns: Column<TData, TValue>[];
+  columnVisibility: VisibilityState;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" className="ml-auto">
+          Columns
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {columns
+          .filter((column) => column.getCanHide())
+          .map((column) => {
+            return (
+              <DropdownMenuCheckboxItem
+                key={column.id}
+                className="capitalize"
+                checked={columnVisibility[column.id] ?? true}
+                onSelect={(event) => event.preventDefault()}
+                onCheckedChange={(value) => column.toggleVisibility(!!value)}
+              >
+                {column.id}
+              </DropdownMenuCheckboxItem>
+            );
+          })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 // Since column does not change on re-render, react compiler memoizes it and does not display changes. That's why we need to pass sortedState and sortIndex as separate props to SortingHeader component.
-export function SortingHeader({
+export function SortingHeader<TData, TValue>({
   label,
   column,
   sortedState,
   sortIndex,
 }: {
   label: string;
-  column: Column<UserWithAssessment, unknown>;
+  column: Column<TData, TValue>;
   sortedState: false | "asc" | "desc";
   sortIndex: number;
 }) {
