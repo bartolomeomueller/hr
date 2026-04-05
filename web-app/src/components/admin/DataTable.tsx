@@ -10,13 +10,15 @@ import {
   useReactTable,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -238,5 +240,32 @@ export function SortingHeader<TData, TValue>({
         </div>
       )}
     </Button>
+  );
+}
+
+export function ActionsDropdown({
+  actions,
+}: {
+  actions: { label: string; action: () => void }[];
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="h-8 w-8 p-0">
+          <span className="sr-only">Open menu</span>
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        {actions.map((action, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: actions are static
+          <DropdownMenuItem key={index} onClick={action.action}>
+            {action.label}
+          </DropdownMenuItem>
+        ))}
+        {/* <DropdownMenuSeparator /> */}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
