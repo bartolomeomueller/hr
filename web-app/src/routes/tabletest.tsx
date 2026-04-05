@@ -66,6 +66,10 @@ const users: UserWithAssessment[] = [
 const columns: ColumnDef<UserWithAssessment>[] = [
   {
     id: "select",
+    meta: { align: "center" },
+    size: 40,
+    minSize: 40,
+    maxSize: 40,
     header: ({ table }) => (
       <Checkbox
         checked={
@@ -102,6 +106,7 @@ const columns: ColumnDef<UserWithAssessment>[] = [
   },
   {
     accessorKey: "hardSkills",
+    meta: { align: "right" },
     cell: ({ row }) => row.original.hardSkills,
     header: ({ column }) => (
       <SortingHeader
@@ -118,6 +123,7 @@ const columns: ColumnDef<UserWithAssessment>[] = [
   },
   {
     accessorKey: "softSkills",
+    meta: { align: "right" },
     cell: ({ row }) => row.original.softSkills,
     header: ({ column }) => (
       <SortingHeader
@@ -134,6 +140,7 @@ const columns: ColumnDef<UserWithAssessment>[] = [
   },
   {
     accessorKey: "culturalAdd",
+    meta: { align: "right" },
     cell: ({ row }) => row.original.culturalAdd,
     header: ({ column }) => (
       <SortingHeader
@@ -150,6 +157,7 @@ const columns: ColumnDef<UserWithAssessment>[] = [
   },
   {
     accessorKey: "potential",
+    meta: { align: "right" },
     cell: ({ row }) => row.original.potential,
     header: ({ column }) => (
       <SortingHeader
@@ -166,6 +174,7 @@ const columns: ColumnDef<UserWithAssessment>[] = [
   },
   {
     id: "totalScore",
+    meta: { align: "right" },
     cell: ({ row }) => {
       const user = row.original;
       const totalScore =
@@ -195,6 +204,10 @@ const columns: ColumnDef<UserWithAssessment>[] = [
   },
   {
     id: "actions",
+    meta: { align: "center" },
+    size: 40,
+    minSize: 40,
+    maxSize: 40,
     cell: ({ row }) => {
       const user = row.original;
 
@@ -221,7 +234,11 @@ const columns: ColumnDef<UserWithAssessment>[] = [
 ];
 
 function RouteComponent() {
-  return <DataTable columns={columns} data={users} />;
+  return (
+    <div className="m-4">
+      <DataTable columns={columns} data={users} />
+    </div>
+  );
 }
 
 function getAverageValue(values: number[]) {

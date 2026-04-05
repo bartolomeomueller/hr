@@ -12,6 +12,7 @@ import {
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown, MoreHorizontal } from "lucide-react";
 import { useState } from "react";
+import { cn } from "src/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -31,6 +32,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
+const columnAlignmentClassNames = {
+  left: "text-left",
+  center: "text-center",
+  right: "text-right",
+} as const;
+
+type ColumnAlignment = keyof typeof columnAlignmentClassNames;
+type AlignMeta = { align?: ColumnAlignment };
+
+const sortingHeaderAlignmentClassNames = {
+  left: "w-full justify-start",
+  center: "w-full justify-center",
+  right: "w-full justify-end",
+} as const;
 
 export function DataTable<TData>({
   columns,
@@ -83,7 +99,16 @@ export function DataTable<TData>({
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
+                  <TableHead
+                    key={header.id}
+                    className={
+                      columnAlignmentClassNames[
+                        (header.column.columnDef.meta as AlignMeta | undefined)
+                          ?.align ?? "left"
+                      ]
+                    }
+                    style={{ width: header.getSize() }}
+                  >
                     {header.isPlaceholder
                       ? null
                       : flexRender(
@@ -103,7 +128,16 @@ export function DataTable<TData>({
                   data-state={row.getIsSelected() && "selected"}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      key={cell.id}
+                      className={
+                        columnAlignmentClassNames[
+                          (cell.column.columnDef.meta as AlignMeta | undefined)
+                            ?.align ?? "left"
+                        ]
+                      }
+                      style={{ width: cell.column.getSize() }}
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext(),
@@ -127,7 +161,16 @@ export function DataTable<TData>({
             {table.getFooterGroups().map((footerGroup) => (
               <TableRow key={footerGroup.id}>
                 {footerGroup.headers.map((header) => (
-                  <TableCell key={header.id}>
+                  <TableCell
+                    key={header.id}
+                    className={
+                      columnAlignmentClassNames[
+                        (header.column.columnDef.meta as AlignMeta | undefined)
+                          ?.align ?? "left"
+                      ]
+                    }
+                    style={{ width: header.getSize() }}
+                  >
                     {header.isPlaceholder
                       ? null
                       : flexRender(
@@ -141,9 +184,9 @@ export function DataTable<TData>({
           </TableFooter>
         </Table>
       </div>
-      <div className="flex-1 text-sm text-muted-foreground">
+      <div className="flex-1 text-right text-sm text-muted-foreground">
         {table.getFilteredSelectedRowModel().rows.length} of{" "}
-        {table.getFilteredRowModel().rows.length} row(s) selected.
+        {table.getFilteredRowModel().rows.length} row(s) selected
       </div>
     </div>
   );
@@ -199,7 +242,12 @@ export function SortingHeader<TData, TValue>({
   return (
     <Button
       variant="ghost"
-      className="p-0"
+      className={cn(
+        "p-0",
+        sortingHeaderAlignmentClassNames[
+          (column.columnDef.meta as AlignMeta | undefined)?.align ?? "left"
+        ],
+      )}
       onClick={() => {
         const currentSortedState = column.getIsSorted();
 
@@ -251,7 +299,7 @@ export function ActionsDropdown({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="h-8 w-8 p-0">
+        <Button variant="ghost" className="h-4 w-4 p-0">
           <span className="sr-only">Open menu</span>
           <MoreHorizontal className="h-4 w-4" />
         </Button>
