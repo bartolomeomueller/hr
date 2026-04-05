@@ -40,7 +40,7 @@ const columnAlignmentClassNames = {
 } as const;
 
 type ColumnAlignment = keyof typeof columnAlignmentClassNames;
-type AlignMeta = { align?: ColumnAlignment };
+type ColumnMeta = { label?: string; align?: ColumnAlignment };
 
 const sortingHeaderAlignmentClassNames = {
   left: "w-full justify-start",
@@ -103,7 +103,7 @@ export function DataTable<TData>({
                     key={header.id}
                     className={
                       columnAlignmentClassNames[
-                        (header.column.columnDef.meta as AlignMeta | undefined)
+                        (header.column.columnDef.meta as ColumnMeta | undefined)
                           ?.align ?? "left"
                       ]
                     }
@@ -132,7 +132,7 @@ export function DataTable<TData>({
                       key={cell.id}
                       className={
                         columnAlignmentClassNames[
-                          (cell.column.columnDef.meta as AlignMeta | undefined)
+                          (cell.column.columnDef.meta as ColumnMeta | undefined)
                             ?.align ?? "left"
                         ]
                       }
@@ -165,7 +165,7 @@ export function DataTable<TData>({
                     key={header.id}
                     className={
                       columnAlignmentClassNames[
-                        (header.column.columnDef.meta as AlignMeta | undefined)
+                        (header.column.columnDef.meta as ColumnMeta | undefined)
                           ?.align ?? "left"
                       ]
                     }
@@ -218,7 +218,7 @@ function FilterColumns<TData, TValue>({
                 onSelect={(event) => event.preventDefault()}
                 onCheckedChange={(value) => column.toggleVisibility(!!value)}
               >
-                {column.id}
+                {getColumnLabel(column)}
               </DropdownMenuCheckboxItem>
             );
           })}
@@ -227,25 +227,38 @@ function FilterColumns<TData, TValue>({
   );
 }
 
+function getColumnLabel<TData, TValue>(column: Column<TData, TValue>) {
+  const meta = column.columnDef.meta as ColumnMeta | undefined;
+
+  if (meta?.label) {
+    return meta.label;
+  }
+
+  return column.id
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/^./, (value) => value.toUpperCase());
+}
+
 // Since column does not change on re-render, react compiler memoizes it and does not display changes. That's why we need to pass sortedState and sortIndex as separate props to SortingHeader component.
 export function SortingHeader<TData, TValue>({
-  label,
   column,
   sortedState,
   sortIndex,
 }: {
-  label: string;
   column: Column<TData, TValue>;
   sortedState: false | "asc" | "desc";
   sortIndex: number;
 }) {
+  const label = getColumnLabel(column);
+
   return (
     <Button
       variant="ghost"
       className={cn(
         "p-0",
         sortingHeaderAlignmentClassNames[
-          (column.columnDef.meta as AlignMeta | undefined)?.align ?? "left"
+          (column.columnDef.meta as ColumnMeta | undefined)?.align ?? "left"
         ],
       )}
       onClick={() => {

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
+import { CircleSlash2 } from "lucide-react";
 import {
   ActionsDropdown,
   DataTable,
@@ -19,6 +20,13 @@ type UserWithAssessment = {
   culturalAdd: number;
   potential: number;
 };
+
+const assessmentKeys = [
+  "hardSkills",
+  "softSkills",
+  "culturalAdd",
+  "potential",
+] as const;
 
 const users: UserWithAssessment[] = [
   {
@@ -92,10 +100,10 @@ const columns: ColumnDef<UserWithAssessment>[] = [
   },
   {
     accessorKey: "name",
+    meta: { label: "Name" },
     cell: ({ row }) => row.original.name,
     header: ({ column }) => (
       <SortingHeader
-        label="Name"
         column={column}
         sortedState={column.getIsSorted()}
         sortIndex={column.getSortIndex()}
@@ -106,99 +114,88 @@ const columns: ColumnDef<UserWithAssessment>[] = [
   },
   {
     accessorKey: "hardSkills",
-    meta: { align: "right" },
+    meta: { label: "Hard Skills", align: "right" },
     cell: ({ row }) => row.original.hardSkills,
     header: ({ column }) => (
       <SortingHeader
-        label="Hard Skills"
         column={column}
         sortedState={column.getIsSorted()}
         sortIndex={column.getSortIndex()}
       />
     ),
     footer: (info) =>
-      getAverageValue(
+      renderAverageFooter(
         info.table.getRowModel().rows.map((row) => row.original.hardSkills),
       ),
   },
   {
     accessorKey: "softSkills",
-    meta: { align: "right" },
+    meta: { label: "Soft Skills", align: "right" },
     cell: ({ row }) => row.original.softSkills,
     header: ({ column }) => (
       <SortingHeader
-        label="Soft Skills"
         column={column}
         sortedState={column.getIsSorted()}
         sortIndex={column.getSortIndex()}
       />
     ),
     footer: (info) =>
-      getAverageValue(
+      renderAverageFooter(
         info.table.getRowModel().rows.map((row) => row.original.softSkills),
       ),
   },
   {
     accessorKey: "culturalAdd",
-    meta: { align: "right" },
+    meta: { label: "Cultural Add", align: "right" },
     cell: ({ row }) => row.original.culturalAdd,
     header: ({ column }) => (
       <SortingHeader
-        label="Cultural Add"
         column={column}
         sortedState={column.getIsSorted()}
         sortIndex={column.getSortIndex()}
       />
     ),
     footer: (info) =>
-      getAverageValue(
+      renderAverageFooter(
         info.table.getRowModel().rows.map((row) => row.original.culturalAdd),
       ),
   },
   {
     accessorKey: "potential",
-    meta: { align: "right" },
+    meta: { label: "Potential", align: "right" },
     cell: ({ row }) => row.original.potential,
     header: ({ column }) => (
       <SortingHeader
-        label="Potential"
         column={column}
         sortedState={column.getIsSorted()}
         sortIndex={column.getSortIndex()}
       />
     ),
     footer: (info) =>
-      getAverageValue(
+      renderAverageFooter(
         info.table.getRowModel().rows.map((row) => row.original.potential),
       ),
   },
   {
-    id: "totalScore",
-    meta: { align: "right" },
-    cell: ({ row }) => {
-      const user = row.original;
-      const totalScore =
-        user.hardSkills + user.softSkills + user.culturalAdd + user.potential;
-      return totalScore;
-    },
+    id: "averageScore",
+    meta: { label: "Average Score", align: "right" },
+    cell: ({ row }) =>
+      getAverageValue(assessmentKeys.map((key) => row.original[key])),
     header: ({ column }) => (
       <SortingHeader
-        label="Total Score"
         column={column}
         sortedState={column.getIsSorted()}
         sortIndex={column.getSortIndex()}
       />
     ),
     footer: (info) =>
-      getAverageValue(
+      renderAverageFooter(
         info.table
           .getRowModel()
-          .rows.map(
-            (row) =>
-              row.original.hardSkills +
-              row.original.softSkills +
-              row.original.culturalAdd +
-              row.original.potential,
+          .rows.map((row) =>
+            Number(
+              getAverageValue(assessmentKeys.map((key) => row.original[key])),
+            ),
           ),
       ),
   },
@@ -230,6 +227,8 @@ const columns: ColumnDef<UserWithAssessment>[] = [
         />
       );
     },
+    enableSorting: false,
+    enableHiding: false,
   },
 ];
 
@@ -249,4 +248,13 @@ function getAverageValue(values: number[]) {
   const total = values.reduce((sum, value) => sum + value, 0);
 
   return (total / values.length).toFixed(1);
+}
+
+function renderAverageFooter(values: number[]) {
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <CircleSlash2 className="size-3 text-muted-foreground" />
+      <span>{getAverageValue(values)}</span>
+    </div>
+  );
 }
