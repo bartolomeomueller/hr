@@ -27,6 +27,9 @@ export function BetterAuthProviders({ children }: { children: ReactNode }) {
           slug: currentOrganizationSlug,
         }}
         Link={({ href, ...props }) => <Link to={href} {...props} />}
+        social={{
+          providers: ["google"],
+        }}
       >
         {children}
       </AuthUIProviderTanstack>

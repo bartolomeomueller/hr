@@ -11,12 +11,12 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
-  // TODO add https://better-auth.com/docs/installation#authentication-methods
-  //   socialProviders: {
-  //     google: {
-
-  //     }
-  //   }
+  socialProviders: {
+    google: {
+      clientId: process.env.GOOGLE_AUTH_CLIENT_ID as string,
+      clientSecret: process.env.GOOGLE_AUTH_CLIENT_SECRET as string,
+    },
+  },
   // TODO add magic link, email otp (maybe), passkey, generic oauth (maybe), one tap (maybe)
   // TODO add admin,
   plugins: [
