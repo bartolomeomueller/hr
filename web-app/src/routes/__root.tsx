@@ -7,7 +7,9 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
+import type { ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
+import { BetterAuthProviders } from "../better-auth-providers";
 import Header from "../components/Header";
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 import appCss from "../styles.css?url";
@@ -40,7 +42,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
   shellComponent: RootDocument,
 });
 
-function RootDocument({ children }: { children: React.ReactNode }) {
+function RootDocument({ children }: { children: ReactNode }) {
   const { queryClient } = Route.useRouteContext();
 
   return (
@@ -50,22 +52,24 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <QueryClientProvider client={queryClient}>
-          <Header />
-          {children}
-          <Toaster />
-          <TanStackDevtools
-            config={{
-              position: "bottom-right",
-            }}
-            plugins={[
-              {
-                name: "Tanstack Router",
-                render: <TanStackRouterDevtoolsPanel />,
-              },
-              TanStackQueryDevtools,
-              formDevtoolsPlugin(),
-            ]}
-          />
+          <BetterAuthProviders>
+            <Header />
+            {children}
+            <Toaster />
+            <TanStackDevtools
+              config={{
+                position: "bottom-right",
+              }}
+              plugins={[
+                {
+                  name: "Tanstack Router",
+                  render: <TanStackRouterDevtoolsPanel />,
+                },
+                TanStackQueryDevtools,
+                formDevtoolsPlugin(),
+              ]}
+            />
+          </BetterAuthProviders>
         </QueryClientProvider>
         <Scripts />
       </body>
