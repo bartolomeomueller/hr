@@ -2,15 +2,15 @@ import { config } from "dotenv";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import {
-  account,
-  invitation,
-  member,
-  organization,
-  session,
-  team,
-  teamMember,
-  user,
-  verification,
+  Account,
+  Invitation,
+  Member,
+  Organization,
+  Session,
+  Team,
+  TeamMember,
+  User,
+  Verification,
 } from "./auth-schema";
 import * as schema from "./schema";
 import {
@@ -50,15 +50,15 @@ async function seed() {
       await db.delete(FlowVersion);
       await db.delete(Role);
 
-      await db.delete(user);
-      await db.delete(session);
-      await db.delete(account);
-      await db.delete(verification);
-      await db.delete(organization);
-      await db.delete(team);
-      await db.delete(teamMember);
-      await db.delete(member);
-      await db.delete(invitation);
+      await db.delete(User);
+      await db.delete(Session);
+      await db.delete(Account);
+      await db.delete(Verification);
+      await db.delete(Organization);
+      await db.delete(Team);
+      await db.delete(TeamMember);
+      await db.delete(Member);
+      await db.delete(Invitation);
     } catch (error) {
       throw new Error(
         `Failed to delete tables`,
@@ -68,7 +68,7 @@ async function seed() {
 
     try {
       const [test_user] = await db
-        .insert(user)
+        .insert(User)
         .values({
           id: "LNPFNwMIY9FeqCPqnPKuvxOFgS4Y2NtH",
           name: "asdf",
@@ -76,7 +76,7 @@ async function seed() {
         })
         .returning();
       const [test_user_account] = await db
-        .insert(account)
+        .insert(Account)
         .values({
           id: "V1ODmSxr5mCu7apfMkuC7ySkfUcPheCD",
           accountId: test_user.id,
@@ -88,7 +88,7 @@ async function seed() {
         })
         .returning();
       const [test_organization] = await db
-        .insert(organization)
+        .insert(Organization)
         .values({
           id: "e5e65997-55da-43c8-9ef0-08f7245faa3a",
           name: "asdf Personal Organization",
@@ -97,7 +97,7 @@ async function seed() {
         })
         .returning();
       const [test_member] = await db
-        .insert(member)
+        .insert(Member)
         .values({
           id: "de6846a2-5109-4751-968c-82747070a960",
           organizationId: test_organization.id,
@@ -106,7 +106,7 @@ async function seed() {
         })
         .returning();
       const [test_team] = await db
-        .insert(team)
+        .insert(Team)
         .values({
           id: "14972e03-b4c3-4c41-b304-b7a44332566f",
           name: "asdf Personal Team",
@@ -114,7 +114,7 @@ async function seed() {
         })
         .returning();
       const [test_team_member] = await db
-        .insert(teamMember)
+        .insert(TeamMember)
         .values({
           id: "ed780955-e776-47a2-b859-88bf5f29863d",
           teamId: test_team.id,

@@ -5,11 +5,11 @@ import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
-  member,
-  organization as organizationTable,
-  team,
-  teamMember,
-  user as userTable,
+  Member,
+  Organization as organizationTable,
+  Team,
+  TeamMember,
+  User,
 } from "@/db/auth-schema";
 
 // The databaseHooks and related functions are AI generated and not really comprehended.
@@ -60,9 +60,9 @@ export const auth = betterAuth({
               : null;
 
           await db
-            .update(userTable)
+            .update(User)
             .set({ lastSelectedTeamId })
-            .where(eq(userTable.id, session.userId));
+            .where(eq(User.id, session.userId));
         },
       },
     },
@@ -118,20 +118,20 @@ async function ensurePersonalOrganizationForUser(user: {
 
     const [existingMembership] = await tx
       .select({
-        id: member.id,
-        role: member.role,
+        id: Member.id,
+        role: Member.role,
       })
-      .from(member)
+      .from(Member)
       .where(
         and(
-          eq(member.organizationId, organizationId),
-          eq(member.userId, user.id),
+          eq(Member.organizationId, organizationId),
+          eq(Member.userId, user.id),
         ),
       )
       .limit(1);
 
     if (!existingMembership) {
-      await tx.insert(member).values({
+      await tx.insert(Member).values({
         id: crypto.randomUUID(),
         organizationId,
         userId: user.id,
@@ -140,26 +140,26 @@ async function ensurePersonalOrganizationForUser(user: {
       });
     } else if (existingMembership.role !== "owner") {
       await tx
-        .update(member)
+        .update(Member)
         .set({ role: "owner" })
-        .where(eq(member.id, existingMembership.id));
+        .where(eq(Member.id, existingMembership.id));
     }
 
     const [existingPersonalTeam] = await tx
-      .select({ teamId: team.id })
-      .from(team)
+      .select({ teamId: Team.id })
+      .from(Team)
       .innerJoin(
-        teamMember,
-        and(eq(teamMember.teamId, team.id), eq(teamMember.userId, user.id)),
+        TeamMember,
+        and(eq(TeamMember.teamId, Team.id), eq(TeamMember.userId, user.id)),
       )
-      .where(eq(team.organizationId, organizationId))
-      .orderBy(asc(team.createdAt))
+      .where(eq(Team.organizationId, organizationId))
+      .orderBy(asc(Team.createdAt))
       .limit(1);
 
     if (!existingPersonalTeam) {
       const teamId = crypto.randomUUID();
 
-      await tx.insert(team).values({
+      await tx.insert(Team).values({
         id: teamId,
         name: teamName,
         organizationId,
@@ -167,7 +167,7 @@ async function ensurePersonalOrganizationForUser(user: {
         updatedAt: now,
       });
 
-      await tx.insert(teamMember).values({
+      await tx.insert(TeamMember).values({
         id: crypto.randomUUID(),
         teamId,
         userId: user.id,
@@ -181,16 +181,16 @@ async function getLastSelectedTeamContext(userId: string) {
   const [lastSelectedTeam] = await db
     .select({
       organizationId: organizationTable.id,
-      teamId: team.id,
+      teamId: Team.id,
     })
-    .from(userTable)
-    .innerJoin(team, eq(userTable.lastSelectedTeamId, team.id))
-    .innerJoin(organizationTable, eq(team.organizationId, organizationTable.id))
+    .from(User)
+    .innerJoin(Team, eq(User.lastSelectedTeamId, Team.id))
+    .innerJoin(organizationTable, eq(Team.organizationId, organizationTable.id))
     .innerJoin(
-      teamMember,
-      and(eq(teamMember.teamId, team.id), eq(teamMember.userId, userId)),
+      TeamMember,
+      and(eq(TeamMember.teamId, Team.id), eq(TeamMember.userId, userId)),
     )
-    .where(eq(userTable.id, userId))
+    .where(eq(User.id, userId))
     .limit(1);
 
   return lastSelectedTeam;
@@ -205,11 +205,11 @@ async function getOrCreatePersonalOrganizationContext(userId: string) {
 
   const [existingUser] = await db
     .select({
-      id: userTable.id,
-      name: userTable.name,
+      id: User.id,
+      name: User.name,
     })
-    .from(userTable)
-    .where(eq(userTable.id, userId))
+    .from(User)
+    .where(eq(User.id, userId))
     .limit(1);
 
   if (!existingUser) {
@@ -228,23 +228,23 @@ async function getPersonalOrganizationContext(userId: string) {
   const [personalTeam] = await db
     .select({
       organizationId: organizationTable.id,
-      teamId: team.id,
+      teamId: Team.id,
     })
     .from(organizationTable)
-    .innerJoin(member, eq(member.organizationId, organizationTable.id))
-    .innerJoin(team, eq(team.organizationId, organizationTable.id))
+    .innerJoin(Member, eq(Member.organizationId, organizationTable.id))
+    .innerJoin(Team, eq(Team.organizationId, organizationTable.id))
     .innerJoin(
-      teamMember,
-      and(eq(teamMember.teamId, team.id), eq(teamMember.userId, userId)),
+      TeamMember,
+      and(eq(TeamMember.teamId, Team.id), eq(TeamMember.userId, userId)),
     )
     .where(
       and(
         eq(organizationTable.slug, slug),
-        eq(member.userId, userId),
-        eq(member.role, "owner"),
+        eq(Member.userId, userId),
+        eq(Member.role, "owner"),
       ),
     )
-    .orderBy(asc(team.createdAt))
+    .orderBy(asc(Team.createdAt))
     .limit(1);
 
   return personalTeam;

@@ -9,7 +9,7 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
-import { team } from "./auth-schema";
+import { Team } from "./auth-schema";
 
 export const flowStepKindEnum = pgEnum("flow_step_kind", [
   "video",
@@ -24,7 +24,7 @@ export const Role = pgTable("role", {
   roleName: text("role_name").notNull(),
   teamId: text("team_id")
     .notNull()
-    .references(() => team.id, { onDelete: "cascade" }),
+    .references(() => Team.id, { onDelete: "cascade" }),
 });
 
 export const FlowVersion = pgTable(
