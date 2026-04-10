@@ -1,11 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import {
-  createFileRoute,
-  Navigate,
-  useRouterState,
-} from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { Suspense } from "react";
-import { authClient } from "@/lib/auth-client";
 import { orpc } from "@/orpc/client";
 
 export const Route = createFileRoute("/_protected/admin/")({

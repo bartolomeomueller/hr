@@ -9,7 +9,7 @@ export const Route = createFileRoute("/_protected")({
       throw redirect({
         to: "/auth/$authView",
         params: { authView: "sign-in" },
-        search: { redirect: location.href },
+        search: { redirectTo: location.href },
       });
     }
 
