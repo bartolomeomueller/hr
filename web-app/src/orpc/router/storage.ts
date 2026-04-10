@@ -6,7 +6,7 @@ import {
   createPresignedUploadUrlForVideo,
   getObjectKeyForDocumentUuid,
 } from "@/lib/s3";
-import { debugMiddleware } from "../debug-middleware";
+import { debugMiddleware } from "../middlewares";
 
 export const createPresignedS3WebmUploadUrl = os
   .use(debugMiddleware)

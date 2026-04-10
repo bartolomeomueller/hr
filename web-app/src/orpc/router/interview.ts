@@ -20,7 +20,7 @@ import {
   QuestionSelectSchema,
   RoleSelectSchema,
 } from "@/orpc/schema";
-import { debugMiddleware } from "../debug-middleware";
+import { debugMiddleware } from "../middlewares";
 
 export const createInterviewForRoleUuid = os
   .use(debugMiddleware)

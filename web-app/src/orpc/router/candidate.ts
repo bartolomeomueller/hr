@@ -2,7 +2,7 @@ import { os } from "@orpc/server";
 import { db } from "@/db";
 import { Candidate } from "@/db/schema";
 import { CandidateInsertSchema, CandidateSelectSchema } from "@/orpc/schema";
-import { debugMiddleware } from "../debug-middleware";
+import { debugMiddleware } from "../middlewares";
 
 export const insertNewCandidateWithNameAndEmail = os
   .use(debugMiddleware)

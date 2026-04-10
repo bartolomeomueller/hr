@@ -1,7 +1,5 @@
 import { os } from "@orpc/server";
 import { and, eq } from "drizzle-orm/sql/expressions/conditions";
-import { get } from "http";
-import z from "zod";
 import { db } from "@/db";
 import {
   DocumentAnswerPayloadType,
@@ -10,7 +8,7 @@ import {
 import { Answer } from "@/db/schema";
 import { videoProcessingQueue } from "@/lib/bullmq";
 import { deleteObject, getObjectKeyForDocumentUuid } from "@/lib/s3";
-import { debugMiddleware } from "../debug-middleware";
+import { debugMiddleware } from "../middlewares";
 import { AnswerSelectSchema } from "../schema";
 
 // NOTE maybe move to an upsert

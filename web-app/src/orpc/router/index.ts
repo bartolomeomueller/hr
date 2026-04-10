@@ -10,7 +10,10 @@ import {
   getInterviewRelatedDataByInterviewUuid,
   getQuestionsByInterviewUuid,
 } from "./interview";
-import { getRoleAndItsFlowVersionBySlug } from "./role";
+import {
+  getAllRolesForCurrentUser,
+  getRoleAndItsFlowVersionBySlug,
+} from "./role";
 import {
   createPresignedS3DocumentDownloadUrlByUuid,
   createPresignedS3DocumentUploadUrl,
@@ -33,4 +36,7 @@ export default {
   createPresignedS3DocumentDownloadUrlByUuid,
   createPresignedS3WebmUploadUrl,
   createPresignedS3DocumentUploadUrl,
+
+  // Admin
+  getAllRolesForCurrentUser,
 };
