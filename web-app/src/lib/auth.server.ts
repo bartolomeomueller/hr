@@ -5,11 +5,15 @@ import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  Account,
+  Invitation,
   Member,
-  Organization as organizationTable,
+  Organization,
+  Session,
   Team,
   TeamMember,
   User,
+  Verification,
 } from "@/db/auth-schema";
 
 // The databaseHooks and related functions are AI generated and not really comprehended.
@@ -17,6 +21,17 @@ import {
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "pg",
+    schema: {
+      user: User,
+      session: Session,
+      account: Account,
+      verification: Verification,
+      organization: Organization,
+      member: Member,
+      invitation: Invitation,
+      team: Team,
+      teamMember: TeamMember,
+    },
   }),
   databaseHooks: {
     user: {
@@ -98,16 +113,16 @@ async function ensurePersonalOrganizationForUser(user: {
 
   await db.transaction(async (tx) => {
     const [existingOrganization] = await tx
-      .select({ id: organizationTable.id })
-      .from(organizationTable)
-      .where(eq(organizationTable.slug, slug))
+      .select({ id: Organization.id })
+      .from(Organization)
+      .where(eq(Organization.slug, slug))
       .limit(1);
 
     const organizationId = existingOrganization?.id ?? crypto.randomUUID();
     const now = new Date();
 
     if (!existingOrganization) {
-      await tx.insert(organizationTable).values({
+      await tx.insert(Organization).values({
         id: organizationId,
         name: organizationName,
         slug,
@@ -180,12 +195,12 @@ async function ensurePersonalOrganizationForUser(user: {
 async function getLastSelectedTeamContext(userId: string) {
   const [lastSelectedTeam] = await db
     .select({
-      organizationId: organizationTable.id,
+      organizationId: Organization.id,
       teamId: Team.id,
     })
     .from(User)
     .innerJoin(Team, eq(User.lastSelectedTeamId, Team.id))
-    .innerJoin(organizationTable, eq(Team.organizationId, organizationTable.id))
+    .innerJoin(Organization, eq(Team.organizationId, Organization.id))
     .innerJoin(
       TeamMember,
       and(eq(TeamMember.teamId, Team.id), eq(TeamMember.userId, userId)),
@@ -227,19 +242,19 @@ async function getPersonalOrganizationContext(userId: string) {
 
   const [personalTeam] = await db
     .select({
-      organizationId: organizationTable.id,
+      organizationId: Organization.id,
       teamId: Team.id,
     })
-    .from(organizationTable)
-    .innerJoin(Member, eq(Member.organizationId, organizationTable.id))
-    .innerJoin(Team, eq(Team.organizationId, organizationTable.id))
+    .from(Organization)
+    .innerJoin(Member, eq(Member.organizationId, Organization.id))
+    .innerJoin(Team, eq(Team.organizationId, Organization.id))
     .innerJoin(
       TeamMember,
       and(eq(TeamMember.teamId, Team.id), eq(TeamMember.userId, userId)),
     )
     .where(
       and(
-        eq(organizationTable.slug, slug),
+        eq(Organization.slug, slug),
         eq(Member.userId, userId),
         eq(Member.role, "owner"),
       ),
