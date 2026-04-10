@@ -30,6 +30,9 @@ export function BetterAuthProviders({ children }: { children: ReactNode }) {
         social={{
           providers: ["google"],
         }}
+        teams={{
+          enabled: true,
+        }}
       >
         {children}
       </AuthUIProviderTanstack>

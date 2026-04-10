@@ -1,6 +1,17 @@
 import { config } from "dotenv";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import {
+  account,
+  invitation,
+  member,
+  organization,
+  session,
+  team,
+  teamMember,
+  user,
+  verification,
+} from "./auth-schema";
 import * as schema from "./schema";
 import {
   Answer,
@@ -38,24 +49,89 @@ async function seed() {
       await db.delete(FlowStep);
       await db.delete(FlowVersion);
       await db.delete(Role);
+
+      await db.delete(user);
+      await db.delete(session);
+      await db.delete(account);
+      await db.delete(verification);
+      await db.delete(organization);
+      await db.delete(team);
+      await db.delete(teamMember);
+      await db.delete(member);
+      await db.delete(invitation);
     } catch (error) {
-      throw new Error(`Failed to clear roles table: ${String(error)}`);
+      throw new Error(
+        `Failed to delete tables`,
+        error instanceof Error ? { cause: error } : undefined,
+      );
     }
 
-    let role: { uuid: string; roleName: string } | undefined;
     try {
-      [role] = await db
+      const [test_user] = await db
+        .insert(user)
+        .values({
+          id: "LNPFNwMIY9FeqCPqnPKuvxOFgS4Y2NtH",
+          name: "asdf",
+          email: "asdf@asdf.com",
+        })
+        .returning();
+      const [test_user_account] = await db
+        .insert(account)
+        .values({
+          id: "V1ODmSxr5mCu7apfMkuC7ySkfUcPheCD",
+          accountId: test_user.id,
+          userId: test_user.id,
+          providerId: "credential",
+          // This password is "asdfjklöasdfjklö" hashed.
+          password:
+            "66f79abeabc5ad928aa174bd50583ae0:8bb3f5fa6944aaa9b1fd0227446c165e0f981bcb636ce73a6474b344971b855179cda8add7376b6508ec78424cdfbab145330aa5c3cf05cfa75c33a5ab46ef25",
+        })
+        .returning();
+      const [test_organization] = await db
+        .insert(organization)
+        .values({
+          id: "e5e65997-55da-43c8-9ef0-08f7245faa3a",
+          name: "asdf Personal Organization",
+          slug: "personal-lnpfnwmiy9feqcpqnpkuvxofgs4y2nth",
+          metadata: JSON.stringify({ personal: true }),
+        })
+        .returning();
+      const [test_member] = await db
+        .insert(member)
+        .values({
+          id: "de6846a2-5109-4751-968c-82747070a960",
+          organizationId: test_organization.id,
+          userId: test_user.id,
+          role: "owner",
+        })
+        .returning();
+      const [test_team] = await db
+        .insert(team)
+        .values({
+          id: "14972e03-b4c3-4c41-b304-b7a44332566f",
+          name: "asdf Personal Team",
+          organizationId: test_organization.id,
+        })
+        .returning();
+      const [test_team_member] = await db
+        .insert(teamMember)
+        .values({
+          id: "ed780955-e776-47a2-b859-88bf5f29863d",
+          teamId: test_team.id,
+          userId: test_user.id,
+        })
+        .returning();
+
+      // Create sample role
+      const [role] = await db
         .insert(Role)
         .values({
           slug: "frontend-engineer-at-funpany",
           roleName: "Frontend Engineer at funpany",
+          teamId: test_team.id,
         })
         .returning();
-    } catch (error) {
-      throw new Error(`Failed to seed role row: ${String(error)}`);
-    }
 
-    try {
       const [flowVersion] = await db
         .insert(FlowVersion)
         .values({
@@ -175,11 +251,11 @@ async function seed() {
           },
         },
       ]);
+
+      console.log("Seeded role:", role);
     } catch (error) {
       throw new Error(`Failed to seed question rows: ${String(error)}`);
     }
-
-    console.log("Seeded role:", role);
   } finally {
     try {
       await pool.end();
