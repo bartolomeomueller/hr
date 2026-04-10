@@ -4,6 +4,11 @@ import { Suspense } from "react";
 import { orpc } from "@/orpc/client";
 
 export const Route = createFileRoute("/_protected/admin/")({
+  loader: ({ context }) => {
+    context.queryClient.ensureQueryData(
+      orpc.getAllRolesForCurrentUser.queryOptions(),
+    );
+  },
   component: RouteComponent,
 });
 
