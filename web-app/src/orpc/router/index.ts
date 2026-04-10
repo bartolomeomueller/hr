@@ -11,6 +11,7 @@ import {
   getQuestionsByInterviewUuid,
 } from "./interview";
 import {
+  getAllFinishedInterviewsForRoleByRoleSlug,
   getAllRolesForCurrentUser,
   getRoleAndItsFlowVersionBySlug,
 } from "./role";
@@ -39,4 +40,5 @@ export default {
 
   // Admin
   getAllRolesForCurrentUser,
+  getAllFinishedInterviewsForRoleByRoleSlug,
 };

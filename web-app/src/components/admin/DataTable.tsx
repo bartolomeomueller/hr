@@ -81,13 +81,13 @@ export function DataTable<TData>({
   return (
     <div className="">
       <div className="flex items-center gap-2 py-4">
-        <Input
+        {/* <Input
           placeholder="Filter by name..."
           value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
           onChange={(event) =>
             table.getColumn("name")?.setFilterValue(event.target.value)
           }
-        />
+        /> */}
         <FilterColumns
           columns={table.getAllColumns()}
           columnVisibility={columnVisibility}
