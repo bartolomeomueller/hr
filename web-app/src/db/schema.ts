@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   integer,
   jsonb,
   pgEnum,
@@ -82,6 +83,7 @@ export const Question = pgTable(
     position: integer("position").notNull(),
     questionType: text("question_type").notNull(),
     questionPayload: jsonb("question_payload").notNull().default("{}"),
+    isCv: boolean("is_cv").notNull().default(false),
   },
   (table) => [
     unique("question_flow_step_uuid_position_unique").on(

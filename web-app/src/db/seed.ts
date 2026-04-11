@@ -231,6 +231,7 @@ async function seed() {
             prompt: "Lege hier deinen Lebenslauf ab",
             maxUploads: 1,
           },
+          isCv: true,
         },
         {
           flowStepUuid: documentsStep.uuid,
