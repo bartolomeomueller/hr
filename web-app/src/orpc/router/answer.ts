@@ -12,7 +12,6 @@ import { debugMiddleware } from "../middlewares";
 import { AnswerSelectSchema } from "../schema";
 
 // NOTE maybe move to an upsert
-// FIXME use transaction
 export const saveAnswer = os
   .use(debugMiddleware)
   .input(
@@ -24,8 +23,12 @@ export const saveAnswer = os
   )
   .output(AnswerSelectSchema)
   .handler(async ({ input }) => {
-    try {
-      const [existingAnswer] = await db
+    const videoAnswerPayloadResult = VideoAnswerPayloadType.safeParse(
+      input.answerPayload,
+    );
+
+    const savedAnswer = await db.transaction(async (tx) => {
+      const [existingAnswer] = await tx
         .select({
           uuid: Answer.uuid,
         })
@@ -38,18 +41,8 @@ export const saveAnswer = os
         )
         .limit(1);
 
-      // TODO move this to a correct place
-      const videoAnswerPayloadResult = VideoAnswerPayloadType.safeParse(
-        input.answerPayload,
-      );
-      if (videoAnswerPayloadResult.success) {
-        await videoProcessingQueue.add("video-processing", {
-          uuid: videoAnswerPayloadResult.data.videoUuid,
-        });
-      }
-
       if (existingAnswer) {
-        const [updatedAnswer] = await db
+        const [updatedAnswer] = await tx
           .update(Answer)
           .set({
             answerPayload: input.answerPayload,
@@ -61,7 +54,7 @@ export const saveAnswer = os
         return updatedAnswer;
       }
 
-      const [insertedAnswer] = await db
+      const [insertedAnswer] = await tx
         .insert(Answer)
         .values({
           interviewUuid: input.interviewUuid,
@@ -72,12 +65,16 @@ export const saveAnswer = os
         .returning();
 
       return insertedAnswer;
-    } catch (error) {
-      throw new Error(
-        `Failed to save interview step for interview ${input.interviewUuid}}`,
-        { cause: error instanceof Error ? error : undefined },
-      );
+    });
+
+    // TODO move this to a correct place and handle deleting old video -> maybe dedicated handler for video
+    if (videoAnswerPayloadResult.success) {
+      await videoProcessingQueue.add("video-processing", {
+        uuid: videoAnswerPayloadResult.data.videoUuid,
+      });
     }
+
+    return savedAnswer;
   });
 
 export const addNewDocumentToAnswer = os
@@ -92,7 +89,6 @@ export const addNewDocumentToAnswer = os
   )
   .output(AnswerSelectSchema)
   .handler(async ({ input }) => {
-    // FIXME in all transactions tx has to be used
     return db.transaction(async (tx) => {
       const [existingAnswer] = await tx
         .select()
