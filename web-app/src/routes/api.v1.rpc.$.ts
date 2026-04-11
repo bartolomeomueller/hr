@@ -18,7 +18,7 @@ const handler = new RPCHandler(router, {
 
 async function handle({ request }: { request: Request }) {
   const { response } = await handler.handle(request, {
-    prefix: "/api/rpc",
+    prefix: "/api/v1/rpc",
     context: {
       headers: request.headers,
     },
@@ -27,7 +27,7 @@ async function handle({ request }: { request: Request }) {
   return response ?? new Response("Not Found", { status: 404 });
 }
 
-export const Route = createFileRoute("/api/rpc/$")({
+export const Route = createFileRoute("/api/v1/rpc/$")({
   server: {
     handlers: {
       HEAD: handle,

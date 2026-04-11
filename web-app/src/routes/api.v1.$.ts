@@ -63,14 +63,16 @@ const handler = new OpenAPIHandler(router, {
 
 async function handle({ request }: { request: Request }) {
   const { response } = await handler.handle(request, {
-    prefix: "/api",
-    context: {},
+    prefix: "/api/v1",
+    context: {
+      headers: request.headers,
+    },
   });
 
   return response ?? new Response("Not Found", { status: 404 });
 }
 
-export const Route = createFileRoute("/api/$")({
+export const Route = createFileRoute("/api/v1/$")({
   server: {
     handlers: {
       HEAD: handle,

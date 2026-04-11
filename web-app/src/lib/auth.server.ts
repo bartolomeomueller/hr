@@ -19,6 +19,7 @@ import {
 // The databaseHooks and related functions are AI generated and not really comprehended.
 
 export const auth = betterAuth({
+  basePath: "/api/v1/auth",
   database: drizzleAdapter(db, {
     provider: "pg",
     schema: {
