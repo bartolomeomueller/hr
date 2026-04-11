@@ -1,4 +1,4 @@
-import { os } from "@orpc/server";
+import { getLogger } from "@orpc/experimental-pino";
 import { and, eq } from "drizzle-orm/sql/expressions/conditions";
 import { db } from "@/db";
 import {
@@ -8,11 +8,12 @@ import {
 import { Answer } from "@/db/schema";
 import { videoProcessingQueue } from "@/lib/bullmq";
 import { deleteObject, getObjectKeyForDocumentUuid } from "@/lib/s3";
+import { base } from "../base";
 import { debugMiddleware } from "../middlewares";
 import { AnswerSelectSchema } from "../schema";
 
 // NOTE maybe move to an upsert
-export const saveAnswer = os
+export const saveAnswer = base
   .use(debugMiddleware)
   .input(
     AnswerSelectSchema.pick({
@@ -77,7 +78,7 @@ export const saveAnswer = os
     return savedAnswer;
   });
 
-export const addNewDocumentToAnswer = os
+export const addNewDocumentToAnswer = base
   .use(debugMiddleware)
   .input(
     AnswerSelectSchema.pick({
@@ -88,8 +89,10 @@ export const addNewDocumentToAnswer = os
     }),
   )
   .output(AnswerSelectSchema)
-  .handler(async ({ input }) => {
-    return db.transaction(async (tx) => {
+  .handler(async ({ input, context }) => {
+    let documentUuidToDelete = null;
+
+    const answer = await db.transaction(async (tx) => {
       const [existingAnswer] = await tx
         .select()
         .from(Answer)
@@ -117,31 +120,22 @@ export const addNewDocumentToAnswer = os
         return insertedAnswer;
       }
 
-      const existingAnswerPayloadResult = DocumentAnswerPayloadType.safeParse(
+      const existingAnswerPayload = DocumentAnswerPayloadType.parse(
         existingAnswer.answerPayload,
       );
-      if (!existingAnswerPayloadResult.success) {
-        throw new Error(
-          `Existing answer payload is not of type DocumentAnswerPayloadType for interview ${input.interviewUuid} and question ${input.questionUuid}`,
-        );
-      }
 
-      const [existingDocumentWithSameName] =
-        existingAnswerPayloadResult.data.documents.filter(
-          (document) => document.fileName === input.document.fileName,
-        );
+      const existingDocumentWithSameName = existingAnswerPayload.documents.find(
+        (document) => document.fileName === input.document.fileName,
+      );
       const existingDocumentsWithoutSameNameDocument =
-        existingAnswerPayloadResult.data.documents.filter(
+        existingAnswerPayload.documents.filter(
           (document) =>
             document.documentUuid !==
             existingDocumentWithSameName?.documentUuid,
         );
+
       if (existingDocumentWithSameName) {
-        await deleteObject(
-          getObjectKeyForDocumentUuid(
-            existingDocumentWithSameName.documentUuid,
-          ),
-        );
+        documentUuidToDelete = existingDocumentWithSameName.documentUuid;
       }
 
       const [updatedAnswer] = await tx
@@ -160,9 +154,24 @@ export const addNewDocumentToAnswer = os
 
       return updatedAnswer;
     });
+
+    // If the document deletion fails, it should not block the answer update.
+    if (documentUuidToDelete) {
+      const logger = getLogger(context);
+      await deleteObject(
+        getObjectKeyForDocumentUuid(documentUuidToDelete),
+      ).catch((error: unknown) => {
+        logger?.error(
+          error,
+          "Failed to delete replaced document from object storage",
+        );
+      });
+    }
+
+    return answer;
   });
 
-export const deleteDocumentFromObjectStorageAndFromAnswer = os
+export const deleteDocumentFromObjectStorageAndFromAnswer = base
   .use(debugMiddleware)
   .input(
     AnswerSelectSchema.pick({
@@ -174,7 +183,7 @@ export const deleteDocumentFromObjectStorageAndFromAnswer = os
     }),
   )
   .output(AnswerSelectSchema)
-  .handler(async ({ input }) => {
+  .handler(async ({ input, context }) => {
     await deleteObject(getObjectKeyForDocumentUuid(input.documentUuid));
     return db.transaction(async (tx) => {
       const [existingAnswer] = await tx
@@ -193,25 +202,20 @@ export const deleteDocumentFromObjectStorageAndFromAnswer = os
           `If a document should be deleted, an answer owning it must exist already.`,
         );
       }
-      const existingAnswerPayloadResult = DocumentAnswerPayloadType.safeParse(
+      const existingAnswerPayload = DocumentAnswerPayloadType.parse(
         existingAnswer.answerPayload,
       );
-      if (!existingAnswerPayloadResult.success) {
-        throw new Error(
-          `Existing answer payload is not of type DocumentAnswerPayloadType for interview ${input.interviewUuid} and question ${input.questionUuid}`,
-        );
-      }
 
-      const [existingDocumentWithSameUuid] =
-        existingAnswerPayloadResult.data.documents.filter(
-          (document) => document.documentUuid === input.documentUuid,
-        );
+      const existingDocumentWithSameUuid = existingAnswerPayload.documents.find(
+        (document) => document.documentUuid === input.documentUuid,
+      );
       const existingDocumentsWithoutSameUuidDocument =
-        existingAnswerPayloadResult.data.documents.filter(
+        existingAnswerPayload.documents.filter(
           (document) => document.documentUuid !== input.documentUuid,
         );
       if (!existingDocumentWithSameUuid) {
-        console.trace(
+        const logger = getLogger(context);
+        logger?.warn(
           `If a document should be deleted from an answer, it should exist in the answer payload. ` +
             `This means a prior deletion has run for this document. Fix this. ` +
             `Document uuid: ${input.documentUuid}, interview uuid: ${input.interviewUuid}, question uuid: ${input.questionUuid}`,

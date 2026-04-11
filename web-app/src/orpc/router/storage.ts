@@ -1,4 +1,3 @@
-import { os } from "@orpc/server";
 import z from "zod";
 import {
   createPresignedDownloadUrl,
@@ -6,9 +5,10 @@ import {
   createPresignedUploadUrlForVideo,
   getObjectKeyForDocumentUuid,
 } from "@/lib/s3";
+import { base } from "../base";
 import { debugMiddleware } from "../middlewares";
 
-export const createPresignedS3WebmUploadUrl = os
+export const createPresignedS3WebmUploadUrl = base
   .use(debugMiddleware)
   .input(z.void())
   .output(
@@ -24,7 +24,7 @@ export const createPresignedS3WebmUploadUrl = os
   });
 
 // TODO for download of video use a cookie or something else than presigned urls for download
-export const createPresignedS3DocumentDownloadUrlByUuid = os
+export const createPresignedS3DocumentDownloadUrlByUuid = base
   .use(debugMiddleware)
   .input(z.object({ documentUuid: z.uuidv7() }))
   .output(z.object({ downloadUrl: z.url() }))
@@ -34,7 +34,7 @@ export const createPresignedS3DocumentDownloadUrlByUuid = os
     );
   });
 
-export const createPresignedS3DocumentUploadUrl = os
+export const createPresignedS3DocumentUploadUrl = base
   .use(debugMiddleware)
   .input(
     z.object({

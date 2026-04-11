@@ -1,9 +1,7 @@
-import { os } from "@orpc/server";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import z from "zod";
 import { db } from "@/db";
 import {
-  Answer,
   Candidate,
   FlowStep,
   FlowVersion,
@@ -20,9 +18,10 @@ import {
   QuestionSelectSchema,
   RoleSelectSchema,
 } from "@/orpc/schema";
+import { base } from "../base";
 import { debugMiddleware } from "../middlewares";
 
-export const createInterviewForRoleUuid = os
+export const createInterviewForRoleUuid = base
   .use(debugMiddleware)
   .input(
     z.object({
@@ -51,7 +50,7 @@ export const createInterviewForRoleUuid = os
     return interview[0];
   });
 
-export const getQuestionsByInterviewUuid = os
+export const getQuestionsByInterviewUuid = base
   .use(debugMiddleware)
   .input(InterviewSelectSchema.pick({ uuid: true }))
   .output(
@@ -92,13 +91,14 @@ export const getQuestionsByInterviewUuid = os
     return {
       role,
       flowVersion: flowVersionData,
-      flowSteps: flowSteps.map(({ questions: _questions, ...flowStep }) => flowStep),
+      flowSteps: flowSteps.map(
+        ({ questions: _questions, ...flowStep }) => flowStep,
+      ),
       questions: flowSteps.flatMap((flowStep) => flowStep.questions),
     };
   });
 
-// NOTE Maybe have a look into json aggregation to make it one roundtrip for better performance
-export const getInterviewRelatedDataByInterviewUuid = os
+export const getInterviewRelatedDataByInterviewUuid = base
   .use(debugMiddleware)
   .input(InterviewSelectSchema.pick({ uuid: true }))
   .output(
@@ -111,40 +111,30 @@ export const getInterviewRelatedDataByInterviewUuid = os
       .nullable(),
   )
   .handler(async ({ input }) => {
-    return await db.transaction(async (tx) => {
-      const [roleAndInterview] = await tx
-        .select({
-          interview: Interview,
-          candidate: Candidate,
-          // TODO look into if this works as soon as it can be tested
-          // answers: sql`(
-          //   SELECT json_agg(answers.*)
-          //   FROM ${Answer} AS answers
-          //   WHERE answers.interview_uuid = ${Interview.uuid}
-          // )`,
-        })
-        .from(Interview)
-        .leftJoin(Candidate, eq(Interview.candidateUuid, Candidate.uuid)) // candidate might be null
-        .where(eq(Interview.uuid, input.uuid))
-        .limit(1);
-
-      if (!roleAndInterview) return null;
-
-      const answers = await tx
-        .select()
-        .from(Answer)
-        .where(eq(Answer.interviewUuid, input.uuid));
-
-      return {
-        interview: roleAndInterview.interview,
-        candidate: roleAndInterview.candidate,
-        answers,
-      };
+    const interviewWithRelations = await db.query.Interview.findFirst({
+      where: eq(Interview.uuid, input.uuid),
+      with: {
+        candidate: true,
+        answers: true,
+      },
     });
+
+    if (!interviewWithRelations) return null;
+
+    const { candidate, answers, ...interview } = interviewWithRelations;
+
+    return {
+      interview,
+      candidate,
+      answers,
+    };
   });
 
-// NOTE This handler needs two roundtrips from the server to the database. This can be optimized for performance by using a CTE.
-export const addParticipantToInterview = os
+// This handler needs two roundtrips from the server to the database. This could be optimized for performance by using a CTE,
+// but then the candidate creation and interview update would not be atomic together anymore. The candidate would be created,
+// but if the interview update fails, the candidate would be orphaned without an associated interview.
+// You could also use a conditional insert, but that would detriment the readability of the code.
+export const addParticipantToInterview = base
   .use(debugMiddleware)
   .input(
     CandidateInsertSchema.extend({

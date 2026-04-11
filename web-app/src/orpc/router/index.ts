@@ -3,7 +3,6 @@ import {
   deleteDocumentFromObjectStorageAndFromAnswer,
   saveAnswer,
 } from "./answer";
-import { insertNewCandidateWithNameAndEmail } from "./candidate";
 import {
   addParticipantToInterview,
   createInterviewForRoleUuid,
@@ -27,7 +26,6 @@ export default {
   createInterviewForRoleUuid,
   getQuestionsByInterviewUuid,
   getInterviewRelatedDataByInterviewUuid,
-  insertNewCandidateWithNameAndEmail,
   addParticipantToInterview,
   saveAnswer,
   addNewDocumentToAnswer,

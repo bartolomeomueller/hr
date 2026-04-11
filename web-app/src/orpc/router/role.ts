@@ -1,4 +1,3 @@
-import { os } from "@orpc/server";
 import { and, desc, eq } from "drizzle-orm";
 import z from "zod";
 import { db } from "@/db";
@@ -13,7 +12,7 @@ import {
 import { base } from "../base";
 import { authMiddleware, debugMiddleware } from "../middlewares";
 
-export const getRoleAndItsFlowVersionBySlug = os
+export const getRoleAndItsFlowVersionBySlug = base
   .use(debugMiddleware)
   .input(RoleSelectSchema.pick({ slug: true }))
   .output(
