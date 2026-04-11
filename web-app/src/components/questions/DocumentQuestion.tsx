@@ -11,7 +11,6 @@ import { getQueryClient } from "@/lib/query-client";
 import { client, orpc } from "@/orpc/client";
 import type {
   AnswerSelectSchema,
-  InterviewWithCandidateAndAnswersSchema,
   QuestionSelectSchema,
 } from "@/orpc/schema";
 import { documentUploadService } from "@/services/DocumentUploadService.client";
@@ -82,7 +81,9 @@ export function DocumentQuestion({
                 documentUuid: uploadedDocumentToReplace.documentUuid,
               });
             getQueryClient().setQueryData<
-              z.infer<typeof InterviewWithCandidateAndAnswersSchema>
+              Awaited<
+                ReturnType<typeof client.getInterviewRelatedDataByInterviewUuid>
+              >
             >(queryKeyToInvalidateAnswers, (old) => {
               if (!old) return old;
               return {
@@ -352,7 +353,7 @@ function File({
     // This would lead to documents coming back with full opacity, confusing the user, because the mutation is not pending anymore, but the data was also not yet updated.
     onSuccess(data, _variables, _onMutateResult, context) {
       context.client.setQueryData<
-        z.infer<typeof InterviewWithCandidateAndAnswersSchema>
+        Awaited<ReturnType<typeof client.getInterviewRelatedDataByInterviewUuid>>
       >(queryKeyToInvalidateAnswers, (old) => {
         if (!old) return old;
         return {

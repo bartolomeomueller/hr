@@ -5,7 +5,6 @@ import {
   createSelectSchema,
   createUpdateSchema,
 } from "drizzle-zod";
-import { z } from "zod";
 import {
   Account,
   Invitation,
@@ -90,9 +89,3 @@ export const MemberUpdateSchema = createUpdateSchema(Member);
 export const InvitationSelectSchema = createSelectSchema(Invitation);
 export const InvitationInsertSchema = createInsertSchema(Invitation);
 export const InvitationUpdateSchema = createUpdateSchema(Invitation);
-
-export const InterviewWithCandidateAndAnswersSchema = z.object({
-  interview: InterviewSelectSchema,
-  candidate: CandidateSelectSchema.nullable(),
-  answers: z.array(AnswerSelectSchema),
-});

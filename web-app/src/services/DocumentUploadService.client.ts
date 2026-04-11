@@ -1,8 +1,6 @@
 import type { QueryKey } from "@tanstack/react-query";
-import type z from "zod";
 import { getQueryClient } from "@/lib/query-client";
 import { client } from "@/orpc/client";
-import type { InterviewWithCandidateAndAnswersSchema } from "@/orpc/schema";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 
 const DB_NAME = "UploadDatabase";
@@ -276,7 +274,7 @@ class DocumentUploadService {
       await this.deleteFileFromIndexedDB(fileIndex);
       useDocumentUploadStore.getState().removeDocumentFromUpload(fileIndex);
       getQueryClient().setQueryData<
-        z.infer<typeof InterviewWithCandidateAndAnswersSchema>
+        Awaited<ReturnType<typeof client.getInterviewRelatedDataByInterviewUuid>>
       >(queryKeyToInvalidateAnswers, (old) => {
         if (!old) return old;
         return {

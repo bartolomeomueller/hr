@@ -12,11 +12,12 @@ import {
   Role,
 } from "@/db/schema";
 import {
+  AnswerSelectSchema,
   CandidateInsertSchema,
+  CandidateSelectSchema,
   FlowStepSelectSchema,
   FlowVersionSelectSchema,
   InterviewSelectSchema,
-  InterviewWithCandidateAndAnswersSchema,
   QuestionSelectSchema,
   RoleSelectSchema,
 } from "@/orpc/schema";
@@ -118,7 +119,15 @@ export const getQuestionsByInterviewUuid = os
 export const getInterviewRelatedDataByInterviewUuid = os
   .use(debugMiddleware)
   .input(InterviewSelectSchema.pick({ uuid: true }))
-  .output(InterviewWithCandidateAndAnswersSchema.nullable())
+  .output(
+    z
+      .object({
+        interview: InterviewSelectSchema,
+        candidate: CandidateSelectSchema.nullable(),
+        answers: z.array(AnswerSelectSchema),
+      })
+      .nullable(),
+  )
   .handler(async ({ input }) => {
     try {
       return await db.transaction(async (_) => {
