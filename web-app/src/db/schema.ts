@@ -10,7 +10,7 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
-import { Team } from "./auth-schema";
+import { Team, User } from "./auth-schema";
 
 export const flowStepKindEnum = pgEnum("flow_step_kind", [
   "video",
@@ -139,6 +139,24 @@ export const Answer = pgTable(
   ],
 );
 
+export const Evaluation = pgTable("evaluation", {
+  uuid: uuid()
+    .default(sql`uuidv7()`)
+    .primaryKey(),
+  interviewUuid: uuid("interview_uuid")
+    .notNull()
+    .references(() => Interview.uuid, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => User.id, { onDelete: "cascade" }),
+  hardSkillsScore: integer("hard_skills_score").notNull(),
+  softSkillsScore: integer("soft_skills_score").notNull(),
+  culturalAddScore: integer("cultural_add_score").notNull(),
+  potentialScore: integer("potential_score").notNull(),
+  finalScore: integer("final_score").notNull(),
+  notes: text("notes").notNull().default(""),
+});
+
 export const roleRelations = relations(Role, ({ one, many }) => ({
   team: one(Team, {
     fields: [Role.teamId],
@@ -186,6 +204,7 @@ export const interviewRelations = relations(Interview, ({ one, many }) => ({
     references: [Candidate.uuid],
   }),
   answers: many(Answer),
+  evaluations: many(Evaluation),
 }));
 
 export const answerRelations = relations(Answer, ({ one }) => ({
@@ -196,5 +215,16 @@ export const answerRelations = relations(Answer, ({ one }) => ({
   question: one(Question, {
     fields: [Answer.questionUuid],
     references: [Question.uuid],
+  }),
+}));
+
+export const evaluationRelations = relations(Evaluation, ({ one }) => ({
+  interview: one(Interview, {
+    fields: [Evaluation.interviewUuid],
+    references: [Interview.uuid],
+  }),
+  user: one(User, {
+    fields: [Evaluation.userId],
+    references: [User.id],
   }),
 }));
