@@ -1,10 +1,13 @@
-import { and, desc, eq } from "drizzle-orm";
+import { ORPCError } from "@orpc/server";
+import { and, desc, eq, exists } from "drizzle-orm";
 import z from "zod";
 import { db } from "@/db";
 import { Team, TeamMember } from "@/db/auth-schema";
-import { Candidate, FlowVersion, Interview, Role } from "@/db/schema";
+import { DocumentAnswerPayloadType } from "@/db/payload-types";
+import { Answer, FlowVersion, Interview, Question, Role } from "@/db/schema";
 import {
   CandidateSelectSchema,
+  EvaluationSelectSchema,
   FlowVersionSelectSchema,
   InterviewSelectSchema,
   RoleSelectSchema,
@@ -64,32 +67,78 @@ export const getAllFinishedInterviewsForRoleByRoleSlug = base
       z.object({
         interview: InterviewSelectSchema,
         candidate: CandidateSelectSchema,
-        // answers: z.array(AnswerSelectSchema),
+        cvDocument: DocumentAnswerPayloadType.shape.documents.element,
+        evaluations: z.array(EvaluationSelectSchema),
       }),
     ),
   )
   .handler(async ({ input, context }) => {
-    return await db.transaction(async (tx) => {
-      const data = await tx
-        .select({
-          interview: Interview,
-          candidate: Candidate,
-        })
-        .from(Interview)
-        .innerJoin(Candidate, eq(Candidate.uuid, Interview.candidateUuid))
-        .innerJoin(FlowVersion, eq(FlowVersion.uuid, Interview.flowVersionUuid))
-        .innerJoin(Role, eq(Role.uuid, FlowVersion.roleUuid))
-        .innerJoin(Team, eq(Team.id, Role.teamId))
-        .innerJoin(TeamMember, eq(TeamMember.teamId, Team.id))
-        .where(
-          and(
-            eq(Role.slug, input.slug),
-            eq(TeamMember.userId, context.user.id),
-          ),
-        );
+    const [authorizedRole] = await db
+      .select({ uuid: Role.uuid })
+      .from(Role)
+      .innerJoin(Team, eq(Team.id, Role.teamId))
+      .innerJoin(TeamMember, eq(TeamMember.teamId, Team.id))
+      .where(
+        and(eq(Role.slug, input.slug), eq(TeamMember.userId, context.user.id)),
+      )
+      .limit(1);
 
-      // TODO filter out not yet finished interviews and get the cv answer somehow
+    if (!authorizedRole) {
+      throw new ORPCError("FORBIDDEN");
+    }
 
-      return data;
+    const flowVersions = await db.query.FlowVersion.findMany({
+      where: eq(FlowVersion.roleUuid, authorizedRole.uuid),
+      with: {
+        interviews: {
+          where: eq(Interview.isFinished, true),
+          with: {
+            candidate: true,
+            evaluations: true,
+            answers: {
+              where: exists(
+                db
+                  .select({ uuid: Question.uuid })
+                  .from(Question)
+                  .where(
+                    and(
+                      eq(Question.uuid, Answer.questionUuid),
+                      eq(Question.isCv, true),
+                    ),
+                  ),
+              ),
+            },
+          },
+        },
+      },
     });
+
+    return flowVersions.flatMap((flowVersion) =>
+      flowVersion.interviews.flatMap((interviewWithRelations) => {
+        const { candidate, evaluations, answers, ...interview } =
+          interviewWithRelations;
+
+        if (!candidate) return [];
+
+        const cvAnswer = answers[0];
+
+        if (!cvAnswer) return [];
+
+        const parsedCvAnswer = DocumentAnswerPayloadType.safeParse(
+          cvAnswer.answerPayload,
+        );
+        const cvDocument = parsedCvAnswer.success
+          ? parsedCvAnswer.data.documents[0]
+          : undefined;
+
+        if (!cvDocument) return [];
+
+        return {
+          interview,
+          candidate,
+          cvDocument,
+          evaluations,
+        };
+      }),
+    );
   });

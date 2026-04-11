@@ -111,6 +111,7 @@ export const Interview = pgTable("interview", {
   candidateUuid: uuid("candidate_uuid").references(() => Candidate.uuid, {
     onDelete: "cascade",
   }),
+  isFinished: boolean("is_finished").notNull().default(false),
 });
 
 export const Answer = pgTable(

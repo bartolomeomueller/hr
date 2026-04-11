@@ -19,6 +19,7 @@ import {
 import {
   Answer,
   Candidate,
+  Evaluation,
   FlowStep,
   FlowVersion,
   Interview,
@@ -54,6 +55,11 @@ export const AnswerSelectSchema = createSelectSchema(Answer);
 export const AnswerInsertSchema = createInsertSchema(Answer);
 export const AnswerUpdateSchema = createUpdateSchema(Answer);
 
+export const EvaluationSelectSchema = createSelectSchema(Evaluation);
+export const EvaluationInsertSchema = createInsertSchema(Evaluation);
+export const EvaluationUpdateSchema = createUpdateSchema(Evaluation);
+
+// For auth
 export const UserSelectSchema = createSelectSchema(User);
 export const UserInsertSchema = createInsertSchema(User);
 export const UserUpdateSchema = createUpdateSchema(User);
