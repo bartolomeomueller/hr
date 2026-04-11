@@ -1,21 +1,28 @@
 import "@/polyfill";
 
+import { LoggingHandlerPlugin } from "@orpc/experimental-pino";
 import { SmartCoercionPlugin } from "@orpc/json-schema";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { OpenAPIReferencePlugin } from "@orpc/openapi/plugins";
 import { onError } from "@orpc/server";
 import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { createFileRoute } from "@tanstack/react-router";
+import { logger } from "@/lib/logger";
 import router from "@/orpc/router";
 import { RoleSelectSchema } from "@/orpc/schema";
 
 const handler = new OpenAPIHandler(router, {
   interceptors: [
     onError((error) => {
-      console.error(error);
+      logger.error({ error }, "OpenAPI handler error");
     }),
   ],
   plugins: [
+    new LoggingHandlerPlugin({
+      logger,
+      logRequestResponse: true,
+      logRequestAbort: true,
+    }),
     new SmartCoercionPlugin({
       schemaConverters: [new ZodToJsonSchemaConverter()],
     }),

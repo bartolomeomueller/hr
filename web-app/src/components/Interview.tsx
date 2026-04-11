@@ -368,6 +368,7 @@ function getFormDefaultValues({
       [question.uuid]: initialValue ?? "",
     };
   }, {});
-  console.log("Form options:", formOptions);
+
+  // console.log("Form options:", formOptions);
   return formOptions;
 }

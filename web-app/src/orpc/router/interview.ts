@@ -88,7 +88,8 @@ export const getQuestionsByInterviewUuid = os
                 'flowStepUuid', ${Question.flowStepUuid},
                 'position', ${Question.position},
                 'questionType', ${Question.questionType},
-                'questionPayload', ${Question.questionPayload}
+                'questionPayload', ${Question.questionPayload},
+                'isCv', ${Question.isCv}
               )
               order by ${Question.position}
             )
