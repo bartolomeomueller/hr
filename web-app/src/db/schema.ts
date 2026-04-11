@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   boolean,
   integer,
@@ -138,3 +138,63 @@ export const Answer = pgTable(
     ),
   ],
 );
+
+export const roleRelations = relations(Role, ({ one, many }) => ({
+  team: one(Team, {
+    fields: [Role.teamId],
+    references: [Team.id],
+  }),
+  flowVersions: many(FlowVersion),
+}));
+
+export const flowVersionRelations = relations(FlowVersion, ({ one, many }) => ({
+  role: one(Role, {
+    fields: [FlowVersion.roleUuid],
+    references: [Role.uuid],
+  }),
+  flowSteps: many(FlowStep),
+  interviews: many(Interview),
+}));
+
+export const flowStepRelations = relations(FlowStep, ({ one, many }) => ({
+  flowVersion: one(FlowVersion, {
+    fields: [FlowStep.flowVersionUuid],
+    references: [FlowVersion.uuid],
+  }),
+  questions: many(Question),
+}));
+
+export const questionRelations = relations(Question, ({ one, many }) => ({
+  flowStep: one(FlowStep, {
+    fields: [Question.flowStepUuid],
+    references: [FlowStep.uuid],
+  }),
+  answers: many(Answer),
+}));
+
+export const candidateRelations = relations(Candidate, ({ many }) => ({
+  interviews: many(Interview),
+}));
+
+export const interviewRelations = relations(Interview, ({ one, many }) => ({
+  flowVersion: one(FlowVersion, {
+    fields: [Interview.flowVersionUuid],
+    references: [FlowVersion.uuid],
+  }),
+  candidate: one(Candidate, {
+    fields: [Interview.candidateUuid],
+    references: [Candidate.uuid],
+  }),
+  answers: many(Answer),
+}));
+
+export const answerRelations = relations(Answer, ({ one }) => ({
+  interview: one(Interview, {
+    fields: [Answer.interviewUuid],
+    references: [Interview.uuid],
+  }),
+  question: one(Question, {
+    fields: [Answer.questionUuid],
+    references: [Question.uuid],
+  }),
+}));

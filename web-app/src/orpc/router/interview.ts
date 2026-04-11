@@ -1,5 +1,5 @@
 import { os } from "@orpc/server";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import z from "zod";
 import { db } from "@/db";
 import {
@@ -9,7 +9,6 @@ import {
   FlowVersion,
   Interview,
   Question,
-  Role,
 } from "@/db/schema";
 import {
   AnswerSelectSchema,
@@ -66,54 +65,36 @@ export const getQuestionsByInterviewUuid = os
       .nullable(),
   )
   .handler(async ({ input }) => {
-    const [result] = await db
-      .select({
-        role: Role,
-        flowVersion: FlowVersion,
-        flowSteps: sql<z.infer<typeof FlowStepSelectSchema>[]>`
-            json_agg(
-              json_build_object(
-                'uuid', ${FlowStep.uuid},
-                'flowVersionUuid', ${FlowStep.flowVersionUuid},
-                'position', ${FlowStep.position},
-                'kind', ${FlowStep.kind}
-              )
-              order by ${FlowStep.position}
-            )
-          `,
-        questions: sql<z.infer<typeof QuestionSelectSchema>[]>`
-            json_agg(
-              json_build_object(
-                'uuid', ${Question.uuid},
-                'flowStepUuid', ${Question.flowStepUuid},
-                'position', ${Question.position},
-                'questionType', ${Question.questionType},
-                'questionPayload', ${Question.questionPayload},
-                'isCv', ${Question.isCv}
-              )
-              order by ${Question.position}
-            )
-          `,
-      })
-      .from(FlowVersion)
-      .innerJoin(Role, eq(Role.uuid, FlowVersion.roleUuid))
-      .innerJoin(FlowStep, eq(FlowStep.flowVersionUuid, FlowVersion.uuid))
-      .innerJoin(Question, eq(Question.flowStepUuid, FlowStep.uuid))
-      .innerJoin(Interview, eq(Interview.flowVersionUuid, FlowVersion.uuid))
-      .where(eq(Interview.uuid, input.uuid))
-      // groupBy is not hierarchical, it just creates groups of rows with the same role and flow version
-      // It is not needed here, as there is only one interview and thus one role and flow version.
-      .groupBy(Role.uuid, FlowVersion.uuid);
+    const interview = await db.query.Interview.findFirst({
+      where: eq(Interview.uuid, input.uuid),
+      with: {
+        flowVersion: {
+          with: {
+            role: true,
+            flowSteps: {
+              orderBy: [asc(FlowStep.position)],
+              with: {
+                questions: {
+                  orderBy: [asc(Question.position)],
+                },
+              },
+            },
+          },
+        },
+      },
+    });
 
-    if (!result) return null;
+    if (!interview) return null;
 
-    // Because of the joins, there is one row for each question, so flow steps are duplicated
-    // This keeps the order of flow steps intact, but removes duplicates
-    result.flowSteps = [
-      ...new Map(result.flowSteps.map((step) => [step.uuid, step])).values(),
-    ];
+    const { flowVersion } = interview;
+    const { role, flowSteps, ...flowVersionData } = flowVersion;
 
-    return result;
+    return {
+      role,
+      flowVersion: flowVersionData,
+      flowSteps: flowSteps.map(({ questions: _questions, ...flowStep }) => flowStep),
+      questions: flowSteps.flatMap((flowStep) => flowStep.questions),
+    };
   });
 
 // NOTE Maybe have a look into json aggregation to make it one roundtrip for better performance
