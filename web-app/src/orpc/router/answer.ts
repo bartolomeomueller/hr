@@ -1,5 +1,6 @@
 import { getLogger } from "@orpc/experimental-pino";
 import { and, eq } from "drizzle-orm/sql/expressions/conditions";
+import z from "zod";
 import { db } from "@/db";
 import {
   DocumentAnswerPayloadType,
@@ -86,10 +87,12 @@ export const addNewDocumentToAnswer = base
       questionUuid: true,
     }).extend({
       document: DocumentAnswerPayloadType.shape.documents.element,
+      isSingleFileUpload: z.boolean(),
     }),
   )
   .output(AnswerSelectSchema)
   .handler(async ({ input, context }) => {
+    // Remember the uuid of the document to delete after the transaction has completed successfully.
     let documentUuidToDelete = null;
 
     const answer = await db.transaction(async (tx) => {
@@ -120,10 +123,10 @@ export const addNewDocumentToAnswer = base
         return insertedAnswer;
       }
 
+      // If there exists a document with the same name, it will be replaced. Otherwise the document will just be added.
       const existingAnswerPayload = DocumentAnswerPayloadType.parse(
         existingAnswer.answerPayload,
       );
-
       const existingDocumentWithSameName = existingAnswerPayload.documents.find(
         (document) => document.fileName === input.document.fileName,
       );
@@ -133,9 +136,15 @@ export const addNewDocumentToAnswer = base
             document.documentUuid !==
             existingDocumentWithSameName?.documentUuid,
         );
-
       if (existingDocumentWithSameName) {
         documentUuidToDelete = existingDocumentWithSameName.documentUuid;
+      }
+
+      // If this is a single file upload, all existing documents will be replaced with the new one.
+      if (input.isSingleFileUpload) {
+        documentUuidToDelete =
+          existingAnswerPayload.documents.at(0)?.documentUuid;
+        existingDocumentsWithoutSameNameDocument.length = 0; // Clear the array, so only the new document will be in the answer.
       }
 
       const [updatedAnswer] = await tx

@@ -118,11 +118,13 @@ class DocumentUploadService {
     interviewUuid,
     questionUuid,
     queryKeyToInvalidateAnswers,
+    isSingleFileUpload,
   }: {
     file: File;
     interviewUuid: string;
     questionUuid: string;
     queryKeyToInvalidateAnswers: QueryKey;
+    isSingleFileUpload: boolean;
   }) {
     const abortController = new AbortController();
 
@@ -131,6 +133,13 @@ class DocumentUploadService {
     // Already fetch a pre-signed url, so the upload can start immediately, when the pipeline gets to the upload step.
     const preSignedUrlPromise = client.createPresignedS3DocumentUploadUrl({
       mimeType: file.type,
+    });
+
+    useDocumentUploadStore.getState().addDocumentToUpload({
+      questionUuid,
+      indexedDBId: fileIndex,
+      fileName: file.name,
+      abortController,
     });
 
     this.uploadPipeline = this.uploadPipeline
@@ -142,14 +151,13 @@ class DocumentUploadService {
           queryKeyToInvalidateAnswers,
           signal: abortController.signal,
           preSignedUrlPromise,
+          isSingleFileUpload,
         });
       })
       .catch(() => {
         // The user will see the failed upload in the UI and may retry the upload
         useDocumentUploadStore.getState().setDocumentUploadAsFailed(fileIndex);
       });
-
-    return { fileIndex, abortController };
   }
 
   // TODO somewhere best ui near check file.size to be under 5GiB
@@ -161,6 +169,7 @@ class DocumentUploadService {
     queryKeyToInvalidateAnswers,
     signal,
     preSignedUrlPromise,
+    isSingleFileUpload,
   }: {
     fileIndex: number;
     interviewUuid: string;
@@ -168,6 +177,7 @@ class DocumentUploadService {
     queryKeyToInvalidateAnswers: QueryKey;
     signal: AbortSignal;
     preSignedUrlPromise: Promise<{ uuid: string; uploadUrl: string }>;
+    isSingleFileUpload: boolean;
   }) {
     if (signal.aborted) {
       // TODO aborting does not work as expected
@@ -270,11 +280,14 @@ class DocumentUploadService {
           fileName: file.name,
           mimeType: file.type,
         },
+        isSingleFileUpload,
       });
       await this.deleteFileFromIndexedDB(fileIndex);
       useDocumentUploadStore.getState().removeDocumentFromUpload(fileIndex);
       getQueryClient().setQueryData<
-        Awaited<ReturnType<typeof client.getInterviewRelatedDataByInterviewUuid>>
+        Awaited<
+          ReturnType<typeof client.getInterviewRelatedDataByInterviewUuid>
+        >
       >(queryKeyToInvalidateAnswers, (old) => {
         if (!old) return old;
         return {

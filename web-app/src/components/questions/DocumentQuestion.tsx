@@ -7,15 +7,15 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { toast } from "sonner";
 import type z from "zod";
 import { useShallow } from "zustand/shallow";
 import {
   DocumentAnswerPayloadType,
   DocumentQuestionPayloadType,
 } from "@/db/payload-types";
-import { getQueryClient } from "@/lib/query-client";
-import { client, orpc } from "@/orpc/client";
+import { type client, orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { documentUploadService } from "@/services/DocumentUploadService.client";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
@@ -48,9 +48,25 @@ export function DocumentQuestion({
   const answerPayloadParseResult = DocumentAnswerPayloadType.safeParse(
     answer?.answerPayload,
   );
-  const documents = answerPayloadParseResult.success
-    ? answerPayloadParseResult.data.documents
-    : [];
+  const [documents, setDocuments] = useState(
+    answerPayloadParseResult.success
+      ? answerPayloadParseResult.data.documents
+      : [],
+  );
+  // Always update the uploaded documents state, when the corresponding answer changes, as updates will happen outside of this component.
+  useEffect(() => {
+    const answerPayloadParseResult = DocumentAnswerPayloadType.safeParse(
+      answer?.answerPayload,
+    );
+    if (!answerPayloadParseResult.success) {
+      toast.error(
+        "Es gab einen Fehler beim Laden der Dokumente. Bitte laden sie diese Seite neu.",
+      );
+      return;
+    }
+
+    setDocuments(answerPayloadParseResult.data.documents);
+  }, [answer]);
 
   const documentsToUpload = useDocumentUploadStore(
     useShallow((state) =>
@@ -59,54 +75,32 @@ export function DocumentQuestion({
   );
 
   async function appendFiles(nextFiles: File[], isSingleFileUpload: boolean) {
-    let filesToAddToUpload = nextFiles.sort(
-      (a, b) => a.name.localeCompare(b.name), // sort files by name to make the behavior deterministic, when we have to cut out files, because there are too many
+    // Sort files by name to make the behavior deterministic, when we have to cut out files, because there are too many
+    let filesToAddToUpload = nextFiles.sort((a, b) =>
+      a.name.localeCompare(b.name),
     );
 
     if (isSingleFileUpload) {
-      // For single file upload, if there is already a document with the same name, we want to replace it.
-      filesToAddToUpload = nextFiles.slice(0, 1);
-      console.log("filesToAddToUpload", filesToAddToUpload[0]);
-      if (
-        documents.some(
-          (document) => document.fileName !== filesToAddToUpload[0].name,
-        )
-      ) {
-        const uploadedDocumentToReplace = documents.at(0);
-        console.log("uploadedDocumentToReplace", uploadedDocumentToReplace);
-        if (uploadedDocumentToReplace) {
-          // NOTE Think about what should happen if the deletion fails, because then we will violate the single file upload constraint. Just let it be and show the recruiter the last element of the array? Or make the replace atomic?
-          void (async () => {
-            const updatedAnswer =
-              await client.deleteDocumentFromObjectStorageAndFromAnswer({
-                interviewUuid,
-                questionUuid: question.uuid,
-                documentUuid: uploadedDocumentToReplace.documentUuid,
-              });
-            getQueryClient().setQueryData<
-              Awaited<
-                ReturnType<typeof client.getInterviewRelatedDataByInterviewUuid>
-              >
-            >(queryKeyToInvalidateAnswers, (old) => {
-              if (!old) return old;
-              return {
-                ...old,
-                answers: old.answers.map((answer) =>
-                  answer.questionUuid === question.uuid
-                    ? updatedAnswer
-                    : answer,
-                ),
-              };
-            });
-            await getQueryClient().invalidateQueries({
-              queryKey: queryKeyToInvalidateAnswers,
-            });
-          })();
-        }
+      // If the user tries to upload multiple files, toast him that only one file is allowed and do not upload any file, since it is not clear which file should be uploaded.
+      if (filesToAddToUpload.length > 1) {
+        toast.info(
+          "Es kann für diese Frage nur genau eine Datei hochgeladen werden.",
+        );
+        return;
       }
-      // If a file is already uploading, then remove the upload and start the new one.
+
+      // If a file is already uploading, then cancel the upload.
       if (documentsToUpload.at(0)) {
         documentsToUpload.at(0)?.abortController.abort();
+      }
+
+      filesToAddToUpload = nextFiles.slice(0, 1);
+      console.log("filesToAddToUpload", filesToAddToUpload[0]);
+
+      // For single file upload, if there is already a document that was uploaded, we want to replace it.
+      const uploadedDocumentToReplace = documents.at(0);
+      if (uploadedDocumentToReplace) {
+        setDocuments([]); // Deletion of the old document from object storage and answer payload will be handled in the orpc handler of the new upload.
       }
     } else {
       // For multiple file upload, if there is already a document with the same name, we want to keep it.
@@ -128,22 +122,19 @@ export function DocumentQuestion({
           0,
           questionPayload.maxUploads - documents.length,
         );
+        toast.info(
+          `Es können maximal ${questionPayload.maxUploads} Dateien für diese Frage hochgeladen werden.`,
+        );
       }
     }
 
     for (const fileToAddToUpload of filesToAddToUpload) {
-      const { fileIndex, abortController } =
-        await documentUploadService.addToUploadPipeline({
-          file: fileToAddToUpload,
-          interviewUuid,
-          questionUuid: question.uuid,
-          queryKeyToInvalidateAnswers,
-        });
-      useDocumentUploadStore.getState().addDocumentToUpload({
+      void documentUploadService.addToUploadPipeline({
+        file: fileToAddToUpload,
+        interviewUuid,
         questionUuid: question.uuid,
-        indexedDBId: fileIndex,
-        fileName: fileToAddToUpload.name,
-        abortController,
+        queryKeyToInvalidateAnswers,
+        isSingleFileUpload,
       });
     }
   }
@@ -151,7 +142,8 @@ export function DocumentQuestion({
   return (
     <div className="flex flex-col gap-2 p-2">
       <Label htmlFor={id}>{questionPayload.prompt}</Label>
-      <div className="">
+      {/* Maybe add next to the question promt the maximum amount of possible uploads. */}
+      <div>
         <FileDragAndDrop
           id={id}
           isSingleFileUpload={questionPayload.maxUploads === 1}
@@ -423,7 +415,7 @@ function File({
         </div>
       )}
       {uploadingDocument && (
-        <div className="w-full">
+        <div className="relative w-full">
           <div className="flex w-full flex-row items-center justify-between">
             <div>
               <span className="align-text-bottom" aria-hidden="true">
@@ -445,9 +437,9 @@ function File({
               </Button>
             </div>
           </div>
-          <div className="h-2 w-full rounded-full bg-primary-foreground">
+          <div className="absolute bottom-0 h-1 w-full rounded-full bg-primary-foreground">
             <div
-              className="h-2 rounded-full bg-primary"
+              className="h-1 rounded-full bg-primary"
               style={{ width: `${uploadingDocument.progress}%` }}
             ></div>
           </div>
