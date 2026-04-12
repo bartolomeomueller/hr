@@ -369,7 +369,7 @@ function File({
 
   return (
     <div
-      className={`h-8 ${deletionIsPending ? "pointer-events-none opacity-30" : ""}`}
+      className={`h-8 text-sm font-medium ${deletionIsPending ? "pointer-events-none opacity-30" : ""}`}
     >
       {uploadedDocument && (
         <div className="flex w-full flex-row items-center justify-between">
@@ -377,7 +377,7 @@ function File({
             <span className="align-text-bottom" aria-hidden="true">
               <FileSvg className="inline h-4 w-4" />
             </span>
-            <span className="align-text-top font-semibold"> {fileName}</span>
+            <span className="align-text-top"> {fileName}</span>
           </div>
           <div>
             <Button
@@ -429,7 +429,7 @@ function File({
               <span className="align-text-bottom" aria-hidden="true">
                 <FileSvg className="inline h-4 w-4" />
               </span>
-              <span className="align-text-top font-semibold"> {fileName}</span>
+              <span className="align-text-top"> {fileName}</span>
             </div>
             <div>
               {/* While this button could be implemented, the file would have to be accessed from indexedDB which would mean work. */}
