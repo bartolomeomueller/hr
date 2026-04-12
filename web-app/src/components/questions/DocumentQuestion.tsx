@@ -1,5 +1,12 @@
 import { type QueryKey, useMutation } from "@tanstack/react-query";
-import { Upload } from "lucide-react";
+import {
+  CircleX,
+  Eye,
+  File as FileSvg,
+  LoaderCircle,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { useId, useRef, useState } from "react";
 import type z from "zod";
 import { useShallow } from "zustand/shallow";
@@ -9,10 +16,7 @@ import {
 } from "@/db/payload-types";
 import { getQueryClient } from "@/lib/query-client";
 import { client, orpc } from "@/orpc/client";
-import type {
-  AnswerSelectSchema,
-  QuestionSelectSchema,
-} from "@/orpc/schema";
+import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { documentUploadService } from "@/services/DocumentUploadService.client";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 import { Button } from "../ui/button";
@@ -53,7 +57,6 @@ export function DocumentQuestion({
       state.getDocumentsToUploadForQuestionUuid(question.uuid),
     ),
   );
-  const [mutationError, setMutationError] = useState<string | null>(null);
 
   async function appendFiles(nextFiles: File[], isSingleFileUpload: boolean) {
     let filesToAddToUpload = nextFiles.sort(
@@ -146,50 +149,42 @@ export function DocumentQuestion({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-2 p-2">
       <Label htmlFor={id}>{questionPayload.prompt}</Label>
-      <FileDragAndDrop
-        id={id}
-        isSingleFileUpload={questionPayload.maxUploads === 1}
-        appendFiles={appendFiles}
-      />
-      {documents.map((document) => {
-        return (
-          <File
-            key={document.documentUuid}
-            fileName={document.fileName}
-            uploadedDocument={{
-              documentUuid: document.documentUuid,
-              interviewUuid,
-              questionUuid: question.uuid,
-            }}
-            queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
-          />
-        );
-      })}
-      {documentsToUpload.map((doc) => {
-        return (
-          <File
-            key={doc.indexedDBId}
-            fileName={doc.fileName}
-            uploadingDocument={{
-              progress: doc.progress,
-              abortController: doc.abortController,
-            }}
-            queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
-          />
-        );
-      })}
-      <p
-        className={mutationError ? "text-red-500" : "invisible"}
-        // NOTE go over these accessibility attributes, when time is available
-        role="alert"
-        aria-live="assertive"
-        aria-atomic="true"
-        aria-hidden={!mutationError}
-      >
-        {mutationError ?? "\u00A0"} {/* non breaking space*/}
-      </p>
+      <div className="">
+        <FileDragAndDrop
+          id={id}
+          isSingleFileUpload={questionPayload.maxUploads === 1}
+          appendFiles={appendFiles}
+        />
+        {documents.map((document) => {
+          return (
+            <File
+              key={document.documentUuid}
+              fileName={document.fileName}
+              uploadedDocument={{
+                documentUuid: document.documentUuid,
+                interviewUuid,
+                questionUuid: question.uuid,
+              }}
+              queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+            />
+          );
+        })}
+        {documentsToUpload.map((doc) => {
+          return (
+            <File
+              key={doc.indexedDBId}
+              fileName={doc.fileName}
+              uploadingDocument={{
+                progress: doc.progress,
+                abortController: doc.abortController,
+              }}
+              queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -353,7 +348,9 @@ function File({
     // This would lead to documents coming back with full opacity, confusing the user, because the mutation is not pending anymore, but the data was also not yet updated.
     onSuccess(data, _variables, _onMutateResult, context) {
       context.client.setQueryData<
-        Awaited<ReturnType<typeof client.getInterviewRelatedDataByInterviewUuid>>
+        Awaited<
+          ReturnType<typeof client.getInterviewRelatedDataByInterviewUuid>
+        >
       >(queryKeyToInvalidateAnswers, (old) => {
         if (!old) return old;
         return {
@@ -372,64 +369,89 @@ function File({
 
   return (
     <div
-      className={`flex ${deletionIsPending ? "pointer-events-none opacity-30" : ""}`}
+      className={`h-8 ${deletionIsPending ? "pointer-events-none opacity-30" : ""}`}
     >
-      <div aria-hidden="true">📄</div>
-      <p className="bold">{fileName}</p>
       {uploadedDocument && (
-        <div>
-          <button
-            type="button"
-            onMouseEnter={fetchNewPresignedUrlIfNeeded}
-            onClick={async () => {
-              setViewIsClicked(true);
-              await fetchNewPresignedUrlIfNeeded();
-              if (preSignedUrlRef.current == null)
-                throw new Error(
-                  "Pre-signed URL is not available. This should not be possible. Please report this.",
-                );
-              setViewIsClicked(false);
-              window.open((await preSignedUrlRef.current).url, "_blank");
-            }}
-            disabled={viewIsClicked}
-          >
-            {/* Read it inverted :) */}
-            {!viewIsClicked || !viewIsPending ? "View" : "Loading..."}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              deletionMutate({
-                documentUuid: uploadedDocument.documentUuid,
-                interviewUuid: uploadedDocument.interviewUuid,
-                questionUuid: uploadedDocument.questionUuid,
-              })
-            }
-            disabled={deletionIsPending}
-          >
-            Delete
-          </button>
+        <div className="flex w-full flex-row items-center justify-between">
+          <div>
+            <span className="align-text-bottom" aria-hidden="true">
+              <FileSvg className="inline h-4 w-4" />
+            </span>
+            <span className="align-text-top font-semibold"> {fileName}</span>
+          </div>
+          <div>
+            <Button
+              type="button"
+              variant="ghost"
+              onMouseEnter={fetchNewPresignedUrlIfNeeded}
+              onClick={async () => {
+                setViewIsClicked(true);
+                await fetchNewPresignedUrlIfNeeded();
+                if (preSignedUrlRef.current == null)
+                  throw new Error(
+                    "Pre-signed URL is not available. This should not be possible. Please report this.",
+                  );
+                setViewIsClicked(false);
+                window.open((await preSignedUrlRef.current).url, "_blank");
+              }}
+              disabled={viewIsClicked}
+            >
+              {/* Read it inverted :) */}
+              {/* {!viewIsClicked || !viewIsPending ? "View" : "Loading..."} */}
+              {!viewIsClicked || !viewIsPending ? (
+                <Eye />
+              ) : (
+                <LoaderCircle className="animate-spin" />
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() =>
+                deletionMutate({
+                  documentUuid: uploadedDocument.documentUuid,
+                  interviewUuid: uploadedDocument.interviewUuid,
+                  questionUuid: uploadedDocument.questionUuid,
+                })
+              }
+              disabled={deletionIsPending}
+            >
+              {/* Delete */}
+              <Trash2 />
+            </Button>
+          </div>
         </div>
       )}
       {uploadingDocument && (
-        <>
-          <div>
-            {/* TODO implement the todo button */}
-            <button type="button">View</button>
-            <button
-              type="button"
-              onClick={() => uploadingDocument.abortController.abort()}
-            >
-              Cancel
-            </button>
+        <div className="w-full">
+          <div className="flex w-full flex-row items-center justify-between">
+            <div>
+              <span className="align-text-bottom" aria-hidden="true">
+                <FileSvg className="inline h-4 w-4" />
+              </span>
+              <span className="align-text-top font-semibold"> {fileName}</span>
+            </div>
+            <div>
+              {/* While this button could be implemented, the file would have to be accessed from indexedDB which would mean work. */}
+              {/* <Button variant="ghost">
+              <Eye />
+            </Button> */}
+              <Button
+                variant="ghost"
+                onClick={() => uploadingDocument.abortController.abort()}
+              >
+                {/* Cancel */}
+                <CircleX />
+              </Button>
+            </div>
           </div>
-          <div className="mt-2 h-2.5 w-full rounded-full bg-gray-200">
+          <div className="h-2 w-full rounded-full bg-primary-foreground">
             <div
-              className="h-2.5 rounded-full bg-blue-600"
+              className="h-2 rounded-full bg-primary"
               style={{ width: `${uploadingDocument.progress}%` }}
             ></div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

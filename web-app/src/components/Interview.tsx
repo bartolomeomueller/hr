@@ -232,7 +232,7 @@ export function Interview({
             }}
             disabled={!previousFlowStep}
           >
-            Previous
+            Zurück
           </Button>
           <Button
             type="button"
@@ -242,7 +242,7 @@ export function Interview({
               onFlowStepChange(nextFlowStep.position);
             }}
           >
-            Next
+            {nextFlowStep? "Weiter": "Bewerbung abschließen"} 
           </Button>
         </div>
         {currentFlowStepKind === "question_block" && (
