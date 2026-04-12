@@ -1,6 +1,9 @@
 import type { QueryKey } from "@tanstack/react-query";
+import { toast } from "sonner";
+import type z from "zod";
 import { getQueryClient } from "@/lib/query-client";
 import { client } from "@/orpc/client";
+import type { AnswerSelectSchema } from "@/orpc/schema";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 
 const DB_NAME = "UploadDatabase";
@@ -142,8 +145,8 @@ class DocumentUploadService {
       abortController,
     });
 
-    this.uploadPipeline = this.uploadPipeline
-      .then(async () => {
+    this.uploadPipeline = this.uploadPipeline.then(async () => {
+      try {
         await this.uploadDocument({
           fileIndex,
           interviewUuid,
@@ -153,11 +156,14 @@ class DocumentUploadService {
           preSignedUrlPromise,
           isSingleFileUpload,
         });
-      })
-      .catch(() => {
-        // The user will see the failed upload in the UI and may retry the upload
-        useDocumentUploadStore.getState().setDocumentUploadAsFailed(fileIndex);
-      });
+      } catch (error) {
+        toast.error(
+          "Das Hochladen des Dokuments ist fehlgeschlagen. Bitte versuche es erneut.",
+        );
+        console.error(error);
+        return this.removeUpload({ fileIndex });
+      }
+    });
   }
 
   // TODO somewhere best ui near check file.size to be under 5GiB
@@ -180,16 +186,22 @@ class DocumentUploadService {
     isSingleFileUpload: boolean;
   }) {
     if (signal.aborted) {
-      // TODO aborting does not work as expected
-      return;
+      return this.removeUpload({ fileIndex });
     }
 
     const file = await this.getFileFromIndexedDB(fileIndex);
+
+    if (signal.aborted) {
+      return this.removeUpload({ fileIndex });
+    }
 
     // Check if the pre-signed URL is still valid. If not, get a new one.
     // Url contains the information below as search params
     // X-Amz-Date=20260326T193627Z&X-Amz-Expires=300
     let { uploadUrl, uuid } = await preSignedUrlPromise;
+    if (signal.aborted) {
+      return this.removeUpload({ fileIndex });
+    }
     const uploadUrlObj = new URL(uploadUrl);
     const signDate = uploadUrlObj.searchParams.get("X-Amz-Date");
     const expires = uploadUrlObj.searchParams.get("X-Amz-Expires");
@@ -216,7 +228,7 @@ class DocumentUploadService {
       }));
     }
 
-    await new Promise<void>((resolve, reject) => {
+    const uploadWasAborted = await new Promise<boolean>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       const abortUpload = () => {
         xhr.abort();
@@ -247,9 +259,10 @@ class DocumentUploadService {
               `Upload failed for file index ${fileIndex} with status ${xhr.status}`,
             ),
           );
+          return;
         }
         console.log(`Upload successful for file index ${fileIndex}`);
-        resolve();
+        resolve(false);
       };
       xhr.onerror = () => {
         signal.removeEventListener("abort", abortUpload);
@@ -259,48 +272,76 @@ class DocumentUploadService {
       };
       xhr.onabort = () => {
         signal.removeEventListener("abort", abortUpload);
-        resolve();
+        resolve(true);
       };
 
       if (signal.aborted) {
-        resolve();
+        signal.removeEventListener("abort", abortUpload);
+        resolve(true);
+        return;
       }
 
       xhr.send(file);
     });
 
+    if (uploadWasAborted || signal.aborted) {
+      return this.removeUpload({ fileIndex });
+    }
+
     // Fire and forget the syncing to the ui, so the next upload can begin.
-    // TODO sync error handling with catch of pipeline
     void (async () => {
-      const updatedAnswer = await client.addNewDocumentToAnswer({
-        interviewUuid,
-        questionUuid,
-        document: {
-          documentUuid: uuid,
-          fileName: file.name,
-          mimeType: file.type,
-        },
-        isSingleFileUpload,
-      });
-      await this.deleteFileFromIndexedDB(fileIndex);
+      let updatedAnswer: z.infer<typeof AnswerSelectSchema> | null = null;
+      try {
+        updatedAnswer = await client.addNewDocumentToAnswer({
+          interviewUuid,
+          questionUuid,
+          document: {
+            documentUuid: uuid,
+            fileName: file.name,
+            mimeType: file.type,
+          },
+          isSingleFileUpload,
+        });
+      } catch (error) {
+        toast.error(
+          "Das Hochladen des Dokuments ist fehlgeschlagen. Bitte versuche es erneut.",
+        );
+        console.error("Error adding document to answer:", error);
+      }
+      try {
+        await this.deleteFileFromIndexedDB(fileIndex);
+      } catch (error) {
+        console.error(`Failed to delete file with index ${fileIndex}:`, error);
+      }
       useDocumentUploadStore.getState().removeDocumentFromUpload(fileIndex);
-      getQueryClient().setQueryData<
-        Awaited<
-          ReturnType<typeof client.getInterviewRelatedDataByInterviewUuid>
-        >
-      >(queryKeyToInvalidateAnswers, (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          answers: old.answers.map((answer) =>
-            answer.questionUuid === questionUuid ? updatedAnswer : answer,
-          ),
-        };
-      });
+      if (updatedAnswer) {
+        getQueryClient().setQueryData<
+          Awaited<
+            ReturnType<typeof client.getInterviewRelatedDataByInterviewUuid>
+          >
+        >(queryKeyToInvalidateAnswers, (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            answers: old.answers.map((answer) =>
+              answer.questionUuid === questionUuid ? updatedAnswer : answer,
+            ),
+          };
+        });
+      }
       await getQueryClient().invalidateQueries({
         queryKey: queryKeyToInvalidateAnswers,
       });
     })();
+  }
+
+  private async removeUpload({ fileIndex }: { fileIndex: number }) {
+    try {
+      await this.deleteFileFromIndexedDB(fileIndex);
+    } catch (error) {
+      console.error(`Failed to delete file with index ${fileIndex}:`, error);
+    }
+    useDocumentUploadStore.getState().removeDocumentFromUpload(fileIndex);
   }
 }
 

@@ -226,7 +226,7 @@ export const deleteDocumentFromObjectStorageAndFromAnswer = base
         const logger = getLogger(context);
         logger?.warn(
           `If a document should be deleted from an answer, it should exist in the answer payload. ` +
-            `This means a prior deletion has run for this document. Fix this. ` +
+            `This means a prior deletion has run for this document. This can happen normally for single file uploads. ` +
             `Document uuid: ${input.documentUuid}, interview uuid: ${input.interviewUuid}, question uuid: ${input.questionUuid}`,
         );
       }

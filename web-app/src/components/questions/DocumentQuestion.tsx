@@ -15,7 +15,8 @@ import {
   DocumentAnswerPayloadType,
   DocumentQuestionPayloadType,
 } from "@/db/payload-types";
-import { type client, orpc } from "@/orpc/client";
+import { getQueryClient } from "@/lib/query-client";
+import { client, orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { documentUploadService } from "@/services/DocumentUploadService.client";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
@@ -100,7 +101,19 @@ export function DocumentQuestion({
       // For single file upload, if there is already a document that was uploaded, we want to replace it.
       const uploadedDocumentToReplace = documents.at(0);
       if (uploadedDocumentToReplace) {
-        setDocuments([]); // Deletion of the old document from object storage and answer payload will be handled in the orpc handler of the new upload.
+        setDocuments([]);
+        // Deletion of the old document from object storage and answer payload will also be handled in the orpc handler for the new upload.
+        // But if the new upload is aborted, we would get into a state, where the old document was never deleted, but is not shown in the ui.
+        void (async () => {
+          await client.deleteDocumentFromObjectStorageAndFromAnswer({
+            interviewUuid,
+            questionUuid: question.uuid,
+            documentUuid: uploadedDocumentToReplace.documentUuid,
+          });
+          await getQueryClient().invalidateQueries({
+            queryKey: queryKeyToInvalidateAnswers,
+          });
+        })();
       }
     } else {
       // For multiple file upload, if there is already a document with the same name, we want to keep it.
@@ -429,6 +442,8 @@ function File({
               <Eye />
             </Button> */}
               <Button
+                // The type="button" is needed, otherwise this button would submit the form (type="submit"), which would trigger unwanted side effects.
+                type="button"
                 variant="ghost"
                 onClick={() => uploadingDocument.abortController.abort()}
               >
