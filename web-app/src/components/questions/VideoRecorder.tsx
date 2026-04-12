@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import type { RecorderChunk } from "@/stores/uploadStore";
+import type { RecorderChunk } from "@/stores/videoUploadStore";
 import { Button } from "../ui/button";
 
 export function VideoRecorder({

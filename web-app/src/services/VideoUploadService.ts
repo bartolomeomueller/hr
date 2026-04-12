@@ -4,7 +4,7 @@ import {
   type Recording,
   type RecordingChunk,
   useUploadStore,
-} from "@/stores/uploadStore";
+} from "@/stores/videoUploadStore";
 
 // TODO move this UploadService to use s3 part uploading
 

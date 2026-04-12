@@ -6,6 +6,8 @@ import { client } from "@/orpc/client";
 import type { AnswerSelectSchema } from "@/orpc/schema";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 
+// TODO after implementation of new VideoUploadService, remove the indexedDB here
+
 const DB_NAME = "UploadDatabase";
 const STORE_NAME = "documents";
 

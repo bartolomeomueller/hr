@@ -1,7 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { VideoQuestionPayloadType } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
-import { useUploadStore } from "@/stores/uploadStore";
+import { useUploadStore } from "@/stores/videoUploadStore";
 
 export function FinalizeInterview({
   uuid,

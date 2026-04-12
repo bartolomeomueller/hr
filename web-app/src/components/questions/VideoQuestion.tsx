@@ -6,7 +6,7 @@ import {
   VideoQuestionPayloadType,
 } from "@/db/payload-types";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
-import { addChunkAndTryUpload } from "@/services/UploadService";
+import { addChunkAndTryUpload } from "@/services/VideoUploadService";
 import { Large } from "../ui/typography";
 import { VideoRecorder } from "./VideoRecorder";
 
