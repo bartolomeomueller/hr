@@ -56,6 +56,11 @@ export function DocumentQuestion({
   );
   // Always update the uploaded documents state, when the corresponding answer changes, as updates will happen outside of this component.
   useEffect(() => {
+    if (!answer) {
+      setDocuments([]);
+      return;
+    }
+
     const answerPayloadParseResult = DocumentAnswerPayloadType.safeParse(
       answer?.answerPayload,
     );
