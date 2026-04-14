@@ -2,6 +2,7 @@ import type { QueryKey } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type z from "zod";
 import { getQueryClient } from "@/lib/query-client";
+import { isPreSignedURLStillValid } from "@/lib/utils";
 import { client } from "@/orpc/client";
 import type { AnswerSelectSchema } from "@/orpc/schema";
 import {
@@ -289,26 +290,7 @@ class RecordingUploadService {
     if (signal.aborted) {
       return this.removeUpload({ fileIndex });
     }
-    const uploadUrlObj = new URL(uploadUrl);
-    const signDate = uploadUrlObj.searchParams.get("X-Amz-Date");
-    const expires = uploadUrlObj.searchParams.get("X-Amz-Expires");
-    if (!signDate || !expires) {
-      throw new Error("Invalid pre-signed URL: missing required parameters");
-    }
-    const signDateTime = new Date(
-      Date.UTC(
-        parseInt(signDate.substring(0, 4), 10), // year
-        parseInt(signDate.substring(4, 6), 10) - 1, // month (0-based)
-        parseInt(signDate.substring(6, 8), 10), // day
-        parseInt(signDate.substring(9, 11), 10), // hour
-        parseInt(signDate.substring(11, 13), 10), // minute
-        parseInt(signDate.substring(13, 15), 10), // second
-      ),
-    );
-    if (
-      Date.now() >
-      signDateTime.getTime() + parseInt(expires, 10) * 1000 - 60 * 1000
-    ) {
+    if (!isPreSignedURLStillValid(uploadUrl)) {
       // If the current time is past the expiration time minus a buffer (e.g., 1 minute), we consider the URL expired and get a new one.
       ({ uploadUrl, videoUuid, uploadId } =
         await client.createPresignedS3RecordingMultipartUploadUrl({
