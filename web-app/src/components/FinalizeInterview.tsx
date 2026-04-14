@@ -1,7 +1,11 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { FileVideo } from "lucide-react";
 import { VideoQuestionPayloadType } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
-import { useUploadStore } from "@/stores/videoUploadStore";
+import { useRecordingUploadStore } from "@/stores/recordingUploadStore";
+import { H2, Large, Lead, Muted } from "./ui/typography";
+
+// This is now mostly AI generated, if you wanna change it, just do it anew.
 
 export function FinalizeInterview({
   uuid,
@@ -10,7 +14,7 @@ export function FinalizeInterview({
   uuid: string;
   onResourceNotFound: () => never;
 }) {
-  const uploadStore = useUploadStore((state) => state.recordings);
+  const uploadStore = useRecordingUploadStore((state) => state.recordings);
 
   const questionsQuery = useSuspenseQuery(
     orpc.getQuestionsByInterviewUuid.queryOptions({ input: { uuid } }),
@@ -22,46 +26,164 @@ export function FinalizeInterview({
   }
 
   const allRecordingsUploaded = uploadStore.length === 0;
+  const questionLabelsByUuid = getQuestionLabelsByUuid(questionsData.questions);
+  const recordingGroups = getRecordingGroups(uploadStore, questionLabelsByUuid);
 
   if (!allRecordingsUploaded) {
     return (
-      <div>
-        <h2>Schließ diese Seite noch nicht!</h2>
-        <p>
-          Deine Aufnahmen werden derzeit noch hochgeladen. Wenn du diese Seite
-          jetzt verlässt, gehen dein Daten verloren.
-        </p>
-        {uploadStore.map((recording) => (
-          <div key={recording.recordingId}>
-            <p>
-              Aufnahme:{" "}
-              {
-                VideoQuestionPayloadType.safeParse(
-                  questionsData.questions.find(
-                    (q) => q.uuid === recording.questionUuid,
-                  )?.questionPayload,
-                )?.data?.question
-              }
-            </p>
-            <p>
-              Status:{" "}
-              {recording.isUploading
-                ? "Hochladen läuft..."
-                : "Warte auf Hochladen..."}
-            </p>
+      <div className="flex justify-center px-2 sm:px-4 md:px-8">
+        <div className="flex w-full flex-col gap-6 lg:w-9/12">
+          <div className="space-y-3">
+            <H2>Schließ diese Seite noch nicht</H2>
+            <Lead className="text-base sm:text-lg">
+              Deine Aufnahmen werden derzeit noch hochgeladen.
+            </Lead>
+            <Muted>
+              Wenn du diese Seite jetzt verlässt, gehen deine Daten verloren.
+            </Muted>
           </div>
-        ))}
+
+          <div className="space-y-4">
+            {recordingGroups.map((group) => (
+              <section
+                key={group.questionUuid}
+                className="rounded-lg border bg-card p-4 shadow-xs"
+              >
+                <Large className="mb-3 text-base">{group.questionLabel}</Large>
+                <div className="space-y-3">
+                  {group.parts.map((recording) => (
+                    <RecordingUploadProgress
+                      key={recording.indexedDBId}
+                      partNumber={recording.partNumber}
+                      progress={recording.progress}
+                      isLastPart={recording.isLastPart}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div>
-      <h2>Danke für deine Bewerbung</h2>
-      <p>
-        Deine Daten wurden erfolgreich gespeichert. Du kannst das Fenster nun
-        schließen.
-      </p>
+    <div className="flex justify-center px-2 sm:px-4 md:px-8">
+      <div className="flex w-full flex-col gap-4 lg:w-9/12">
+        <div className="rounded-lg border bg-card p-6 shadow-xs">
+          <H2>Danke für deine Bewerbung</H2>
+          <Lead className="mt-4 text-base sm:text-lg">
+            Deine Daten wurden erfolgreich gespeichert.
+          </Lead>
+          <Muted className="mt-2">Du kannst das Fenster nun schließen.</Muted>
+        </div>
+      </div>
     </div>
   );
+}
+
+function RecordingUploadProgress({
+  partNumber,
+  progress,
+  isLastPart,
+}: {
+  partNumber: number;
+  progress: number;
+  isLastPart: boolean;
+}) {
+  return (
+    <div className="relative w-full pb-2 text-sm font-medium">
+      <div className="flex w-full flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <span
+            className="align-text-bottom text-muted-foreground"
+            aria-hidden="true"
+          >
+            <FileVideo className="inline h-4 w-4" />
+          </span>
+          <span className="align-text-top">
+            Teil {partNumber}
+            {isLastPart ? " (letzter Teil)" : ""}
+          </span>
+        </div>
+        <span className="text-sm text-muted-foreground">
+          {Math.round(progress)}%
+        </span>
+      </div>
+      <div className="absolute bottom-0 h-1 w-full rounded-full bg-primary-foreground">
+        <div
+          className="h-1 rounded-full bg-primary"
+          style={{ width: `${progress}%` }}
+        ></div>
+      </div>
+    </div>
+  );
+}
+
+function getQuestionLabelsByUuid(
+  questions: Array<{ uuid: string; questionPayload: unknown }>,
+) {
+  return new Map(
+    questions.map((question) => {
+      const questionPayloadResult = VideoQuestionPayloadType.safeParse(
+        question.questionPayload,
+      );
+
+      return [
+        question.uuid,
+        questionPayloadResult.success
+          ? questionPayloadResult.data.question
+          : "Videofrage",
+      ];
+    }),
+  );
+}
+
+function getRecordingGroups(
+  recordings: Array<{
+    questionUuid: string;
+    indexedDBId: number;
+    progress: number;
+    partNumber: number;
+    isLastPart: boolean;
+  }>,
+  questionLabelsByUuid: Map<string, string>,
+) {
+  const groups = new Map<
+    string,
+    {
+      questionUuid: string;
+      questionLabel: string;
+      parts: Array<{
+        questionUuid: string;
+        indexedDBId: number;
+        progress: number;
+        partNumber: number;
+        isLastPart: boolean;
+      }>;
+    }
+  >();
+
+  for (const recording of recordings) {
+    const existingGroup = groups.get(recording.questionUuid);
+    if (existingGroup) {
+      existingGroup.parts.push(recording);
+      continue;
+    }
+
+    groups.set(recording.questionUuid, {
+      questionUuid: recording.questionUuid,
+      questionLabel:
+        questionLabelsByUuid.get(recording.questionUuid) ?? "Videofrage",
+      parts: [recording],
+    });
+  }
+
+  return Array.from(groups.values()).map((group) => ({
+    ...group,
+    parts: [...group.parts].sort(
+      (left, right) => left.partNumber - right.partNumber,
+    ),
+  }));
 }

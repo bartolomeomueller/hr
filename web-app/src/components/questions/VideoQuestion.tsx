@@ -1,4 +1,5 @@
 import type { QueryKey } from "@tanstack/react-query";
+import { ClientOnly } from "@tanstack/react-router";
 import { useState } from "react";
 import type z from "zod";
 import {
@@ -6,7 +7,7 @@ import {
   VideoQuestionPayloadType,
 } from "@/db/payload-types";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
-import { addChunkAndTryUpload } from "@/services/VideoUploadService";
+import { recordingUploadService } from "@/services/RecordingUploadService.client";
 import { Large } from "../ui/typography";
 import { VideoRecorder } from "./VideoRecorder";
 
@@ -46,21 +47,30 @@ export function VideoQuestion({
       : "",
   );
 
+  // TODO implement recording of new video with warning, that the old recording will be deleted
+
   return (
     <div className="flex flex-col gap-4">
       <Large>{questionPayload.question}</Large>
-      <VideoRecorder
-        maxDurationSec={questionPayload.maxDurationSeconds}
-        maxOvertimeSec={questionPayload.maxOvertimeSeconds}
-        transferNewChunk={(chunk) =>
-          addChunkAndTryUpload({
-            ...chunk,
-            interviewUuid,
-            questionUuid: question.uuid,
-            queryKeyToInvalidateAnswers,
-          })
-        }
-      />
+      <ClientOnly>
+        <VideoRecorder
+          maxDurationSec={questionPayload.maxDurationSeconds}
+          maxOvertimeSec={questionPayload.maxOvertimeSeconds}
+          transferNewChunk={async (chunk) => {
+            const file = new File([chunk.chunk], "namedoesnotmatter", {
+              type: chunk.chunk.type,
+            });
+            void recordingUploadService.addToUploadPipeline({
+              file,
+              interviewUuid,
+              questionUuid: question.uuid,
+              queryKeyToInvalidateAnswers,
+              partNumber: chunk.partNumber,
+              isLastPart: chunk.isLastChunk,
+            });
+          }}
+        />
+      </ClientOnly>
     </div>
   );
 }

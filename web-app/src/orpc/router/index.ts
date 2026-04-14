@@ -17,7 +17,8 @@ import {
 import {
   createPresignedS3DocumentDownloadUrlByUuid,
   createPresignedS3DocumentUploadUrl,
-  createPresignedS3WebmUploadUrl,
+  createPresignedS3RecordingMultipartUploadUrl,
+  finishMultipartUploadForRecording,
 } from "./storage";
 
 export default {
@@ -33,8 +34,9 @@ export default {
 
   // Storage utilities
   createPresignedS3DocumentDownloadUrlByUuid,
-  createPresignedS3WebmUploadUrl,
   createPresignedS3DocumentUploadUrl,
+  createPresignedS3RecordingMultipartUploadUrl,
+  finishMultipartUploadForRecording,
 
   // Admin
   getAllRolesForCurrentUser,

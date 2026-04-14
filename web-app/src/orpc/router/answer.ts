@@ -7,8 +7,14 @@ import {
   VideoAnswerPayloadType,
 } from "@/db/payload-types";
 import { Answer } from "@/db/schema";
-import { videoProcessingQueue } from "@/lib/bullmq";
-import { deleteObject, getObjectKeyForDocumentUuid } from "@/lib/s3";
+import { videoProcessingQueue } from "@/lib/bullmq.server";
+import {
+  deleteObject,
+  deleteObjectsForPrefix,
+  getObjectKeyForDocumentUuid,
+  getObjectKeyForProcessedVideoUuid,
+  getObjectKeyForVideoUuid,
+} from "@/lib/s3.server";
 import { base } from "../base";
 import { debugMiddleware } from "../middlewares";
 import { AnswerSelectSchema } from "../schema";
@@ -25,15 +31,11 @@ export const saveAnswer = base
   )
   .output(AnswerSelectSchema)
   .handler(async ({ input }) => {
-    const videoAnswerPayloadResult = VideoAnswerPayloadType.safeParse(
-      input.answerPayload,
-    );
+    let existingAnswerPayload = null;
 
     const savedAnswer = await db.transaction(async (tx) => {
       const [existingAnswer] = await tx
-        .select({
-          uuid: Answer.uuid,
-        })
+        .select()
         .from(Answer)
         .where(
           and(
@@ -44,6 +46,8 @@ export const saveAnswer = base
         .limit(1);
 
       if (existingAnswer) {
+        existingAnswerPayload = existingAnswer.answerPayload;
+
         const [updatedAnswer] = await tx
           .update(Answer)
           .set({
@@ -69,11 +73,34 @@ export const saveAnswer = base
       return insertedAnswer;
     });
 
-    // TODO move this to a correct place and handle deleting old video -> maybe dedicated handler for video
+    // If the answer payload is a video answer, add a processing job to the queue.
+    const videoAnswerPayloadResult = VideoAnswerPayloadType.safeParse(
+      input.answerPayload,
+    );
     if (videoAnswerPayloadResult.success) {
       await videoProcessingQueue.add("video-processing", {
         uuid: videoAnswerPayloadResult.data.videoUuid,
       });
+
+      // If a previous video answer exists, delete the old video and processed video from object storage.
+      if (existingAnswerPayload) {
+        const existingVideoAnswerPayload = VideoAnswerPayloadType.parse(
+          existingAnswerPayload,
+        );
+        // FIXME this does not stop an ongoing processing job for the old video, add stopping of a running processing job
+        if (existingVideoAnswerPayload.status === "uploaded") {
+          void deleteObject(
+            getObjectKeyForVideoUuid(existingVideoAnswerPayload.videoUuid),
+          );
+        }
+        if (existingVideoAnswerPayload.status === "processed") {
+          void deleteObjectsForPrefix(
+            getObjectKeyForProcessedVideoUuid(
+              existingVideoAnswerPayload.videoUuid,
+            ),
+          );
+        }
+      }
     }
 
     return savedAnswer;

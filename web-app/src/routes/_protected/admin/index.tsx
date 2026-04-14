@@ -89,7 +89,7 @@ export function RolesTable() {
   );
 
   if (!allRolesForThisUser) {
-    return <Button>Erstelle deine erste Stellenanzeige!</Button>;
+    return <Button type="button">Erstelle deine erste Stellenanzeige!</Button>;
   }
 
   return (

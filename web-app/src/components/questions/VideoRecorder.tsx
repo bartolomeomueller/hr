@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import type { RecorderChunk } from "@/stores/videoUploadStore";
 import { Button } from "../ui/button";
 
 export function VideoRecorder({
@@ -10,7 +9,17 @@ export function VideoRecorder({
 }: {
   maxDurationSec: number;
   maxOvertimeSec: number;
-  transferNewChunk: (data: RecorderChunk) => Promise<void>;
+  transferNewChunk: ({
+    recordingId,
+    chunk,
+    isLastChunk,
+    partNumber,
+  }: {
+    recordingId: string;
+    chunk: Blob;
+    isLastChunk: boolean;
+    partNumber: number;
+  }) => Promise<void>;
 }) {
   const maxRecordingSec = maxDurationSec + maxOvertimeSec;
 
@@ -20,6 +29,8 @@ export function VideoRecorder({
   const startTimeRef = useRef<number | null>(null); // The timestamp when the recording was started.
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null); // The setInterval function (running repeatedly) to update the text indicating remaining time.
   const currentRecordingIdRef = useRef<string | null>(null); // The recordingId that should be used for the current recording, so that all chunks get the same id.
+  const recordingBufferRef = useRef<Blob[]>([]); // Buffer to hold the recorded chunks before they are transferred.
+  const currentPartNumberRef = useRef<number>(1); // The current part number for multipart upload, starting at 1.
 
   const [isRecording, setIsRecording] = useState(false);
   const [timeFromLimitSec, setTimeFromLimitSec] = useState(maxDurationSec);
@@ -96,6 +107,7 @@ export function VideoRecorder({
     setError(null);
     setTimeFromLimitSec(maxDurationSec);
     currentRecordingIdRef.current = `optimistic-recording-id-${Date.now()}`;
+    currentPartNumberRef.current = 1;
 
     const stream = await ensurePreviewStream();
     if (!stream) {
@@ -131,12 +143,23 @@ export function VideoRecorder({
       }
 
       if (event.data.size > 0) {
-        void transferNewChunk({
-          recordingId: currentRecordingIdRef.current,
-          chunk: event.data,
-          mimeType,
-          isLastChunk: false,
-        });
+        recordingBufferRef.current.push(event.data);
+
+        const aggregatedSize = recordingBufferRef.current.reduce(
+          (total, blob) => total + blob.size,
+          0,
+        );
+        // If the size of the buffered chunks exceeds 5 MiB, transfer them and clear the buffer.
+        if (aggregatedSize >= 5 * 1024 * 1024) {
+          void transferNewChunk({
+            recordingId: currentRecordingIdRef.current,
+            chunk: new Blob(recordingBufferRef.current, { type: mimeType }),
+            isLastChunk: false,
+            partNumber: currentPartNumberRef.current,
+          });
+          recordingBufferRef.current = [];
+          currentPartNumberRef.current += 1;
+        }
       }
     };
 
@@ -149,11 +172,13 @@ export function VideoRecorder({
 
       void transferNewChunk({
         recordingId: currentRecordingIdRef.current,
-        chunk: new Blob(),
-        mimeType,
+        chunk: new Blob(recordingBufferRef.current, { type: mimeType }),
         isLastChunk: true,
+        partNumber: currentPartNumberRef.current,
       });
+      recordingBufferRef.current = [];
       currentRecordingIdRef.current = null;
+      currentPartNumberRef.current = 1;
     };
 
     mediaRecorder.start(250); // collect data every 250 ms

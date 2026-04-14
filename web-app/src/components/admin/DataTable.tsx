@@ -202,7 +202,7 @@ function FilterColumns<TData, TValue>({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="ml-auto">
+        <Button type="button" variant="outline" className="ml-auto">
           Columns
         </Button>
       </DropdownMenuTrigger>
@@ -254,6 +254,7 @@ export function SortingHeader<TData, TValue>({
 
   return (
     <Button
+      type="button"
       variant="ghost"
       className={cn(
         "p-0",
@@ -312,7 +313,7 @@ export function ActionsDropdown({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="h-4 w-4 p-0">
+        <Button type="button" variant="ghost" className="h-4 w-4 p-0">
           <span className="sr-only">Open menu</span>
           <MoreHorizontal className="h-4 w-4" />
         </Button>

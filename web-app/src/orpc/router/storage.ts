@@ -1,25 +1,86 @@
 import z from "zod";
 import {
+  completeMultipartUploadForVideo,
   createPresignedDownloadUrl,
   createPresignedUploadUrlForDocument,
-  createPresignedUploadUrlForVideo,
+  createPresignedUploadUrlForVideoPart,
   getObjectKeyForDocumentUuid,
-} from "@/lib/s3";
+  initiateMultipartUploadForVideo,
+} from "@/lib/s3.server";
 import { base } from "../base";
 import { debugMiddleware } from "../middlewares";
 
-export const createPresignedS3WebmUploadUrl = base
+export const createPresignedS3RecordingMultipartUploadUrl = base
   .use(debugMiddleware)
-  .input(z.void())
+  .input(
+    z.object({
+      mimeType: z.string(),
+      partNumber: z.number().min(1),
+      uploadId: z.string().optional(),
+      videoUuid: z.uuidv7().optional(),
+    }),
+  )
   .output(
     z.object({
-      uuid: z.uuidv7(),
+      videoUuid: z.uuidv7(),
+      uploadId: z.string(),
       uploadUrl: z.url(),
     }),
   )
-  .handler(async () => {
-    return await createPresignedUploadUrlForVideo({
-      mimeType: "video/webm",
+  .handler(async ({ input }) => {
+    let uploadId = input.uploadId;
+    let videoUuid = input.videoUuid;
+
+    if (input.partNumber === 1) {
+      if (uploadId || videoUuid) {
+        throw new Error(
+          "uploadId and videoUuid should not be provided for the first part",
+        );
+      }
+      const result = await initiateMultipartUploadForVideo({
+        mimeType: input.mimeType,
+      });
+      uploadId = result.uploadId;
+      videoUuid = result.uuid;
+    }
+
+    if (!uploadId || !videoUuid) {
+      throw new Error("uploadId and videoUuid must be provided for parts > 1");
+    }
+
+    const uploadUrl = await createPresignedUploadUrlForVideoPart({
+      partNumber: input.partNumber,
+      uploadId,
+      videoUuid,
+    });
+
+    return {
+      videoUuid,
+      uploadId,
+      uploadUrl,
+    };
+  });
+
+export const finishMultipartUploadForRecording = base
+  .use(debugMiddleware)
+  .input(
+    z.object({
+      videoUuid: z.uuidv7(),
+      uploadId: z.string(),
+      parts: z.array(
+        z.object({
+          ETag: z.string(),
+          PartNumber: z.number().min(1),
+        }),
+      ),
+    }),
+  )
+  // .output()
+  .handler(async ({ input }) => {
+    await completeMultipartUploadForVideo({
+      uploadId: input.uploadId,
+      videoUuid: input.videoUuid,
+      parts: input.parts,
     });
   });
 
