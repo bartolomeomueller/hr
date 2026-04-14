@@ -6,135 +6,8 @@ import { client } from "@/orpc/client";
 import type { AnswerSelectSchema } from "@/orpc/schema";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 
-// TODO after implementation of new VideoUploadService, remove the indexedDB here
-
 class DocumentUploadService {
-  dbPromise: Promise<IDBDatabase> | null = null;
   uploadPipeline: Promise<void> = Promise.resolve();
-
-  static readonly DB_NAME = "UploadDatabase";
-  static readonly STORE_NAME = "documents";
-  static readonly OTHER_STORE_NAME = "recordings";
-
-  constructor() {
-    this.dbPromise = this.getDB();
-  }
-
-  private async getDB(): Promise<IDBDatabase> {
-    if (this.dbPromise) return this.dbPromise;
-    this.dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(DocumentUploadService.DB_NAME, 1); // version 1 of the database
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(DocumentUploadService.STORE_NAME)) {
-          db.createObjectStore(DocumentUploadService.STORE_NAME, {
-            keyPath: "id",
-            autoIncrement: true,
-          });
-        }
-        if (
-          !db.objectStoreNames.contains(DocumentUploadService.OTHER_STORE_NAME)
-        ) {
-          db.createObjectStore(DocumentUploadService.OTHER_STORE_NAME, {
-            keyPath: "id",
-            autoIncrement: true,
-          });
-        }
-      };
-      request.onsuccess = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        resolve(db);
-      };
-      request.onerror = (event) => {
-        this.dbPromise = null; // reset the promise so we can try again in the next call
-        indexedDB.deleteDatabase(DocumentUploadService.DB_NAME); // clean up any potentially corrupted database
-        // const dbs = await indexedDB.databases(); // Get all databases for this domain
-        reject(
-          new Error(
-            `IndexedDB error: ${(event.target as IDBOpenDBRequest).error}`,
-          ),
-        );
-      };
-    });
-    return this.dbPromise;
-  }
-
-  private async storeFileInIndexedDB({
-    file,
-  }: {
-    file: File;
-  }): Promise<number> {
-    const db = await this.getDB();
-    return new Promise<number>((resolve, reject) => {
-      const transaction = db.transaction(
-        DocumentUploadService.STORE_NAME,
-        "readwrite",
-      );
-      const store = transaction.objectStore(DocumentUploadService.STORE_NAME);
-      const request = store.add({ file });
-
-      let id = -1;
-      request.onsuccess = () => {
-        id = request.result as number;
-      };
-
-      transaction.oncomplete = () => resolve(id);
-      transaction.onerror = (event) =>
-        reject(
-          new Error(
-            `Failed to store file: ${(event.target as IDBTransaction).error}`,
-          ),
-        );
-    });
-  }
-
-  private async getFileFromIndexedDB(fileIndex: number): Promise<File> {
-    const db = await this.getDB();
-    return new Promise<File>((resolve, reject) => {
-      const transaction = db.transaction(
-        DocumentUploadService.STORE_NAME,
-        "readonly",
-      );
-      const store = transaction.objectStore(DocumentUploadService.STORE_NAME);
-      const request = store.get(fileIndex);
-
-      // Only request matters, as we only need the file
-      request.onsuccess = () => {
-        const result = request.result;
-        if (result?.file) {
-          resolve(result.file as File);
-        } else {
-          reject(new Error(`No file found with index ${fileIndex}`));
-        }
-      };
-      request.onerror = (event) =>
-        reject(
-          new Error(
-            `Failed to retrieve file: ${(event.target as IDBRequest).error}`,
-          ),
-        );
-    });
-  }
-
-  private async deleteFileFromIndexedDB(fileIndex: number): Promise<void> {
-    const db = await this.getDB();
-    return new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(
-        DocumentUploadService.STORE_NAME,
-        "readwrite",
-      );
-      const store = transaction.objectStore(DocumentUploadService.STORE_NAME);
-      store.delete(fileIndex);
-
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = (event) =>
-        reject(
-          new Error(
-            `Failed to delete file: ${(event.target as IDBTransaction).error}`,
-          ),
-        );
-    });
-  }
 
   async addToUploadPipeline({
     file,
@@ -151,24 +24,22 @@ class DocumentUploadService {
   }) {
     const abortController = new AbortController();
 
-    const fileIndex = await this.storeFileInIndexedDB({ file });
-
     // Already fetch a pre-signed url, so the upload can start immediately, when the pipeline gets to the upload step.
     const preSignedUrlPromise = client.createPresignedS3DocumentUploadUrl({
       mimeType: file.type,
     });
 
-    useDocumentUploadStore.getState().addDocumentToUpload({
+    const localUuid = useDocumentUploadStore.getState().addDocumentToUpload({
       questionUuid,
-      indexedDBId: fileIndex,
-      fileName: file.name,
+      file,
       abortController,
     });
 
     this.uploadPipeline = this.uploadPipeline.then(async () => {
       try {
         await this.uploadDocument({
-          fileIndex,
+          file,
+          localUuid,
           interviewUuid,
           questionUuid,
           queryKeyToInvalidateAnswers,
@@ -181,7 +52,7 @@ class DocumentUploadService {
           "Das Hochladen des Dokuments ist fehlgeschlagen. Bitte versuche es erneut.",
         );
         console.error(error);
-        return this.removeUpload({ fileIndex });
+        return this.removeUpload({ localUuid });
       }
     });
   }
@@ -189,7 +60,8 @@ class DocumentUploadService {
   // TODO somewhere best ui near check file.size to be under 5GiB
 
   private async uploadDocument({
-    fileIndex,
+    file,
+    localUuid,
     interviewUuid,
     questionUuid,
     queryKeyToInvalidateAnswers,
@@ -197,7 +69,8 @@ class DocumentUploadService {
     preSignedUrlPromise,
     isSingleFileUpload,
   }: {
-    fileIndex: number;
+    file: File;
+    localUuid: string;
     interviewUuid: string;
     questionUuid: string;
     queryKeyToInvalidateAnswers: QueryKey;
@@ -206,13 +79,11 @@ class DocumentUploadService {
     isSingleFileUpload: boolean;
   }) {
     if (signal.aborted) {
-      return this.removeUpload({ fileIndex });
+      return this.removeUpload({ localUuid });
     }
 
-    const file = await this.getFileFromIndexedDB(fileIndex);
-
     if (signal.aborted) {
-      return this.removeUpload({ fileIndex });
+      return this.removeUpload({ localUuid });
     }
 
     // Check if the pre-signed URL is still valid. If not, get a new one.
@@ -220,7 +91,7 @@ class DocumentUploadService {
     // X-Amz-Date=20260326T193627Z&X-Amz-Expires=300
     let { uploadUrl, uuid } = await preSignedUrlPromise;
     if (signal.aborted) {
-      return this.removeUpload({ fileIndex });
+      return this.removeUpload({ localUuid });
     }
     const uploadUrlObj = new URL(uploadUrl);
     const signDate = uploadUrlObj.searchParams.get("X-Amz-Date");
@@ -264,9 +135,9 @@ class DocumentUploadService {
           const progress = (event.loaded / event.total) * 100;
           useDocumentUploadStore
             .getState()
-            .updateDocumentProgress(fileIndex, progress);
+            .updateDocumentProgress(localUuid, progress);
           console.log(
-            `Upload progress for file index ${fileIndex}: ${progress}%`,
+            `Upload progress for file index ${localUuid}: ${progress}%`,
           );
         }
       };
@@ -276,18 +147,18 @@ class DocumentUploadService {
         if (xhr.status !== 200) {
           reject(
             new Error(
-              `Upload failed for file index ${fileIndex} with status ${xhr.status}`,
+              `Upload failed for file index ${localUuid} with status ${xhr.status}`,
             ),
           );
           return;
         }
-        console.log(`Upload successful for file index ${fileIndex}`);
+        console.log(`Upload successful for file index ${localUuid}`);
         resolve(false);
       };
       xhr.onerror = () => {
         signal.removeEventListener("abort", abortUpload);
         reject(
-          new Error(`Network error during upload of file index ${fileIndex}`),
+          new Error(`Network error during upload of file index ${localUuid}`),
         );
       };
       xhr.onabort = () => {
@@ -305,7 +176,7 @@ class DocumentUploadService {
     });
 
     if (uploadWasAborted || signal.aborted) {
-      return this.removeUpload({ fileIndex });
+      return this.removeUpload({ localUuid });
     }
 
     // Fire and forget the syncing to the ui, so the next upload can begin.
@@ -328,12 +199,8 @@ class DocumentUploadService {
         );
         console.error("Error adding document to answer:", error);
       }
-      try {
-        await this.deleteFileFromIndexedDB(fileIndex);
-      } catch (error) {
-        console.error(`Failed to delete file with index ${fileIndex}:`, error);
-      }
-      useDocumentUploadStore.getState().removeDocumentFromUpload(fileIndex);
+
+      useDocumentUploadStore.getState().removeDocumentFromUpload(localUuid);
       if (updatedAnswer) {
         getQueryClient().setQueryData<
           Awaited<
@@ -355,16 +222,9 @@ class DocumentUploadService {
     })();
   }
 
-  private async removeUpload({ fileIndex }: { fileIndex: number }) {
-    try {
-      await this.deleteFileFromIndexedDB(fileIndex);
-    } catch (error) {
-      console.error(`Failed to delete file with index ${fileIndex}:`, error);
-    }
-    useDocumentUploadStore.getState().removeDocumentFromUpload(fileIndex);
+  private removeUpload({ localUuid }: { localUuid: string }) {
+    useDocumentUploadStore.getState().removeDocumentFromUpload(localUuid);
   }
 }
 
 export const documentUploadService = new DocumentUploadService();
-
-// TODO think about how to start the upload pipeline on page reload

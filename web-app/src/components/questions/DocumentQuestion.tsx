@@ -120,7 +120,7 @@ export function DocumentQuestion({
       filesToAddToUpload = nextFiles.filter((file) => {
         if (
           documents.some((document) => document.fileName === file.name) ||
-          documentsToUpload.some((doc) => doc.fileName === file.name)
+          documentsToUpload.some((doc) => doc.file.name === file.name)
         ) {
           return false;
         }
@@ -179,8 +179,8 @@ export function DocumentQuestion({
         {documentsToUpload.map((doc) => {
           return (
             <File
-              key={doc.indexedDBId}
-              fileName={doc.fileName}
+              key={doc.localUuid}
+              fileName={doc.file.name}
               uploadingDocument={{
                 progress: doc.progress,
                 abortController: doc.abortController,

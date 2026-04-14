@@ -38,7 +38,6 @@ class RecordingUploadService {
 
   static readonly DB_NAME = "UploadDatabase";
   static readonly STORE_NAME = "recordings";
-  static readonly OTHER_STORE_NAME = "documents";
 
   constructor() {
     this.dbPromise = this.getDB();
@@ -52,14 +51,6 @@ class RecordingUploadService {
         const db = (event.target as IDBOpenDBRequest).result;
         if (!db.objectStoreNames.contains(RecordingUploadService.STORE_NAME)) {
           db.createObjectStore(RecordingUploadService.STORE_NAME, {
-            keyPath: "id",
-            autoIncrement: true,
-          });
-        }
-        if (
-          !db.objectStoreNames.contains(RecordingUploadService.OTHER_STORE_NAME)
-        ) {
-          db.createObjectStore(RecordingUploadService.OTHER_STORE_NAME, {
             keyPath: "id",
             autoIncrement: true,
           });

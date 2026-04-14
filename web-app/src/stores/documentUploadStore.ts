@@ -1,9 +1,9 @@
 import { create } from "zustand";
 
 export type Documents = {
+  localUuid: string;
   questionUuid: string;
-  indexedDBId: number;
-  fileName: string;
+  file: File;
   progress: number;
   abortController: AbortController;
 };
@@ -11,9 +11,11 @@ export type Documents = {
 export type DocumentUploadStore = {
   documentsToUpload: Documents[];
   getDocumentsToUploadForQuestionUuid: (questionUuid: string) => Documents[];
-  addDocumentToUpload: (document: Omit<Documents, "progress">) => void;
-  removeDocumentFromUpload: (indexedDBId: number) => void;
-  updateDocumentProgress: (indexedDBId: number, progress: number) => void;
+  addDocumentToUpload: (
+    document: Omit<Documents, "progress" | "localUuid">,
+  ) => string;
+  removeDocumentFromUpload: (localUuid: string) => void;
+  updateDocumentProgress: (localUuid: string, progress: number) => void;
 };
 
 export const useDocumentUploadStore = create<DocumentUploadStore>(
@@ -23,23 +25,28 @@ export const useDocumentUploadStore = create<DocumentUploadStore>(
       get().documentsToUpload.filter(
         (doc) => doc.questionUuid === questionUuid,
       ),
-    addDocumentToUpload: (document: Omit<Documents, "progress">) =>
+    addDocumentToUpload: (
+      document: Omit<Documents, "progress" | "localUuid">,
+    ) => {
+      const localUuid = crypto.randomUUID();
       set((state) => ({
         documentsToUpload: [
           ...state.documentsToUpload,
-          { ...document, progress: 0 },
+          { ...document, progress: 0, localUuid },
         ],
-      })),
-    removeDocumentFromUpload: (indexedDBId: number) =>
+      }));
+      return localUuid;
+    },
+    removeDocumentFromUpload: (localUuid: string) =>
       set((state) => ({
         documentsToUpload: state.documentsToUpload.filter(
-          (doc) => doc.indexedDBId !== indexedDBId,
+          (doc) => doc.localUuid !== localUuid,
         ),
       })),
-    updateDocumentProgress: (indexedDBId: number, progress: number) =>
+    updateDocumentProgress: (localUuid: string, progress: number) =>
       set((state) => ({
         documentsToUpload: state.documentsToUpload.map((doc) =>
-          doc.indexedDBId === indexedDBId ? { ...doc, progress } : doc,
+          doc.localUuid === localUuid ? { ...doc, progress } : doc,
         ),
       })),
   }),
