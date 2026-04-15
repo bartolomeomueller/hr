@@ -132,9 +132,6 @@ export class DocumentUploadService {
           this.dependencies.uploadStore
             .getState()
             .updateDocumentProgress(localUuid, progress);
-          console.log(
-            `Upload progress for file index ${localUuid}: ${progress}%`,
-          );
         }
       };
 
@@ -148,7 +145,6 @@ export class DocumentUploadService {
           );
           return;
         }
-        console.log(`Upload successful for file index ${localUuid}`);
         resolve(false);
       };
       xhr.onerror = () => {
