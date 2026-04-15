@@ -10,6 +10,17 @@ import {
   useUploadedRecordingPartsStore,
 } from "@/stores/recordingUploadStore";
 
+const defaultRecordingUploadServiceDependencies = {
+  client,
+  getQueryClient,
+  isPreSignedURLStillValid,
+  toast,
+  recordingUploadStore: useRecordingUploadStore,
+  uploadedRecordingPartsStore: useUploadedRecordingPartsStore,
+  createXmlHttpRequest: () => new XMLHttpRequest(),
+  indexedDb: indexedDB,
+};
+
 // So the options are:
 // 1) Streaming upload with fetch:
 //   - No firefox support till end of year.
@@ -33,21 +44,26 @@ import {
 // This service combines data sources for its working. It uses indexedDB to store the recordings parts,
 // and uses a two persisted zustand stores to manage the state of the uploads and keep track of upload data, like the uploaded parts and uploadId.
 
-class RecordingUploadService {
+export class RecordingUploadService {
   dbPromise: Promise<IDBDatabase> | null = null;
   uploadPipeline: Promise<void> = Promise.resolve();
 
   static readonly DB_NAME = "UploadDatabase";
   static readonly STORE_NAME = "recordings";
 
-  constructor() {
+  constructor(
+    private readonly dependencies: typeof defaultRecordingUploadServiceDependencies = defaultRecordingUploadServiceDependencies,
+  ) {
     this.dbPromise = this.getDB();
   }
 
   private async getDB(): Promise<IDBDatabase> {
     if (this.dbPromise) return this.dbPromise;
     this.dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(RecordingUploadService.DB_NAME, 1); // version 1 of the database
+      const request = this.dependencies.indexedDb.open(
+        RecordingUploadService.DB_NAME,
+        1,
+      );
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
         if (!db.objectStoreNames.contains(RecordingUploadService.STORE_NAME)) {
@@ -63,7 +79,9 @@ class RecordingUploadService {
       };
       request.onerror = (event) => {
         this.dbPromise = null; // reset the promise so we can try again in the next call
-        indexedDB.deleteDatabase(RecordingUploadService.DB_NAME); // clean up any potentially corrupted database
+        this.dependencies.indexedDb.deleteDatabase(
+          RecordingUploadService.DB_NAME,
+        ); // clean up any potentially corrupted database
         // const dbs = await indexedDB.databases(); // Get all databases for this domain
         reject(
           new Error(
@@ -180,7 +198,8 @@ class RecordingUploadService {
       let counter = 0;
       while (!uploadId || !videoUuid) {
         const multipartIds =
-          useUploadedRecordingPartsStore.getState().uploadedParts[questionUuid];
+          this.dependencies.uploadedRecordingPartsStore.getState()
+            .uploadedParts[questionUuid];
         if (multipartIds) {
           uploadId = multipartIds.uploadId;
           videoUuid = multipartIds.videoUuid;
@@ -190,7 +209,7 @@ class RecordingUploadService {
         }
         counter++;
         if (counter > 10) {
-          toast.error(
+          this.dependencies.toast.error(
             "Das Hochladen des Videos ist nicht möglich. Bitte lade die Seite neu und versuche es erneut.",
           );
         }
@@ -199,14 +218,14 @@ class RecordingUploadService {
 
     // Already fetch a pre-signed url, so the upload can start immediately, when the pipeline gets to the upload step.
     const preSignedUrlPromise =
-      client.createPresignedS3RecordingMultipartUploadUrl({
+      this.dependencies.client.createPresignedS3RecordingMultipartUploadUrl({
         mimeType: file.type,
         partNumber,
         uploadId,
         videoUuid,
       });
 
-    useRecordingUploadStore.getState().addRecordingToUpload({
+    this.dependencies.recordingUploadStore.getState().addRecordingToUpload({
       questionUuid,
       indexedDBId: fileIndex,
       abortController,
@@ -231,7 +250,7 @@ class RecordingUploadService {
           break; // if upload succeeds, break out of the retry loop
         } catch (error) {
           if (i === 3) {
-            toast.error(
+            this.dependencies.toast.error(
               "Das Hochladen des Dokuments ist fehlgeschlagen. Bitte versuche es erneut.",
             );
             console.error(error);
@@ -281,7 +300,7 @@ class RecordingUploadService {
     // X-Amz-Date=20260326T193627Z&X-Amz-Expires=300
     let { uploadUrl, videoUuid, uploadId } = await preSignedUrlPromise;
     if (partNumber === 1) {
-      useUploadedRecordingPartsStore.getState().setMultipartIds({
+      this.dependencies.uploadedRecordingPartsStore.getState().setMultipartIds({
         questionUuid,
         videoUuid,
         uploadId,
@@ -290,17 +309,59 @@ class RecordingUploadService {
     if (signal.aborted) {
       return this.removeUpload({ fileIndex });
     }
-    if (!isPreSignedURLStillValid(uploadUrl)) {
+    if (!this.dependencies.isPreSignedURLStillValid(uploadUrl)) {
       // If the current time is past the expiration time minus a buffer (e.g., 1 minute), we consider the URL expired and get a new one.
       ({ uploadUrl, videoUuid, uploadId } =
-        await client.createPresignedS3RecordingMultipartUploadUrl({
-          mimeType: file.type,
-          partNumber,
-        }));
+        await this.dependencies.client.createPresignedS3RecordingMultipartUploadUrl(
+          {
+            mimeType: file.type,
+            partNumber,
+          },
+        ));
     }
 
-    const uploadWasAborted = await new Promise<boolean>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
+    const uploadWasAborted = await this.uploadFileToPresignedUrl({
+      file,
+      fileIndex,
+      questionUuid,
+      partNumber,
+      uploadUrl,
+      signal,
+    });
+
+    if (uploadWasAborted || signal.aborted) {
+      return this.removeUpload({ fileIndex });
+    }
+
+    // Fire and forget the syncing to the ui, so the next upload can begin.
+    void this.syncUploadedRecordingToAnswer({
+      fileIndex,
+      interviewUuid,
+      questionUuid,
+      queryKeyToInvalidateAnswers,
+      isLastPart,
+      videoUuid,
+      uploadId,
+    });
+  }
+
+  private uploadFileToPresignedUrl({
+    file,
+    fileIndex,
+    questionUuid,
+    partNumber,
+    uploadUrl,
+    signal,
+  }: {
+    file: File;
+    fileIndex: number;
+    questionUuid: string;
+    partNumber: number;
+    uploadUrl: string;
+    signal: AbortSignal;
+  }) {
+    return new Promise<boolean>((resolve, reject) => {
+      const xhr = this.dependencies.createXmlHttpRequest();
       const abortUpload = () => {
         xhr.abort();
       };
@@ -313,7 +374,7 @@ class RecordingUploadService {
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) {
           const progress = (event.loaded / event.total) * 100;
-          useRecordingUploadStore
+          this.dependencies.recordingUploadStore
             .getState()
             .updateRecordingProgress(fileIndex, progress);
           console.log(
@@ -341,11 +402,13 @@ class RecordingUploadService {
           );
           return;
         }
-        useUploadedRecordingPartsStore.getState().addUploadedPart({
-          questionUuid,
-          PartNumber: partNumber,
-          ETag,
-        });
+        this.dependencies.uploadedRecordingPartsStore
+          .getState()
+          .addUploadedPart({
+            questionUuid,
+            PartNumber: partNumber,
+            ETag,
+          });
         console.log(`Upload successful for file index ${fileIndex}`);
         resolve(false);
       };
@@ -368,59 +431,83 @@ class RecordingUploadService {
 
       xhr.send(file);
     });
+  }
 
-    if (uploadWasAborted || signal.aborted) {
-      return this.removeUpload({ fileIndex });
+  private async syncUploadedRecordingToAnswer({
+    fileIndex,
+    interviewUuid,
+    questionUuid,
+    queryKeyToInvalidateAnswers,
+    isLastPart,
+    videoUuid,
+    uploadId,
+  }: {
+    fileIndex: number;
+    interviewUuid: string;
+    questionUuid: string;
+    queryKeyToInvalidateAnswers: QueryKey;
+    isLastPart: boolean;
+    videoUuid: string;
+    uploadId: string;
+  }) {
+    try {
+      await this.deleteFileFromIndexedDB(fileIndex);
+    } catch (error) {
+      console.error(`Failed to delete file with index ${fileIndex}:`, error);
+    }
+    this.dependencies.recordingUploadStore
+      .getState()
+      .removeRecordingFromUpload(fileIndex);
+
+    if (!isLastPart) return;
+
+    this.dependencies.uploadedRecordingPartsStore
+      .getState()
+      .setUploadLifecycleStatus({
+        questionUuid,
+        status: "finalizing",
+      });
+
+    try {
+      await this.dependencies.client.finishMultipartUploadForRecording({
+        videoUuid,
+        uploadId,
+        parts:
+          this.dependencies.uploadedRecordingPartsStore.getState()
+            .uploadedParts[questionUuid].parts,
+      });
+    } catch (error) {
+      this.dependencies.toast.error(
+        "Das Abschließen des Video-Uploads ist fehlgeschlagen. Bitte versuche es erneut.",
+      );
+      console.error("Error finishing multipart upload:", error);
     }
 
-    // Fire and forget the syncing to the ui, so the next upload can begin.
-    void (async () => {
-      try {
-        await this.deleteFileFromIndexedDB(fileIndex);
-      } catch (error) {
-        console.error(`Failed to delete file with index ${fileIndex}:`, error);
-      }
-      useRecordingUploadStore.getState().removeRecordingFromUpload(fileIndex);
-
-      if (!isLastPart) return; // The rest should only happen if it was the last part.
-
-      try {
-        await client.finishMultipartUploadForRecording({
+    let updatedAnswer: z.infer<typeof AnswerSelectSchema> | null = null;
+    try {
+      updatedAnswer = await this.dependencies.client.saveAnswer({
+        interviewUuid,
+        questionUuid,
+        answerPayload: {
           videoUuid,
-          uploadId,
-          parts:
-            useUploadedRecordingPartsStore.getState().uploadedParts[
-              questionUuid
-            ].parts,
-        });
-      } catch (error) {
-        toast.error(
-          "Das Abschließen des Video-Uploads ist fehlgeschlagen. Bitte versuche es erneut.",
-        );
-        console.error("Error finishing multipart upload:", error);
-      }
+          status: "uploaded",
+        },
+      });
+    } catch (error) {
+      this.dependencies.toast.error(
+        "Das Hochladen des Videos ist fehlgeschlagen. Bitte versuche es erneut.",
+      );
+      console.error("Error adding recording to answer:", error);
+    }
 
-      let updatedAnswer: z.infer<typeof AnswerSelectSchema> | null = null;
-      try {
-        updatedAnswer = await client.saveAnswer({
-          interviewUuid,
-          questionUuid,
-          answerPayload: {
-            videoUuid,
-            status: "uploaded",
-          },
-        });
-      } catch (error) {
-        toast.error(
-          "Das Hochladen des Videos ist fehlgeschlagen. Bitte versuche es erneut.",
-        );
-        console.error("Error adding recording to answer:", error);
-      }
-
-      if (updatedAnswer) {
-        getQueryClient().setQueryData<
+    if (updatedAnswer) {
+      this.dependencies
+        .getQueryClient()
+        .setQueryData<
           Awaited<
-            ReturnType<typeof client.getInterviewRelatedDataByInterviewUuid>
+            ReturnType<
+              typeof this.dependencies.client.getInterviewRelatedDataByInterviewUuid
+            >
           >
         >(queryKeyToInvalidateAnswers, (old) => {
           if (!old) return old;
@@ -431,15 +518,14 @@ class RecordingUploadService {
             ),
           };
         });
-      }
-      await getQueryClient().invalidateQueries({
-        queryKey: queryKeyToInvalidateAnswers,
-      });
+    }
+    await this.dependencies.getQueryClient().invalidateQueries({
+      queryKey: queryKeyToInvalidateAnswers,
+    });
 
-      useUploadedRecordingPartsStore
-        .getState()
-        .removeUploadedPartsForQuestion(questionUuid);
-    })();
+    this.dependencies.uploadedRecordingPartsStore
+      .getState()
+      .removeUploadedPartsForQuestion(questionUuid);
   }
 
   private async removeUpload({ fileIndex }: { fileIndex: number }) {
@@ -448,7 +534,9 @@ class RecordingUploadService {
     } catch (error) {
       console.error(`Failed to delete file with index ${fileIndex}:`, error);
     }
-    useRecordingUploadStore.getState().removeRecordingFromUpload(fileIndex);
+    this.dependencies.recordingUploadStore
+      .getState()
+      .removeRecordingFromUpload(fileIndex);
   }
 }
 

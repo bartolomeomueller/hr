@@ -54,10 +54,13 @@ export const useRecordingUploadStore = create<RecordingUploadStore>()(
   ),
 );
 
+export type RecordingUploadLifecycleStatus = "uploading" | "finalizing";
+
 type UploadedRecordingParts = {
   [questionUuid: string]: {
     videoUuid: string;
     uploadId: string;
+    status: RecordingUploadLifecycleStatus;
     parts: {
       PartNumber: number;
       ETag: string;
@@ -85,9 +88,19 @@ type UploadedRecordingPartsStore = {
     videoUuid: string;
     uploadId: string;
   }) => void;
+  setUploadLifecycleStatus: ({
+    questionUuid,
+    status,
+  }: {
+    questionUuid: string;
+    status: RecordingUploadLifecycleStatus;
+  }) => void;
   removeUploadedPartsForQuestion: (questionUuid: string) => void;
 };
 
+// The recording upload service owns writes to the recording upload stores.
+// The UI may read these stores, but it should delegate upload orchestration,
+// resume/finalization, cancellation, and cleanup to the service.
 export const useUploadedRecordingPartsStore =
   create<UploadedRecordingPartsStore>()(
     persist(
@@ -100,6 +113,8 @@ export const useUploadedRecordingPartsStore =
               [questionUuid]: {
                 videoUuid: state.uploadedParts[questionUuid]?.videoUuid ?? "",
                 uploadId: state.uploadedParts[questionUuid]?.uploadId ?? "",
+                status:
+                  state.uploadedParts[questionUuid]?.status ?? "uploading",
                 parts: [
                   ...(state.uploadedParts[questionUuid]?.parts ?? []),
                   { PartNumber, ETag },
@@ -109,16 +124,44 @@ export const useUploadedRecordingPartsStore =
           })),
         // Only happens once per question, always before the call to addUploadedPart
         setMultipartIds: ({ questionUuid, videoUuid, uploadId }) =>
-          set((state) => ({
-            uploadedParts: {
-              ...state.uploadedParts,
-              [questionUuid]: {
-                videoUuid,
-                uploadId,
-                parts: [],
+          set((state) => {
+            if (state.uploadedParts[questionUuid]) {
+              throw new Error(
+                `Invariant violation: multipart upload state for question ${questionUuid} was initialized more than once. Please report this bug.`,
+              );
+            }
+
+            return {
+              uploadedParts: {
+                ...state.uploadedParts,
+                [questionUuid]: {
+                  videoUuid,
+                  uploadId,
+                  status: "uploading",
+                  parts: [],
+                },
               },
-            },
-          })),
+            };
+          }),
+        // Only happens after setMultipartIds initialized the multipart session for the question.
+        setUploadLifecycleStatus: ({ questionUuid, status }) =>
+          set((state) => {
+            if (!state.uploadedParts[questionUuid]) {
+              throw new Error(
+                `Invariant violation: missing multipart upload state for question ${questionUuid}. Please report this bug.`,
+              );
+            }
+
+            return {
+              uploadedParts: {
+                ...state.uploadedParts,
+                [questionUuid]: {
+                  ...state.uploadedParts[questionUuid],
+                  status,
+                },
+              },
+            };
+          }),
         removeUploadedPartsForQuestion: (questionUuid: string) =>
           set((state) => {
             const { [questionUuid]: _removedQuestion, ...remainingParts } =
