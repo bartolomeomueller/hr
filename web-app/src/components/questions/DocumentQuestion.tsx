@@ -18,7 +18,7 @@ import {
 import { getQueryClient } from "@/lib/query-client";
 import { client, orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
-import { documentUploadService } from "@/services/DocumentUploadService.client";
+import { documentUploadService } from "@/services/DocumentUploadService";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 import { Button } from "../ui/button";
 import { Label } from "../ui/label";

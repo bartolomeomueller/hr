@@ -107,7 +107,7 @@ export class DocumentUploadService {
       return this.removeUpload({ localUuid });
     }
 
-    if (!isPreSignedURLStillValid(uploadUrl)) {
+    if (!this.dependencies.isPreSignedURLStillValid(uploadUrl)) {
       // If the current time is past the expiration time minus a buffer (e.g., 1 minute), we consider the URL expired and get a new one.
       ({ uploadUrl, uuid } =
         await this.dependencies.client.createPresignedS3DocumentUploadUrl({
