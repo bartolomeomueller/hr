@@ -7,8 +7,21 @@ import { client } from "@/orpc/client";
 import type { AnswerSelectSchema } from "@/orpc/schema";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 
-class DocumentUploadService {
+const defaultDocumentUploadServiceDependencies = {
+  client,
+  getQueryClient,
+  isPreSignedURLStillValid,
+  toast,
+  uploadStore: useDocumentUploadStore,
+  createXmlHttpRequest: () => new XMLHttpRequest(),
+};
+
+export class DocumentUploadService {
   uploadPipeline: Promise<void> = Promise.resolve();
+
+  constructor(
+    private readonly dependencies: typeof defaultDocumentUploadServiceDependencies = defaultDocumentUploadServiceDependencies,
+  ) {}
 
   async addToUploadPipeline({
     file,
@@ -26,15 +39,18 @@ class DocumentUploadService {
     const abortController = new AbortController();
 
     // Already fetch a pre-signed url, so the upload can start immediately, when the pipeline gets to the upload step.
-    const preSignedUrlPromise = client.createPresignedS3DocumentUploadUrl({
-      mimeType: file.type,
-    });
+    const preSignedUrlPromise =
+      this.dependencies.client.createPresignedS3DocumentUploadUrl({
+        mimeType: file.type,
+      });
 
-    const localUuid = useDocumentUploadStore.getState().addDocumentToUpload({
-      questionUuid,
-      file,
-      abortController,
-    });
+    const localUuid = this.dependencies.uploadStore
+      .getState()
+      .addDocumentToUpload({
+        questionUuid,
+        file,
+        abortController,
+      });
 
     this.uploadPipeline = this.uploadPipeline.then(async () => {
       try {
@@ -49,7 +65,7 @@ class DocumentUploadService {
           isSingleFileUpload,
         });
       } catch (error) {
-        toast.error(
+        this.dependencies.toast.error(
           "Das Hochladen des Dokuments ist fehlgeschlagen. Bitte versuche es erneut.",
         );
         console.error(error);
@@ -93,13 +109,14 @@ class DocumentUploadService {
 
     if (!isPreSignedURLStillValid(uploadUrl)) {
       // If the current time is past the expiration time minus a buffer (e.g., 1 minute), we consider the URL expired and get a new one.
-      ({ uploadUrl, uuid } = await client.createPresignedS3DocumentUploadUrl({
-        mimeType: file.type,
-      }));
+      ({ uploadUrl, uuid } =
+        await this.dependencies.client.createPresignedS3DocumentUploadUrl({
+          mimeType: file.type,
+        }));
     }
 
     const uploadWasAborted = await new Promise<boolean>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
+      const xhr = this.dependencies.createXmlHttpRequest();
       const abortUpload = () => {
         xhr.abort();
       };
@@ -112,7 +129,7 @@ class DocumentUploadService {
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) {
           const progress = (event.loaded / event.total) * 100;
-          useDocumentUploadStore
+          this.dependencies.uploadStore
             .getState()
             .updateDocumentProgress(localUuid, progress);
           console.log(
@@ -162,7 +179,7 @@ class DocumentUploadService {
     void (async () => {
       let updatedAnswer: z.infer<typeof AnswerSelectSchema> | null = null;
       try {
-        updatedAnswer = await client.addNewDocumentToAnswer({
+        updatedAnswer = await this.dependencies.client.addNewDocumentToAnswer({
           interviewUuid,
           questionUuid,
           document: {
@@ -173,36 +190,44 @@ class DocumentUploadService {
           isSingleFileUpload,
         });
       } catch (error) {
-        toast.error(
+        this.dependencies.toast.error(
           "Das Hochladen des Dokuments ist fehlgeschlagen. Bitte versuche es erneut.",
         );
         console.error("Error adding document to answer:", error);
       }
 
-      useDocumentUploadStore.getState().removeDocumentFromUpload(localUuid);
+      this.dependencies.uploadStore
+        .getState()
+        .removeDocumentFromUpload(localUuid);
       if (updatedAnswer) {
-        getQueryClient().setQueryData<
-          Awaited<
-            ReturnType<typeof client.getInterviewRelatedDataByInterviewUuid>
-          >
-        >(queryKeyToInvalidateAnswers, (old) => {
-          if (!old) return old;
-          return {
-            ...old,
-            answers: old.answers.map((answer) =>
-              answer.questionUuid === questionUuid ? updatedAnswer : answer,
-            ),
-          };
-        });
+        this.dependencies
+          .getQueryClient()
+          .setQueryData<
+            Awaited<
+              ReturnType<
+                typeof this.dependencies.client.getInterviewRelatedDataByInterviewUuid
+              >
+            >
+          >(queryKeyToInvalidateAnswers, (old) => {
+            if (!old) return old;
+            return {
+              ...old,
+              answers: old.answers.map((answer) =>
+                answer.questionUuid === questionUuid ? updatedAnswer : answer,
+              ),
+            };
+          });
       }
-      await getQueryClient().invalidateQueries({
+      await this.dependencies.getQueryClient().invalidateQueries({
         queryKey: queryKeyToInvalidateAnswers,
       });
     })();
   }
 
   private removeUpload({ localUuid }: { localUuid: string }) {
-    useDocumentUploadStore.getState().removeDocumentFromUpload(localUuid);
+    this.dependencies.uploadStore
+      .getState()
+      .removeDocumentFromUpload(localUuid);
   }
 }
 
