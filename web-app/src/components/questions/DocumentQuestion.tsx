@@ -96,8 +96,9 @@ export function DocumentQuestion({
       }
 
       // If a file is already uploading, then cancel the upload.
-      if (documentsToUpload.at(0)) {
-        documentsToUpload.at(0)?.abortController.abort();
+      const currentUploadingDocument = documentsToUpload.at(0);
+      if (currentUploadingDocument) {
+        documentUploadService.cancelUpload(currentUploadingDocument.localUuid);
       }
 
       filesToAddToUpload = nextFiles.slice(0, 1);
@@ -187,8 +188,8 @@ export function DocumentQuestion({
               key={doc.localUuid}
               fileName={doc.file.name}
               uploadingDocument={{
+                localUuid: doc.localUuid,
                 progress: doc.progress,
-                abortController: doc.abortController,
               }}
               queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
             />
@@ -292,8 +293,8 @@ function File({
     questionUuid: string;
   };
   uploadingDocument?: {
+    localUuid: string;
     progress: number;
-    abortController: AbortController;
   };
   queryKeyToInvalidateAnswers: QueryKey;
 }) {
@@ -450,7 +451,11 @@ function File({
                 // The type="button" is needed, otherwise this button would submit the form (type="submit"), which would trigger unwanted side effects.
                 type="button"
                 variant="ghost"
-                onClick={() => uploadingDocument.abortController.abort()}
+                onClick={() =>
+                  documentUploadService.cancelUpload(
+                    uploadingDocument.localUuid,
+                  )
+                }
               >
                 {/* Cancel */}
                 <CircleX />

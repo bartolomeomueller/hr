@@ -1,5 +1,10 @@
 import { create } from "zustand";
 
+// Architectural boundary for this store:
+// Only the DocumentUploadService may perform writes to this store.
+// UI components may subscribe to this store for rendering, but should not call its write methods directly.
+// UI components should also not use control objects from this store to drive behavior; actions such as cancellation should be delegated back to the service.
+
 export type Documents = {
   localUuid: string;
   questionUuid: string;

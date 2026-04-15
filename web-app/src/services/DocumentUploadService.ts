@@ -74,6 +74,14 @@ export class DocumentUploadService {
     });
   }
 
+  cancelUpload(localUuid: string) {
+    const documentToUpload = this.dependencies.uploadStore
+      .getState()
+      .documentsToUpload.find((document) => document.localUuid === localUuid);
+
+    documentToUpload?.abortController.abort();
+  }
+
   // TODO somewhere best ui near check file.size to be under 5GiB
 
   private async uploadDocument({
