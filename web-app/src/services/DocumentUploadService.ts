@@ -16,6 +16,8 @@ const defaultDocumentUploadServiceDependencies = {
   createXmlHttpRequest: () => new XMLHttpRequest(),
 };
 
+const MAX_DOCUMENT_UPLOAD_SIZE_IN_BYTES = 100 * 1024 * 1024; // 100 MiB
+
 // This service is the sole writer to the document upload store and owns the
 // upload lifecycle: queueing, progress updates, cancellation, cleanup, and
 // cache synchronization. Components may read derived upload state and delegate
@@ -40,6 +42,13 @@ export class DocumentUploadService {
     queryKeyToInvalidateAnswers: QueryKey;
     isSingleFileUpload: boolean;
   }) {
+    if (file.size > MAX_DOCUMENT_UPLOAD_SIZE_IN_BYTES) {
+      this.dependencies.toast.error(
+        "Dokumente dürfen maximal 100 MiB gross sein.",
+      );
+      return;
+    }
+
     const abortController = new AbortController();
 
     // Already fetch a pre-signed url, so the upload can start immediately, when the pipeline gets to the upload step.
@@ -111,9 +120,6 @@ export class DocumentUploadService {
       return this.removeUpload({ localUuid });
     }
 
-    // Check if the pre-signed URL is still valid. If not, get a new one.
-    // Url contains the information below as search params
-    // X-Amz-Date=20260326T193627Z&X-Amz-Expires=300
     let { uploadUrl, uuid } = await preSignedUrlPromise;
     if (signal.aborted) {
       return this.removeUpload({ localUuid });
@@ -127,7 +133,41 @@ export class DocumentUploadService {
         }));
     }
 
-    const uploadWasAborted = await new Promise<boolean>((resolve, reject) => {
+    const uploadWasAborted = await this.uploadFileToPresignedUrl({
+      file,
+      localUuid,
+      uploadUrl,
+      signal,
+    });
+
+    if (uploadWasAborted || signal.aborted) {
+      return this.removeUpload({ localUuid });
+    }
+
+    // Fire and forget the syncing to the ui, so the next upload can begin.
+    void this.syncUploadedDocumentToAnswer({
+      file,
+      localUuid,
+      interviewUuid,
+      questionUuid,
+      queryKeyToInvalidateAnswers,
+      isSingleFileUpload,
+      documentUuid: uuid,
+    });
+  }
+
+  private uploadFileToPresignedUrl({
+    file,
+    localUuid,
+    uploadUrl,
+    signal,
+  }: {
+    file: File;
+    localUuid: string;
+    uploadUrl: string;
+    signal: AbortSignal;
+  }) {
+    return new Promise<boolean>((resolve, reject) => {
       const xhr = this.dependencies.createXmlHttpRequest();
       const abortUpload = () => {
         xhr.abort();
@@ -178,58 +218,69 @@ export class DocumentUploadService {
 
       xhr.send(file);
     });
+  }
 
-    if (uploadWasAborted || signal.aborted) {
-      return this.removeUpload({ localUuid });
+  private async syncUploadedDocumentToAnswer({
+    file,
+    localUuid,
+    interviewUuid,
+    questionUuid,
+    queryKeyToInvalidateAnswers,
+    isSingleFileUpload,
+    documentUuid,
+  }: {
+    file: File;
+    localUuid: string;
+    interviewUuid: string;
+    questionUuid: string;
+    queryKeyToInvalidateAnswers: QueryKey;
+    isSingleFileUpload: boolean;
+    documentUuid: string;
+  }) {
+    let updatedAnswer: z.infer<typeof AnswerSelectSchema> | null = null;
+    try {
+      updatedAnswer = await this.dependencies.client.addNewDocumentToAnswer({
+        interviewUuid,
+        questionUuid,
+        document: {
+          documentUuid,
+          fileName: file.name,
+          mimeType: file.type,
+        },
+        isSingleFileUpload,
+      });
+    } catch (error) {
+      this.dependencies.toast.error(
+        "Das Hochladen des Dokuments ist fehlgeschlagen. Bitte versuche es erneut.",
+      );
+      console.error("Error adding document to answer:", error);
     }
 
-    // Fire and forget the syncing to the ui, so the next upload can begin.
-    void (async () => {
-      let updatedAnswer: z.infer<typeof AnswerSelectSchema> | null = null;
-      try {
-        updatedAnswer = await this.dependencies.client.addNewDocumentToAnswer({
-          interviewUuid,
-          questionUuid,
-          document: {
-            documentUuid: uuid,
-            fileName: file.name,
-            mimeType: file.type,
-          },
-          isSingleFileUpload,
-        });
-      } catch (error) {
-        this.dependencies.toast.error(
-          "Das Hochladen des Dokuments ist fehlgeschlagen. Bitte versuche es erneut.",
-        );
-        console.error("Error adding document to answer:", error);
-      }
-
-      this.dependencies.uploadStore
-        .getState()
-        .removeDocumentFromUpload(localUuid);
-      if (updatedAnswer) {
-        this.dependencies
-          .getQueryClient()
-          .setQueryData<
-            Awaited<
-              ReturnType<
-                typeof this.dependencies.client.getInterviewRelatedDataByInterviewUuid
-              >
+    this.dependencies.uploadStore
+      .getState()
+      .removeDocumentFromUpload(localUuid);
+    if (updatedAnswer) {
+      this.dependencies
+        .getQueryClient()
+        .setQueryData<
+          Awaited<
+            ReturnType<
+              typeof this.dependencies.client.getInterviewRelatedDataByInterviewUuid
             >
-          >(queryKeyToInvalidateAnswers, (old) => {
-            if (!old) return old;
-            return {
-              ...old,
-              answers: old.answers.map((answer) =>
-                answer.questionUuid === questionUuid ? updatedAnswer : answer,
-              ),
-            };
-          });
-      }
-      await this.dependencies.getQueryClient().invalidateQueries({
-        queryKey: queryKeyToInvalidateAnswers,
-      });
-    })();
+          >
+        >(queryKeyToInvalidateAnswers, (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            answers: old.answers.map((answer) =>
+              answer.questionUuid === questionUuid ? updatedAnswer : answer,
+            ),
+          };
+        });
+    }
+    await this.dependencies.getQueryClient().invalidateQueries({
+      queryKey: queryKeyToInvalidateAnswers,
+    });
   }
 
   private removeUpload({ localUuid }: { localUuid: string }) {

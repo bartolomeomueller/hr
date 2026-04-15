@@ -5,6 +5,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Check if the pre-signed URL is still valid. If not, get a new one.
+// Url contains the information below as search params
+// X-Amz-Date=20260326T193627Z&X-Amz-Expires=300
 export function isPreSignedURLStillValid(uploadUrl: string): boolean {
   const ONE_MINUTE_IN_MS = 60 * 1000;
 

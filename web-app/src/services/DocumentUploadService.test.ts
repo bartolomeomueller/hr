@@ -40,11 +40,13 @@ function createService({
   createXmlHttpRequest = () => new XMLHttpRequest(),
   addNewDocumentToAnswer = vi.fn(),
   isPreSignedUrlStillValid = isPreSignedURLStillValid,
+  toastError = vi.fn(),
 }: {
   createPresignedS3DocumentUploadUrl: ReturnType<typeof vi.fn>;
   createXmlHttpRequest?: () => XMLHttpRequest;
   addNewDocumentToAnswer?: ReturnType<typeof vi.fn>;
   isPreSignedUrlStillValid?: typeof isPreSignedURLStillValid;
+  toastError?: ReturnType<typeof vi.fn>;
 }) {
   const serviceDependencies = {
     client: {
@@ -55,7 +57,7 @@ function createService({
     getQueryClient,
     isPreSignedURLStillValid: isPreSignedUrlStillValid,
     toast: {
-      error: vi.fn(),
+      error: toastError,
     },
     uploadStore: useDocumentUploadStore,
     createXmlHttpRequest,
@@ -153,6 +155,33 @@ describe("DocumentUploadService", () => {
     );
 
     service.uploadPipeline = Promise.resolve();
+  });
+
+  it("rejects files larger than 100 MiB before adding them to the upload store", async () => {
+    const createPresignedS3DocumentUploadUrl = vi.fn();
+    const toastError = vi.fn();
+    const service = createService({
+      createPresignedS3DocumentUploadUrl,
+      toastError,
+    });
+    const oversizedFile = new File(["resume"], "resume.pdf", {
+      type: "application/pdf",
+    });
+    Object.defineProperty(oversizedFile, "size", {
+      value: 100 * 1024 * 1024 + 1,
+    });
+
+    await service.addToUploadPipeline({
+      file: oversizedFile,
+      interviewUuid: "interview-1",
+      questionUuid: "question-1",
+      queryKeyToInvalidateAnswers: ["answers", "interview-1"],
+      isSingleFileUpload: true,
+    });
+
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(createPresignedS3DocumentUploadUrl).not.toHaveBeenCalled();
+    expect(useDocumentUploadStore.getState().documentsToUpload).toHaveLength(0);
   });
 
   it("updates the upload progress in the store when the xhr reports progress", async () => {
