@@ -16,6 +16,10 @@ const defaultDocumentUploadServiceDependencies = {
   createXmlHttpRequest: () => new XMLHttpRequest(),
 };
 
+// This service is the sole writer to the document upload store and owns the
+// upload lifecycle: queueing, progress updates, cancellation, cleanup, and
+// cache synchronization. Components may read derived upload state and delegate
+// upload actions back to this service.
 export class DocumentUploadService {
   uploadPipeline: Promise<void> = Promise.resolve();
 

@@ -80,6 +80,10 @@ export function DocumentQuestion({
     ),
   );
 
+  // This component owns question-specific file selection policy such as
+  // single-vs-multi upload behavior, duplicate filtering, max-upload trimming,
+  // and replacement of already uploaded documents. The upload service owns the
+  // actual upload pipeline, store writes, cancellation, and cache updates.
   async function appendFiles(nextFiles: File[], isSingleFileUpload: boolean) {
     // Sort files by name to make the behavior deterministic, when we have to cut out files, because there are too many
     let filesToAddToUpload = nextFiles.sort((a, b) =>
@@ -102,7 +106,6 @@ export function DocumentQuestion({
       }
 
       filesToAddToUpload = nextFiles.slice(0, 1);
-      console.log("filesToAddToUpload", filesToAddToUpload[0]);
 
       // For single file upload, if there is already a document that was uploaded, we want to replace it.
       const uploadedDocumentToReplace = documents.at(0);
