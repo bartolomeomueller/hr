@@ -222,14 +222,25 @@ export class RecordingUploadService {
       }
     }
 
+    const preSignedUrlInput =
+      partNumber === 1
+        ? {
+            multipartUploadMode: "new" as const,
+            mimeType: file.type,
+            partNumber: 1 as const,
+          }
+        : this.getExistingMultipartUploadInput({
+            mimeType: file.type,
+            partNumber,
+            uploadId,
+            videoUuid,
+          });
+
     // Already fetch a pre-signed url, so the upload can start immediately, when the pipeline gets to the upload step.
     const preSignedUrlPromise =
-      this.dependencies.client.createPresignedS3RecordingMultipartUploadUrl({
-        mimeType: file.type,
-        partNumber,
-        uploadId,
-        videoUuid,
-      });
+      this.dependencies.client.createPresignedS3RecordingMultipartUploadUrl(
+        preSignedUrlInput,
+      );
 
     this.dependencies.recordingUploadStore.getState().addRecordingToUpload({
       questionUuid,
@@ -260,7 +271,10 @@ export class RecordingUploadService {
               "Das Hochladen des Dokuments ist fehlgeschlagen. Bitte versuche es erneut.",
             );
             console.error(error);
-            return this.removeUpload({ fileIndex });
+            if (!this.isRecoverableNetworkError(error)) {
+              return this.removeUpload({ fileIndex });
+            }
+            return;
           }
           await new Promise((resolve) => setTimeout(resolve, i * 1000));
         }
@@ -301,29 +315,35 @@ export class RecordingUploadService {
       return this.removeUpload({ fileIndex });
     }
 
-    // Check if the pre-signed URL is still valid. If not, get a new one.
-    // Url contains the information below as search params
-    // X-Amz-Date=20260326T193627Z&X-Amz-Expires=300
     let { uploadUrl, videoUuid, uploadId } = await preSignedUrlPromise;
-    if (partNumber === 1) {
-      this.dependencies.uploadedRecordingPartsStore.getState().setMultipartIds({
-        questionUuid,
-        videoUuid,
-        uploadId,
-      });
-    }
-    if (signal.aborted) {
-      return this.removeUpload({ fileIndex });
-    }
     if (!this.dependencies.isPreSignedURLStillValid(uploadUrl)) {
       // If the current time is past the expiration time minus a buffer (e.g., 1 minute), we consider the URL expired and get a new one.
       ({ uploadUrl, videoUuid, uploadId } =
         await this.dependencies.client.createPresignedS3RecordingMultipartUploadUrl(
           {
+            multipartUploadMode: "existing",
             mimeType: file.type,
             partNumber,
+            uploadId,
+            videoUuid,
           },
         ));
+    }
+    if (partNumber === 1) {
+      const uploadedParts =
+        this.dependencies.uploadedRecordingPartsStore.getState().uploadedParts;
+      if (!uploadedParts[questionUuid]) {
+        this.dependencies.uploadedRecordingPartsStore
+          .getState()
+          .setMultipartIds({
+            questionUuid,
+            videoUuid,
+            uploadId,
+          });
+      }
+    }
+    if (signal.aborted) {
+      return this.removeUpload({ fileIndex });
     }
 
     const uploadWasAborted = await this.uploadFileToPresignedUrl({
@@ -543,6 +563,39 @@ export class RecordingUploadService {
     this.dependencies.recordingUploadStore
       .getState()
       .removeRecordingFromUpload(fileIndex);
+  }
+
+  private isRecoverableNetworkError(error: unknown) {
+    return (
+      error instanceof Error &&
+      error.message.startsWith("Network error during upload")
+    );
+  }
+
+  private getExistingMultipartUploadInput({
+    mimeType,
+    partNumber,
+    uploadId,
+    videoUuid,
+  }: {
+    mimeType: string;
+    partNumber: number;
+    uploadId: string | undefined;
+    videoUuid: string | undefined;
+  }) {
+    if (!uploadId || !videoUuid) {
+      throw new Error(
+        "Invariant violation: missing multipart upload ids for an existing recording upload. Please report this bug.",
+      );
+    }
+
+    return {
+      multipartUploadMode: "existing" as const,
+      mimeType,
+      partNumber,
+      uploadId,
+      videoUuid,
+    };
   }
 }
 

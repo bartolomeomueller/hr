@@ -13,12 +13,20 @@ import { debugMiddleware } from "../middlewares";
 export const createPresignedS3RecordingMultipartUploadUrl = base
   .use(debugMiddleware)
   .input(
-    z.object({
-      mimeType: z.string(),
-      partNumber: z.number().min(1),
-      uploadId: z.string().optional(),
-      videoUuid: z.uuidv7().optional(),
-    }),
+    z.discriminatedUnion("multipartUploadMode", [
+      z.object({
+        multipartUploadMode: z.literal("new"),
+        mimeType: z.string(),
+        partNumber: z.literal(1),
+      }),
+      z.object({
+        multipartUploadMode: z.literal("existing"),
+        mimeType: z.string(),
+        partNumber: z.number().min(1),
+        uploadId: z.string(),
+        videoUuid: z.uuidv7(),
+      }),
+    ]),
   )
   .output(
     z.object({
@@ -28,24 +36,18 @@ export const createPresignedS3RecordingMultipartUploadUrl = base
     }),
   )
   .handler(async ({ input }) => {
-    let uploadId = input.uploadId;
-    let videoUuid = input.videoUuid;
+    let uploadId: string;
+    let videoUuid: string;
 
-    if (input.partNumber === 1) {
-      if (uploadId || videoUuid) {
-        throw new Error(
-          "uploadId and videoUuid should not be provided for the first part",
-        );
-      }
+    if (input.multipartUploadMode === "new") {
       const result = await initiateMultipartUploadForVideo({
         mimeType: input.mimeType,
       });
       uploadId = result.uploadId;
       videoUuid = result.uuid;
-    }
-
-    if (!uploadId || !videoUuid) {
-      throw new Error("uploadId and videoUuid must be provided for parts > 1");
+    } else {
+      uploadId = input.uploadId;
+      videoUuid = input.videoUuid;
     }
 
     const uploadUrl = await createPresignedUploadUrlForVideoPart({

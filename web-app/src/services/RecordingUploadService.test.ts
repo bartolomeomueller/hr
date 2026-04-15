@@ -136,6 +136,24 @@ function createXhrDouble() {
   return xhr;
 }
 
+function createFailingXhrFactory() {
+  const xhrs: Array<ReturnType<typeof createXhrDouble>> = [];
+
+  return {
+    xhrs,
+    createXmlHttpRequest: () => {
+      const xhr = createXhrDouble();
+      xhr.send = vi.fn(() => {
+        queueMicrotask(() => {
+          xhr.onerror?.();
+        });
+      });
+      xhrs.push(xhr);
+      return xhr;
+    },
+  };
+}
+
 function createQueryClientDouble() {
   return {
     setQueryData: vi.fn(),
@@ -216,10 +234,9 @@ describe("RecordingUploadService", () => {
     const recordings = useRecordingUploadStore.getState().recordings;
 
     expect(createPresignedS3RecordingMultipartUploadUrl).toHaveBeenCalledWith({
+      multipartUploadMode: "new",
       mimeType: "video/webm",
       partNumber: 1,
-      uploadId: undefined,
-      videoUuid: undefined,
     });
     expect(recordings).toHaveLength(1);
     expect(recordings[0]).toMatchObject({
@@ -545,8 +562,11 @@ describe("RecordingUploadService", () => {
       expect(
         createPresignedS3RecordingMultipartUploadUrl,
       ).toHaveBeenNthCalledWith(2, {
+        multipartUploadMode: "existing",
         mimeType: "video/webm",
         partNumber: 1,
+        uploadId: "upload-1",
+        videoUuid: "video-1",
       });
     });
 
@@ -559,5 +579,71 @@ describe("RecordingUploadService", () => {
 
     useRecordingUploadStore.getState().recordings[0]?.abortController.abort();
     await service.uploadPipeline;
+  });
+
+  it("preserves resumable upload state after repeated network failures", async () => {
+    vi.useFakeTimers();
+
+    const presignedUrl = createDeferredPromise<{
+      videoUuid: string;
+      uploadId: string;
+      uploadUrl: string;
+    }>();
+    const createPresignedS3RecordingMultipartUploadUrl = vi
+      .fn()
+      .mockReturnValueOnce(presignedUrl.promise);
+    const { xhrs, createXmlHttpRequest } = createFailingXhrFactory();
+    const toastError = vi.fn();
+    const service = new RecordingUploadService({
+      client: {
+        createPresignedS3RecordingMultipartUploadUrl,
+        finishMultipartUploadForRecording: vi.fn(),
+        saveAnswer: vi.fn(),
+        getInterviewRelatedDataByInterviewUuid: vi.fn(),
+      },
+      getQueryClient: () => createQueryClientDouble() as never,
+      isPreSignedURLStillValid: vi.fn(() => true),
+      toast: {
+        error: toastError,
+      },
+      recordingUploadStore: useRecordingUploadStore,
+      uploadedRecordingPartsStore: useUploadedRecordingPartsStore,
+      createXmlHttpRequest,
+      indexedDb: createIndexedDbDouble(),
+    });
+
+    await service.addToUploadPipeline({
+      file: new File(["video"], "answer.webm", {
+        type: "video/webm",
+      }),
+      interviewUuid: "interview-1",
+      questionUuid: "question-1",
+      queryKeyToInvalidateAnswers: ["answers", "interview-1"],
+      partNumber: 1,
+      isLastPart: false,
+    });
+
+    presignedUrl.resolve({
+      videoUuid: "video-1",
+      uploadId: "upload-1",
+      uploadUrl: "https://example.com/upload",
+    });
+
+    await vi.runAllTimersAsync();
+    await service.uploadPipeline;
+
+    expect(xhrs).toHaveLength(3);
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(useRecordingUploadStore.getState().recordings).toHaveLength(1);
+    expect(
+      useUploadedRecordingPartsStore.getState().uploadedParts["question-1"],
+    ).toEqual({
+      videoUuid: "video-1",
+      uploadId: "upload-1",
+      status: "uploading",
+      parts: [],
+    });
+
+    vi.useRealTimers();
   });
 });
