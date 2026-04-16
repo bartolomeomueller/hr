@@ -335,6 +335,116 @@ describe("RecordingUploadService", () => {
     await service.uploadPipeline;
   });
 
+  it("retries multipart finalization on bootstrap when a question is persisted as finalizing", async () => {
+    const createPresignedS3RecordingMultipartUploadUrl = vi.fn();
+    const finishMultipartUploadForRecording = vi
+      .fn()
+      .mockResolvedValue(undefined);
+    const saveAnswer = vi.fn().mockResolvedValue({
+      questionUuid: "question-1",
+      answerPayload: {
+        videoUuid: "video-1",
+        status: "uploaded",
+      },
+    });
+    const queryClient = createQueryClientDouble();
+    const createXmlHttpRequest = vi.fn(() => createXhrDouble());
+
+    useRecordingUploadStore.setState({
+      recordings: [
+        {
+          questionUuid: "question-1",
+          interviewUuid: "interview-1",
+          queryKeyToInvalidateAnswers: ["answers", "interview-1"],
+          indexedDBId: 1,
+          progress: 100,
+          partNumber: 1,
+          isLastPart: true,
+        },
+      ],
+    } as never);
+    useUploadedRecordingPartsStore.setState({
+      uploadedParts: {
+        "question-1": {
+          videoUuid: "video-1",
+          uploadId: "upload-1",
+          status: "finalizing",
+          parts: [
+            {
+              PartNumber: 1,
+              ETag: '"etag-1"',
+            },
+          ],
+        },
+      },
+    });
+
+    const service = createService({
+      createPresignedS3RecordingMultipartUploadUrl,
+      createXmlHttpRequest,
+      finishMultipartUploadForRecording,
+      saveAnswer,
+      queryClient,
+      indexedDb: createIndexedDbDouble(),
+    });
+
+    void service.resumePersistedUploads();
+
+    await vi.waitFor(() => {
+      expect(finishMultipartUploadForRecording).toHaveBeenCalledWith(
+        {
+          videoUuid: "video-1",
+          uploadId: "upload-1",
+          parts: [
+            {
+              PartNumber: 1,
+              ETag: '"etag-1"',
+            },
+          ],
+        },
+        {
+          context: {
+            retry: 2,
+          },
+        },
+      );
+    });
+
+    expect(createPresignedS3RecordingMultipartUploadUrl).not.toHaveBeenCalled();
+    expect(createXmlHttpRequest).not.toHaveBeenCalled();
+
+    await vi.waitFor(() => {
+      expect(saveAnswer).toHaveBeenCalledWith(
+        {
+          interviewUuid: "interview-1",
+          questionUuid: "question-1",
+          answerPayload: {
+            videoUuid: "video-1",
+            status: "uploaded",
+          },
+        },
+        {
+          context: {
+            retry: 2,
+          },
+        },
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(useRecordingUploadStore.getState().recordings).toHaveLength(0);
+      expect(
+        useUploadedRecordingPartsStore.getState().uploadedParts["question-1"],
+      ).toBeUndefined();
+    });
+
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["answers", "interview-1"],
+    });
+
+    await service.uploadPipeline;
+  });
+
   it("starts later-part presign requests as soon as first-part multipart ids are known", async () => {
     const firstPresignedUrl = createDeferredPromise<{
       videoUuid: string;
@@ -653,14 +763,21 @@ describe("RecordingUploadService", () => {
     finishMultipartUpload.resolve();
 
     await vi.waitFor(() => {
-      expect(saveAnswer).toHaveBeenCalledWith({
-        interviewUuid: "interview-1",
-        questionUuid: "question-1",
-        answerPayload: {
-          videoUuid: "video-1",
-          status: "uploaded",
+      expect(saveAnswer).toHaveBeenCalledWith(
+        {
+          interviewUuid: "interview-1",
+          questionUuid: "question-1",
+          answerPayload: {
+            videoUuid: "video-1",
+            status: "uploaded",
+          },
         },
-      });
+        {
+          context: {
+            retry: 2,
+          },
+        },
+      );
     });
 
     await vi.waitFor(() => {
@@ -763,14 +880,21 @@ describe("RecordingUploadService", () => {
     expect(toastError).not.toHaveBeenCalled();
 
     await vi.waitFor(() => {
-      expect(saveAnswer).toHaveBeenCalledWith({
-        interviewUuid: "interview-1",
-        questionUuid: "question-1",
-        answerPayload: {
-          videoUuid: "video-1",
-          status: "uploaded",
+      expect(saveAnswer).toHaveBeenCalledWith(
+        {
+          interviewUuid: "interview-1",
+          questionUuid: "question-1",
+          answerPayload: {
+            videoUuid: "video-1",
+            status: "uploaded",
+          },
         },
-      });
+        {
+          context: {
+            retry: 2,
+          },
+        },
+      );
     });
 
     await vi.waitFor(() => {
@@ -861,7 +985,7 @@ describe("RecordingUploadService", () => {
 
     await vi.waitFor(() => {
       expect(toastError).toHaveBeenCalledWith(
-        "Das Abschließen des Video-Uploads ist fehlgeschlagen. Bitte versuche es erneut.",
+        "Das Abschließen des Video-Uploads ist fehlgeschlagen. Bitte lade die Seite erneut, um es erneut zu versuchen.",
       );
     });
 

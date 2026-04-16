@@ -101,6 +101,28 @@ export class RecordingUploadService {
     ];
 
     for (const recording of persistedRecordings) {
+      if (
+        recording.isLastPart &&
+        this.dependencies.uploadedRecordingPartsStore.getState().uploadedParts[
+          recording.questionUuid
+        ]?.status === "finalizing"
+      ) {
+        const uploadedPartsForQuestion =
+          this.dependencies.uploadedRecordingPartsStore.getState()
+            .uploadedParts[recording.questionUuid];
+        this.uploadPipeline = this.uploadPipeline.then(() =>
+          this.finalizeAndSaveAnswer({
+            fileIndex: recording.indexedDBId,
+            interviewUuid: recording.interviewUuid,
+            questionUuid: recording.questionUuid,
+            queryKeyToInvalidateAnswers: recording.queryKeyToInvalidateAnswers,
+            videoUuid: uploadedPartsForQuestion.videoUuid,
+            uploadId: uploadedPartsForQuestion.uploadId,
+          }),
+        );
+        continue;
+      }
+
       void this.enqueueUpload({
         recording,
       });
@@ -666,11 +688,13 @@ export class RecordingUploadService {
     } catch (error) {
       console.error(`Failed to delete file with index ${fileIndex}:`, error);
     }
-    this.dependencies.recordingUploadStore
-      .getState()
-      .removeRecordingFromUpload(fileIndex);
 
-    if (!isLastPart) return;
+    if (!isLastPart) {
+      this.dependencies.recordingUploadStore
+        .getState()
+        .removeRecordingFromUpload(fileIndex);
+      return;
+    }
 
     // Finalization is a boundary: once storage finalization fails, we do not
     // attempt saveAnswer because the application-level answer state must not say
@@ -682,14 +706,48 @@ export class RecordingUploadService {
         status: "finalizing",
       });
 
+    await this.finalizeAndSaveAnswer({
+      fileIndex,
+      interviewUuid,
+      questionUuid,
+      queryKeyToInvalidateAnswers,
+      videoUuid,
+      uploadId,
+    });
+  }
+
+  private async finalizeAndSaveAnswer({
+    fileIndex,
+    interviewUuid,
+    questionUuid,
+    queryKeyToInvalidateAnswers,
+    videoUuid,
+    uploadId,
+  }: {
+    fileIndex: number;
+    interviewUuid: string;
+    questionUuid: string;
+    queryKeyToInvalidateAnswers: QueryKey;
+    videoUuid: string;
+    uploadId: string;
+  }) {
+    const uploadedPartsForQuestion =
+      this.dependencies.uploadedRecordingPartsStore.getState().uploadedParts[
+        questionUuid
+      ];
+
+    if (!uploadedPartsForQuestion) {
+      throw new Error(
+        `Invariant violation: missing multipart state for question ${questionUuid} during finalization. Please report this bug.`,
+      );
+    }
+
     try {
       await this.dependencies.client.finishMultipartUploadForRecording(
         {
           videoUuid,
           uploadId,
-          parts:
-            this.dependencies.uploadedRecordingPartsStore.getState()
-              .uploadedParts[questionUuid].parts,
+          parts: uploadedPartsForQuestion.parts,
         },
         {
           context: {
@@ -752,6 +810,9 @@ export class RecordingUploadService {
       queryKey: queryKeyToInvalidateAnswers,
     });
 
+    this.dependencies.recordingUploadStore
+      .getState()
+      .removeRecordingFromUpload(fileIndex);
     this.multipartIdsByQuestion.delete(questionUuid);
     this.dependencies.uploadedRecordingPartsStore
       .getState()
