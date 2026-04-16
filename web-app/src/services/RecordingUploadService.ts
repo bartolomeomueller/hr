@@ -56,6 +56,7 @@ export class RecordingUploadService {
 
   static readonly DB_NAME = "UploadDatabase";
   static readonly STORE_NAME = "recordings";
+  static readonly MULTIPART_FINALIZATION_RETRIES = 2;
 
   constructor(
     private readonly dependencies: RecordingUploadServiceDependencies,
@@ -272,7 +273,7 @@ export class RecordingUploadService {
             );
             console.error(error);
             if (!this.isRecoverableNetworkError(error)) {
-              return this.removeUpload({ fileIndex });
+              return this.removeUploadsForQuestion({ questionUuid });
             }
             return;
           }
@@ -495,18 +496,26 @@ export class RecordingUploadService {
       });
 
     try {
-      await this.dependencies.client.finishMultipartUploadForRecording({
-        videoUuid,
-        uploadId,
-        parts:
-          this.dependencies.uploadedRecordingPartsStore.getState()
-            .uploadedParts[questionUuid].parts,
-      });
+      await this.dependencies.client.finishMultipartUploadForRecording(
+        {
+          videoUuid,
+          uploadId,
+          parts:
+            this.dependencies.uploadedRecordingPartsStore.getState()
+              .uploadedParts[questionUuid].parts,
+        },
+        {
+          context: {
+            retry: RecordingUploadService.MULTIPART_FINALIZATION_RETRIES,
+          },
+        },
+      );
     } catch (error) {
       this.dependencies.toast.error(
         "Das Abschließen des Video-Uploads ist fehlgeschlagen. Bitte versuche es erneut.",
       );
       console.error("Error finishing multipart upload:", error);
+      return;
     }
 
     let updatedAnswer: z.infer<typeof AnswerSelectSchema> | null = null;
@@ -563,6 +572,26 @@ export class RecordingUploadService {
     this.dependencies.recordingUploadStore
       .getState()
       .removeRecordingFromUpload(fileIndex);
+  }
+
+  private async removeUploadsForQuestion({
+    questionUuid,
+  }: {
+    questionUuid: string;
+  }) {
+    const recordingsForQuestion = this.dependencies.recordingUploadStore
+      .getState()
+      .recordings.filter(
+        (recording) => recording.questionUuid === questionUuid,
+      );
+
+    for (const recording of recordingsForQuestion) {
+      await this.removeUpload({ fileIndex: recording.indexedDBId });
+    }
+
+    this.dependencies.uploadedRecordingPartsStore
+      .getState()
+      .removeUploadedPartsForQuestion(questionUuid);
   }
 
   private isRecoverableNetworkError(error: unknown) {
