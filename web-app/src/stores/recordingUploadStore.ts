@@ -1,11 +1,13 @@
+import type { QueryKey } from "@tanstack/react-query";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 export type Recording = {
   questionUuid: string;
+  interviewUuid: string;
+  queryKeyToInvalidateAnswers: QueryKey;
   indexedDBId: number;
   progress: number;
-  abortController: AbortController;
   partNumber: number;
   isLastPart: boolean;
 };
@@ -15,7 +17,7 @@ export type RecordingUploadStore = {
   getRecordingToUploadForQuestionUuid: (
     questionUuid: string,
   ) => Recording | null;
-  addRecordingToUpload: (document: Omit<Recording, "progress">) => void;
+  addRecordingToUpload: (document: Omit<Recording, "progress">) => Recording;
   removeRecordingFromUpload: (indexedDBId: number) => void;
   updateRecordingProgress: (indexedDBId: number, progress: number) => void;
 };
@@ -27,10 +29,12 @@ export const useRecordingUploadStore = create<RecordingUploadStore>()(
       getRecordingToUploadForQuestionUuid: (questionUuid: string) =>
         get().recordings.find((rec) => rec.questionUuid === questionUuid) ??
         null,
-      addRecordingToUpload: (recording: Omit<Recording, "progress">) =>
+      addRecordingToUpload: (recording: Omit<Recording, "progress">) => {
         set((state) => ({
           recordings: [...state.recordings, { ...recording, progress: 0 }],
-        })),
+        }));
+        return { ...recording, progress: 0 };
+      },
       removeRecordingFromUpload: (indexedDBId: number) =>
         set((state) => ({
           recordings: state.recordings.filter(

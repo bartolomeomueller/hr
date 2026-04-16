@@ -6,6 +6,7 @@ import type { isPreSignedURLStillValid } from "@/lib/utils";
 import type { client } from "@/orpc/client";
 import type { AnswerSelectSchema } from "@/orpc/schema";
 import type {
+  Recording,
   useRecordingUploadStore,
   useUploadedRecordingPartsStore,
 } from "@/stores/recordingUploadStore";
@@ -53,6 +54,8 @@ export type RecordingUploadServiceDependencies = {
 export class RecordingUploadService {
   dbPromise: Promise<IDBDatabase> | null = null;
   uploadPipeline: Promise<void> = Promise.resolve();
+  private readonly uploadAbortControllers = new Map<number, AbortController>();
+  private resumedPersistedUploads = false;
 
   static readonly DB_NAME = "UploadDatabase";
   static readonly STORE_NAME = "recordings";
@@ -62,6 +65,25 @@ export class RecordingUploadService {
     private readonly dependencies: RecordingUploadServiceDependencies,
   ) {
     this.dbPromise = this.getDB();
+  }
+
+  resumePersistedUploads() {
+    if (this.resumedPersistedUploads) return;
+    this.resumedPersistedUploads = true;
+
+    const persistedRecordings = [
+      ...this.dependencies.recordingUploadStore.getState().recordings,
+    ];
+
+    for (const recording of persistedRecordings) {
+      void this.enqueueUpload({
+        recording,
+      });
+    }
+  }
+
+  abortUpload(indexedDBId: number) {
+    this.uploadAbortControllers.get(indexedDBId)?.abort();
   }
 
   private async getDB(): Promise<IDBDatabase> {
@@ -193,94 +215,170 @@ export class RecordingUploadService {
     partNumber: number;
     isLastPart: boolean;
   }) {
-    const abortController = new AbortController();
-
     const fileIndex = await this.storeFileInIndexedDB({ file });
 
-    // This busy waits for the uploadId and videoUuid to be available in the store, which are set after getting the first pre-signed url for a video.
-    // Ideally this busy waiting never happens, but it can happen if the server is slow and the recording
+    const recording = this.dependencies.recordingUploadStore
+      .getState()
+      .addRecordingToUpload({
+        questionUuid,
+        interviewUuid,
+        queryKeyToInvalidateAnswers,
+        indexedDBId: fileIndex,
+        partNumber,
+        isLastPart,
+      });
+
+    void this.enqueueUpload({
+      recording,
+      mimeType: file.type,
+    });
+  }
+
+  private async enqueueUpload({
+    recording,
+    mimeType,
+  }: {
+    recording: Recording;
+    mimeType?: string;
+  }) {
+    const abortController = new AbortController();
+    this.uploadAbortControllers.set(recording.indexedDBId, abortController);
+
+    // Already fetch a pre-signed url, so the upload can start immediately, when the pipeline gets to the upload step.
+    const preSignedUrlPromise = this.createPreSignedUrlPromise({
+      fileIndex: recording.indexedDBId,
+      mimeType,
+      questionUuid: recording.questionUuid,
+      partNumber: recording.partNumber,
+    });
+
+    this.uploadPipeline = this.uploadPipeline.then(() =>
+      this.runWithRetry({
+        run: () =>
+          this.uploadRecording({
+            fileIndex: recording.indexedDBId,
+            interviewUuid: recording.interviewUuid,
+            questionUuid: recording.questionUuid,
+            queryKeyToInvalidateAnswers: recording.queryKeyToInvalidateAnswers,
+            signal: abortController.signal,
+            preSignedUrlPromise,
+            partNumber: recording.partNumber,
+            isLastPart: recording.isLastPart,
+          }),
+        maxAttempts: 3,
+        getDelayMs: (attempt) => attempt * 1000,
+        onFinalError: async (error) => {
+          this.dependencies.toast.error(
+            "Das Hochladen des Dokuments ist fehlgeschlagen. Bitte versuche es erneut.",
+          );
+          console.error(error);
+
+          if (!this.isRecoverableNetworkError(error)) {
+            await this.removeUploadsForQuestion({
+              questionUuid: recording.questionUuid,
+            });
+          }
+        },
+      }),
+    );
+  }
+
+  private async runWithRetry({
+    run,
+    maxAttempts,
+    getDelayMs,
+    onFinalError,
+    attempt = 1,
+  }: {
+    run: () => Promise<void>;
+    maxAttempts: number;
+    getDelayMs: (attempt: number) => number;
+    onFinalError: (error: unknown) => Promise<void> | void;
+    attempt?: number;
+  }): Promise<void> {
+    try {
+      await run();
+    } catch (error) {
+      if (attempt >= maxAttempts) {
+        await onFinalError(error);
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, getDelayMs(attempt)));
+      await this.runWithRetry({
+        run,
+        maxAttempts,
+        getDelayMs,
+        onFinalError,
+        attempt: attempt + 1,
+      });
+    }
+  }
+
+  private async createPreSignedUrlPromise({
+    fileIndex,
+    mimeType,
+    questionUuid,
+    partNumber,
+  }: {
+    fileIndex: number;
+    mimeType?: string;
+    questionUuid: string;
+    partNumber: number;
+  }) {
+    const resolvedMimeType =
+      mimeType ?? (await this.getFileFromIndexedDB(fileIndex)).type;
+
+    if (partNumber === 1) {
+      return this.dependencies.client.createPresignedS3RecordingMultipartUploadUrl(
+        {
+          multipartUploadMode: "new",
+          mimeType: resolvedMimeType,
+          partNumber: 1,
+        },
+      );
+    }
+
+    const { uploadId, videoUuid } =
+      await this.waitForMultipartIds(questionUuid);
+
+    return this.dependencies.client.createPresignedS3RecordingMultipartUploadUrl(
+      this.getExistingMultipartUploadInput({
+        mimeType: resolvedMimeType,
+        partNumber,
+        uploadId,
+        videoUuid,
+      }),
+    );
+  }
+
+  // This busy waits for the uploadId and videoUuid to be available in the store, which are set after getting the first pre-signed url for a video.
+  // Ideally this busy waiting never happens, but it can happen if the server is slow and the recording
+  private async waitForMultipartIds(questionUuid: string) {
     let uploadId: string | undefined;
     let videoUuid: string | undefined;
-    if (partNumber !== 1) {
-      let counter = 0;
-      while (!uploadId || !videoUuid) {
-        const multipartIds =
-          this.dependencies.uploadedRecordingPartsStore.getState()
-            .uploadedParts[questionUuid];
-        if (multipartIds) {
-          uploadId = multipartIds.uploadId;
-          videoUuid = multipartIds.videoUuid;
-        } else {
-          // Wait for 1 second before checking again, to see if the first part has been uploaded and the uploadId and videoUuid are available.
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-        counter++;
-        if (counter > 10) {
-          this.dependencies.toast.error(
-            "Das Hochladen des Videos ist nicht möglich. Bitte lade die Seite neu und versuche es erneut.",
-          );
-        }
+    let counter = 0;
+
+    while (!uploadId || !videoUuid) {
+      const multipartIds =
+        this.dependencies.uploadedRecordingPartsStore.getState().uploadedParts[
+          questionUuid
+        ];
+      if (multipartIds) {
+        uploadId = multipartIds.uploadId;
+        videoUuid = multipartIds.videoUuid;
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      counter++;
+      if (counter > 10) {
+        this.dependencies.toast.error(
+          "Das Hochladen des Videos ist nicht möglich. Bitte lade die Seite neu und versuche es erneut.",
+        );
       }
     }
 
-    const preSignedUrlInput =
-      partNumber === 1
-        ? {
-            multipartUploadMode: "new" as const,
-            mimeType: file.type,
-            partNumber: 1 as const,
-          }
-        : this.getExistingMultipartUploadInput({
-            mimeType: file.type,
-            partNumber,
-            uploadId,
-            videoUuid,
-          });
-
-    // Already fetch a pre-signed url, so the upload can start immediately, when the pipeline gets to the upload step.
-    const preSignedUrlPromise =
-      this.dependencies.client.createPresignedS3RecordingMultipartUploadUrl(
-        preSignedUrlInput,
-      );
-
-    this.dependencies.recordingUploadStore.getState().addRecordingToUpload({
-      questionUuid,
-      indexedDBId: fileIndex,
-      abortController,
-      partNumber,
-      isLastPart,
-    });
-
-    this.uploadPipeline = this.uploadPipeline.then(async () => {
-      // Retry the upload up to 3 times
-      for (let i = 1; i <= 3; ++i) {
-        try {
-          await this.uploadRecording({
-            fileIndex,
-            interviewUuid,
-            questionUuid,
-            queryKeyToInvalidateAnswers,
-            signal: abortController.signal,
-            preSignedUrlPromise,
-            partNumber,
-            isLastPart,
-          });
-          break; // if upload succeeds, break out of the retry loop
-        } catch (error) {
-          if (i === 3) {
-            this.dependencies.toast.error(
-              "Das Hochladen des Dokuments ist fehlgeschlagen. Bitte versuche es erneut.",
-            );
-            console.error(error);
-            if (!this.isRecoverableNetworkError(error)) {
-              return this.removeUploadsForQuestion({ questionUuid });
-            }
-            return;
-          }
-          await new Promise((resolve) => setTimeout(resolve, i * 1000));
-        }
-      }
-    });
+    return { uploadId, videoUuid };
   }
 
   private async uploadRecording({
@@ -564,14 +662,15 @@ export class RecordingUploadService {
   }
 
   private async removeUpload({ fileIndex }: { fileIndex: number }) {
+    this.uploadAbortControllers.delete(fileIndex);
+    this.dependencies.recordingUploadStore
+      .getState()
+      .removeRecordingFromUpload(fileIndex);
     try {
       await this.deleteFileFromIndexedDB(fileIndex);
     } catch (error) {
       console.error(`Failed to delete file with index ${fileIndex}:`, error);
     }
-    this.dependencies.recordingUploadStore
-      .getState()
-      .removeRecordingFromUpload(fileIndex);
   }
 
   private async removeUploadsForQuestion({
