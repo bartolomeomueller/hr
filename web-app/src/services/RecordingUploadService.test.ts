@@ -17,9 +17,15 @@ function createDeferredPromise<T>() {
   };
 }
 
-function createIndexedDbDouble() {
-  let nextId = 1;
-  const files = new Map<number, File>();
+function createIndexedDbDouble({
+  seededFiles,
+}: {
+  seededFiles?: Record<number, File>;
+} = {}) {
+  const files = new Map<number, File>(
+    Object.entries(seededFiles ?? {}).map(([id, file]) => [Number(id), file]),
+  );
+  let nextId = Math.max(0, ...Array.from(files.keys())) + 1;
 
   return {
     open: vi.fn(() => {
@@ -188,6 +194,7 @@ function createService({
   saveAnswer = vi.fn(),
   queryClient = createQueryClientDouble(),
   isPreSignedUrlStillValid = vi.fn(() => true),
+  indexedDb = createIndexedDbDouble(),
 }: {
   createPresignedS3RecordingMultipartUploadUrl: ReturnType<typeof vi.fn>;
   createXmlHttpRequest?: () => XMLHttpRequest;
@@ -195,6 +202,7 @@ function createService({
   saveAnswer?: ReturnType<typeof vi.fn>;
   queryClient?: ReturnType<typeof createQueryClientDouble>;
   isPreSignedUrlStillValid?: ReturnType<typeof vi.fn>;
+  indexedDb?: IDBFactory;
 }) {
   return new RecordingUploadService({
     client: {
@@ -211,7 +219,7 @@ function createService({
     recordingUploadStore: useRecordingUploadStore,
     uploadedRecordingPartsStore: useUploadedRecordingPartsStore,
     createXmlHttpRequest,
-    indexedDb: createIndexedDbDouble(),
+    indexedDb,
   });
 }
 
@@ -266,9 +274,133 @@ describe("RecordingUploadService", () => {
       partNumber: 1,
       isLastPart: false,
     });
-    expect(recordings[0]?.abortController).toBeInstanceOf(AbortController);
+    expect(recordings[0]).not.toHaveProperty("abortController");
 
     service.uploadPipeline = Promise.resolve();
+  });
+
+  it("resumes a persisted queued upload on bootstrap", async () => {
+    const createPresignedS3RecordingMultipartUploadUrl = vi
+      .fn()
+      .mockResolvedValue({
+        videoUuid: "video-1",
+        uploadId: "upload-1",
+        uploadUrl: "https://example.com/upload",
+      });
+    const xhr = createXhrDouble();
+
+    useRecordingUploadStore.setState({
+      recordings: [
+        {
+          questionUuid: "question-1",
+          interviewUuid: "interview-1",
+          queryKeyToInvalidateAnswers: ["answers", "interview-1"],
+          indexedDBId: 1,
+          progress: 0,
+          partNumber: 1,
+          isLastPart: false,
+        },
+      ],
+    } as never);
+
+    const service = createService({
+      createPresignedS3RecordingMultipartUploadUrl,
+      createXmlHttpRequest: () => xhr,
+      indexedDb: createIndexedDbDouble({
+        seededFiles: {
+          1: new File(["video"], "answer.webm", {
+            type: "video/webm",
+          }),
+        },
+      }),
+    });
+
+    void service.resumePersistedUploads();
+
+    await vi.waitFor(() => {
+      expect(createPresignedS3RecordingMultipartUploadUrl).toHaveBeenCalledWith(
+        {
+          multipartUploadMode: "new",
+          mimeType: "video/webm",
+          partNumber: 1,
+        },
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(xhr.send).toHaveBeenCalledTimes(1);
+    });
+
+    service.abortUpload(1);
+    await service.uploadPipeline;
+  });
+
+  it("starts later-part presign requests as soon as first-part multipart ids are known", async () => {
+    const firstPresignedUrl = createDeferredPromise<{
+      videoUuid: string;
+      uploadId: string;
+      uploadUrl: string;
+    }>();
+    const createPresignedS3RecordingMultipartUploadUrl = vi
+      .fn()
+      .mockReturnValueOnce(firstPresignedUrl.promise)
+      .mockResolvedValueOnce({
+        videoUuid: "video-1",
+        uploadId: "upload-1",
+        uploadUrl: "https://example.com/upload-part-2",
+      });
+    const xhr = createXhrDouble();
+    const service = createService({
+      createPresignedS3RecordingMultipartUploadUrl,
+      createXmlHttpRequest: () => xhr,
+    });
+
+    await service.addToUploadPipeline({
+      file: new File(["video-1"], "answer-1.webm", {
+        type: "video/webm",
+      }),
+      interviewUuid: "interview-1",
+      questionUuid: "question-1",
+      queryKeyToInvalidateAnswers: ["answers", "interview-1"],
+      partNumber: 1,
+      isLastPart: false,
+    });
+
+    await service.addToUploadPipeline({
+      file: new File(["video-2"], "answer-2.webm", {
+        type: "video/webm",
+      }),
+      interviewUuid: "interview-1",
+      questionUuid: "question-1",
+      queryKeyToInvalidateAnswers: ["answers", "interview-1"],
+      partNumber: 2,
+      isLastPart: false,
+    });
+
+    firstPresignedUrl.resolve({
+      videoUuid: "video-1",
+      uploadId: "upload-1",
+      uploadUrl: "https://example.com/upload-part-1",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        createPresignedS3RecordingMultipartUploadUrl,
+      ).toHaveBeenNthCalledWith(2, {
+        multipartUploadMode: "existing",
+        mimeType: "video/webm",
+        partNumber: 2,
+        uploadId: "upload-1",
+        videoUuid: "video-1",
+      });
+    });
+
+    const queuedRecordings = useRecordingUploadStore.getState().recordings;
+    for (const recording of queuedRecordings) {
+      service.abortUpload(recording.indexedDBId);
+    }
+
+    await service.uploadPipeline;
   });
 
   it("updates the upload progress in the store when the xhr reports progress", async () => {
@@ -322,7 +454,7 @@ describe("RecordingUploadService", () => {
       progress: 25,
     });
 
-    useRecordingUploadStore.getState().recordings[0]?.abortController.abort();
+    service.abortUpload(indexedDbId as number);
     await service.uploadPipeline;
   });
 
@@ -364,7 +496,9 @@ describe("RecordingUploadService", () => {
 
     expect(useRecordingUploadStore.getState().recordings).toHaveLength(1);
 
-    useRecordingUploadStore.getState().recordings[0]?.abortController.abort();
+    service.abortUpload(
+      useRecordingUploadStore.getState().recordings[0]?.indexedDBId as number,
+    );
 
     await service.uploadPipeline;
 
@@ -812,7 +946,9 @@ describe("RecordingUploadService", () => {
       );
     });
 
-    useRecordingUploadStore.getState().recordings[0]?.abortController.abort();
+    service.abortUpload(
+      useRecordingUploadStore.getState().recordings[0]?.indexedDBId as number,
+    );
     await service.uploadPipeline;
   });
 

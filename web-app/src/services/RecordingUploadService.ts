@@ -55,6 +55,17 @@ export class RecordingUploadService {
   dbPromise: Promise<IDBDatabase> | null = null;
   uploadPipeline: Promise<void> = Promise.resolve();
   private readonly uploadAbortControllers = new Map<number, AbortController>();
+  private readonly multipartIdsByQuestion = new Map<
+    string,
+    {
+      promise: Promise<{
+        uploadId: string;
+        videoUuid: string;
+      }>;
+      resolve: (value: { uploadId: string; videoUuid: string }) => void;
+      reject: (reason?: unknown) => void;
+    }
+  >();
   private resumedPersistedUploads = false;
 
   static readonly DB_NAME = "UploadDatabase";
@@ -199,7 +210,7 @@ export class RecordingUploadService {
     });
   }
 
-  // Do not await this function, as it may busy wait.
+  // It is not necessary to await this function.
   async addToUploadPipeline({
     file,
     interviewUuid,
@@ -330,55 +341,104 @@ export class RecordingUploadService {
       mimeType ?? (await this.getFileFromIndexedDB(fileIndex)).type;
 
     if (partNumber === 1) {
-      return this.dependencies.client.createPresignedS3RecordingMultipartUploadUrl(
-        {
-          multipartUploadMode: "new",
+      const preSignedUrlPromise =
+        this.dependencies.client.createPresignedS3RecordingMultipartUploadUrl({
+          multipartUploadMode: "new" as const,
           mimeType: resolvedMimeType,
           partNumber: 1,
-        },
-      );
+        });
+
+      this.resolveMultipartIdsFromPromise({
+        questionUuid,
+        multipartIdsPromise: preSignedUrlPromise,
+      });
+
+      return preSignedUrlPromise;
     }
 
     const { uploadId, videoUuid } =
       await this.waitForMultipartIds(questionUuid);
 
     return this.dependencies.client.createPresignedS3RecordingMultipartUploadUrl(
-      this.getExistingMultipartUploadInput({
+      {
+        multipartUploadMode: "existing" as const,
         mimeType: resolvedMimeType,
         partNumber,
         uploadId,
         videoUuid,
-      }),
+      },
     );
   }
 
-  // This busy waits for the uploadId and videoUuid to be available in the store, which are set after getting the first pre-signed url for a video.
-  // Ideally this busy waiting never happens, but it can happen if the server is slow and the recording
-  private async waitForMultipartIds(questionUuid: string) {
-    let uploadId: string | undefined;
-    let videoUuid: string | undefined;
-    let counter = 0;
+  private resolveMultipartIdsFromPromise({
+    questionUuid,
+    multipartIdsPromise,
+  }: {
+    questionUuid: string;
+    multipartIdsPromise: Promise<{
+      uploadId: string;
+      videoUuid: string;
+    }>;
+  }) {
+    const deferredMultipartIds =
+      this.getOrCreateMultipartIdsDeferred(questionUuid);
 
-    while (!uploadId || !videoUuid) {
-      const multipartIds =
-        this.dependencies.uploadedRecordingPartsStore.getState().uploadedParts[
-          questionUuid
-        ];
-      if (multipartIds) {
-        uploadId = multipartIds.uploadId;
-        videoUuid = multipartIds.videoUuid;
-      } else {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-      counter++;
-      if (counter > 10) {
-        this.dependencies.toast.error(
-          "Das Hochladen des Videos ist nicht möglich. Bitte lade die Seite neu und versuche es erneut.",
-        );
-      }
+    void multipartIdsPromise.then(
+      ({ uploadId, videoUuid }) => {
+        deferredMultipartIds.resolve({ uploadId, videoUuid });
+      },
+      (error) => {
+        this.multipartIdsByQuestion.delete(questionUuid);
+        deferredMultipartIds.reject(error);
+      },
+    );
+  }
+
+  private getOrCreateMultipartIdsDeferred(questionUuid: string) {
+    const existingDeferred = this.multipartIdsByQuestion.get(questionUuid);
+    if (existingDeferred) {
+      return existingDeferred;
     }
 
-    return { uploadId, videoUuid };
+    let resolveMultipartIds: (value: {
+      uploadId: string;
+      videoUuid: string;
+    }) => void = () => {};
+    let rejectMultipartIds: (reason?: unknown) => void = () => {};
+
+    const multipartIdsPromise = new Promise<{
+      uploadId: string;
+      videoUuid: string;
+    }>((resolve, reject) => {
+      resolveMultipartIds = resolve;
+      rejectMultipartIds = reject;
+    });
+
+    const deferredMultipartIds = {
+      promise: multipartIdsPromise,
+      resolve: resolveMultipartIds,
+      reject: rejectMultipartIds,
+    };
+
+    this.multipartIdsByQuestion.set(questionUuid, deferredMultipartIds);
+    return deferredMultipartIds;
+  }
+
+  // This waits for multipart ids to be known for the question. On fresh uploads, part 1 resolves them.
+  // On reload, persisted multipart store state can already provide them immediately.
+  private async waitForMultipartIds(questionUuid: string) {
+    const uploadedPartsForQuestion =
+      this.dependencies.uploadedRecordingPartsStore.getState().uploadedParts[
+        questionUuid
+      ];
+    if (uploadedPartsForQuestion) {
+      return {
+        uploadId: uploadedPartsForQuestion.uploadId,
+        videoUuid: uploadedPartsForQuestion.videoUuid,
+      };
+    }
+
+    return await this.getOrCreateMultipartIdsDeferred(questionUuid).promise;
   }
 
   private async uploadRecording({
@@ -522,7 +582,7 @@ export class RecordingUploadService {
         if (!ETag) {
           reject(
             new Error(
-              `Upload failed for file index ${fileIndex}: missing ETag`,
+              `Upload succeeded for file index ${fileIndex} but no ETag was returned`,
             ),
           );
           return;
@@ -534,15 +594,17 @@ export class RecordingUploadService {
             PartNumber: partNumber,
             ETag,
           });
-        console.log(`Upload successful for file index ${fileIndex}`);
+
         resolve(false);
       };
+
       xhr.onerror = () => {
         signal.removeEventListener("abort", abortUpload);
         reject(
-          new Error(`Network error during upload of file index ${fileIndex}`),
+          new Error(`Network error during upload for file index ${fileIndex}`),
         );
       };
+
       xhr.onabort = () => {
         signal.removeEventListener("abort", abortUpload);
         resolve(true);
@@ -656,6 +718,7 @@ export class RecordingUploadService {
       queryKey: queryKeyToInvalidateAnswers,
     });
 
+    this.multipartIdsByQuestion.delete(questionUuid);
     this.dependencies.uploadedRecordingPartsStore
       .getState()
       .removeUploadedPartsForQuestion(questionUuid);
@@ -688,6 +751,7 @@ export class RecordingUploadService {
       await this.removeUpload({ fileIndex: recording.indexedDBId });
     }
 
+    this.multipartIdsByQuestion.delete(questionUuid);
     this.dependencies.uploadedRecordingPartsStore
       .getState()
       .removeUploadedPartsForQuestion(questionUuid);
@@ -698,32 +762,6 @@ export class RecordingUploadService {
       error instanceof Error &&
       error.message.startsWith("Network error during upload")
     );
-  }
-
-  private getExistingMultipartUploadInput({
-    mimeType,
-    partNumber,
-    uploadId,
-    videoUuid,
-  }: {
-    mimeType: string;
-    partNumber: number;
-    uploadId: string | undefined;
-    videoUuid: string | undefined;
-  }) {
-    if (!uploadId || !videoUuid) {
-      throw new Error(
-        "Invariant violation: missing multipart upload ids for an existing recording upload. Please report this bug.",
-      );
-    }
-
-    return {
-      multipartUploadMode: "existing" as const,
-      mimeType,
-      partNumber,
-      uploadId,
-      videoUuid,
-    };
   }
 }
 
