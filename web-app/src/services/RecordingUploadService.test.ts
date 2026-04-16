@@ -332,6 +332,147 @@ describe("RecordingUploadService", () => {
     await service.uploadPipeline;
   });
 
+  it("resumes a persisted first-part upload on bootstrap by reusing persisted multipart ids", async () => {
+    const createPresignedS3RecordingMultipartUploadUrl = vi
+      .fn()
+      .mockResolvedValue({
+        videoUuid: "video-1",
+        uploadId: "upload-1",
+        uploadUrl: "https://example.com/upload-part-1",
+      });
+    const xhr = createXhrDouble();
+
+    useRecordingUploadStore.setState({
+      recordings: [
+        {
+          questionUuid: "question-1",
+          interviewUuid: "interview-1",
+          queryKeyToInvalidateAnswers: ["answers", "interview-1"],
+          indexedDBId: 1,
+          progress: 0,
+          partNumber: 1,
+          isLastPart: false,
+        },
+      ],
+    } as never);
+    useUploadedRecordingPartsStore.setState({
+      uploadedParts: {
+        "question-1": {
+          videoUuid: "video-1",
+          uploadId: "upload-1",
+          status: "uploading",
+          parts: [],
+        },
+      },
+    });
+
+    const service = createService({
+      createPresignedS3RecordingMultipartUploadUrl,
+      createXmlHttpRequest: () => xhr,
+      indexedDb: createIndexedDbDouble({
+        seededFiles: {
+          1: new File(["video-part-1"], "answer-1.webm", {
+            type: "video/webm",
+          }),
+        },
+      }),
+    });
+
+    void service.resumePersistedUploads();
+
+    await vi.waitFor(() => {
+      expect(createPresignedS3RecordingMultipartUploadUrl).toHaveBeenCalledWith(
+        {
+          multipartUploadMode: "existing",
+          mimeType: "video/webm",
+          partNumber: 1,
+          uploadId: "upload-1",
+          videoUuid: "video-1",
+        },
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(xhr.send).toHaveBeenCalledTimes(1);
+    });
+
+    service.abortUpload(1);
+    await service.uploadPipeline;
+  });
+
+  it("resumes a persisted later-part upload on bootstrap by reusing persisted multipart ids", async () => {
+    const createPresignedS3RecordingMultipartUploadUrl = vi
+      .fn()
+      .mockResolvedValue({
+        videoUuid: "video-1",
+        uploadId: "upload-1",
+        uploadUrl: "https://example.com/upload-part-2",
+      });
+    const xhr = createXhrDouble();
+
+    useRecordingUploadStore.setState({
+      recordings: [
+        {
+          questionUuid: "question-1",
+          interviewUuid: "interview-1",
+          queryKeyToInvalidateAnswers: ["answers", "interview-1"],
+          indexedDBId: 2,
+          progress: 0,
+          partNumber: 2,
+          isLastPart: false,
+        },
+      ],
+    } as never);
+    useUploadedRecordingPartsStore.setState({
+      uploadedParts: {
+        "question-1": {
+          videoUuid: "video-1",
+          uploadId: "upload-1",
+          status: "uploading",
+          parts: [
+            {
+              PartNumber: 1,
+              ETag: '"etag-1"',
+            },
+          ],
+        },
+      },
+    });
+
+    const service = createService({
+      createPresignedS3RecordingMultipartUploadUrl,
+      createXmlHttpRequest: () => xhr,
+      indexedDb: createIndexedDbDouble({
+        seededFiles: {
+          2: new File(["video-part-2"], "answer-2.webm", {
+            type: "video/webm",
+          }),
+        },
+      }),
+    });
+
+    void service.resumePersistedUploads();
+
+    await vi.waitFor(() => {
+      expect(createPresignedS3RecordingMultipartUploadUrl).toHaveBeenCalledWith(
+        {
+          multipartUploadMode: "existing",
+          mimeType: "video/webm",
+          partNumber: 2,
+          uploadId: "upload-1",
+          videoUuid: "video-1",
+        },
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(xhr.send).toHaveBeenCalledTimes(1);
+    });
+
+    service.abortUpload(2);
+    await service.uploadPipeline;
+  });
+
   it("retries multipart finalization on bootstrap when a question is persisted as finalizing", async () => {
     const createPresignedS3RecordingMultipartUploadUrl = vi.fn();
     const finishMultipartUploadForRecording = vi.fn().mockResolvedValue({
@@ -407,6 +548,127 @@ describe("RecordingUploadService", () => {
 
     expect(createPresignedS3RecordingMultipartUploadUrl).not.toHaveBeenCalled();
     expect(createXmlHttpRequest).not.toHaveBeenCalled();
+
+    await vi.waitFor(() => {
+      expect(useRecordingUploadStore.getState().recordings).toHaveLength(0);
+      expect(
+        useUploadedRecordingPartsStore.getState().uploadedParts["question-1"],
+      ).toBeUndefined();
+    });
+
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["answers", "interview-1"],
+    });
+
+    await service.uploadPipeline;
+  });
+
+  it("resumes a persisted last-part upload on bootstrap, then finalizes and clears state", async () => {
+    const createPresignedS3RecordingMultipartUploadUrl = vi
+      .fn()
+      .mockResolvedValue({
+        videoUuid: "video-1",
+        uploadId: "upload-1",
+        uploadUrl: "https://example.com/upload-part-2",
+      });
+    const finishMultipartUploadForRecording = vi.fn().mockResolvedValue({
+      questionUuid: "question-1",
+      answerPayload: {
+        videoUuid: "video-1",
+        status: "uploaded",
+      },
+    });
+    const queryClient = createQueryClientDouble();
+    const xhr = createXhrDouble();
+
+    useRecordingUploadStore.setState({
+      recordings: [
+        {
+          questionUuid: "question-1",
+          interviewUuid: "interview-1",
+          queryKeyToInvalidateAnswers: ["answers", "interview-1"],
+          indexedDBId: 2,
+          progress: 0,
+          partNumber: 2,
+          isLastPart: true,
+        },
+      ],
+    } as never);
+    useUploadedRecordingPartsStore.setState({
+      uploadedParts: {
+        "question-1": {
+          videoUuid: "video-1",
+          uploadId: "upload-1",
+          status: "uploading",
+          parts: [
+            {
+              PartNumber: 1,
+              ETag: '"etag-1"',
+            },
+          ],
+        },
+      },
+    });
+
+    const service = createService({
+      createPresignedS3RecordingMultipartUploadUrl,
+      createXmlHttpRequest: () => xhr,
+      finishMultipartUploadForRecording,
+      queryClient,
+      indexedDb: createIndexedDbDouble({
+        seededFiles: {
+          2: new File(["video-part-2"], "answer-2.webm", {
+            type: "video/webm",
+          }),
+        },
+      }),
+    });
+
+    void service.resumePersistedUploads();
+
+    await vi.waitFor(() => {
+      expect(createPresignedS3RecordingMultipartUploadUrl).toHaveBeenCalledWith(
+        {
+          multipartUploadMode: "existing",
+          mimeType: "video/webm",
+          partNumber: 2,
+          uploadId: "upload-1",
+          videoUuid: "video-1",
+        },
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(xhr.send).toHaveBeenCalledTimes(1);
+    });
+
+    xhr.onload?.();
+
+    await vi.waitFor(() => {
+      expect(finishMultipartUploadForRecording).toHaveBeenCalledWith(
+        {
+          interviewUuid: "interview-1",
+          questionUuid: "question-1",
+          videoUuid: "video-1",
+          uploadId: "upload-1",
+          parts: [
+            {
+              PartNumber: 1,
+              ETag: '"etag-1"',
+            },
+            {
+              PartNumber: 2,
+              ETag: '"etag-1"',
+            },
+          ],
+        },
+        {
+          context: {
+            retry: 2,
+          },
+        },
+      );
+    });
 
     await vi.waitFor(() => {
       expect(useRecordingUploadStore.getState().recordings).toHaveLength(0);

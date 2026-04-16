@@ -377,6 +377,22 @@ export class RecordingUploadService {
       mimeType ?? (await this.getFileFromIndexedDB(fileIndex)).type;
 
     if (partNumber === 1) {
+      const uploadedPartsForQuestion =
+        this.dependencies.uploadedRecordingPartsStore.getState().uploadedParts[
+          questionUuid
+        ];
+      if (uploadedPartsForQuestion) {
+        return this.dependencies.client.createPresignedS3RecordingMultipartUploadUrl(
+          {
+            multipartUploadMode: "existing" as const,
+            mimeType: resolvedMimeType,
+            partNumber: 1,
+            uploadId: uploadedPartsForQuestion.uploadId,
+            videoUuid: uploadedPartsForQuestion.videoUuid,
+          },
+        );
+      }
+
       // The first part creates the multipart session. Its presign response is
       // the earliest point where later parts can safely learn uploadId and
       // videoUuid without waiting for store writes.
