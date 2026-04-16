@@ -24,6 +24,10 @@ export const recordingUploadService = new RecordingUploadService(
 );
 
 function resumePersistedRecordingUploadsWhenHydrated() {
+  // The service must not inspect persisted stores before hydration completes,
+  // otherwise it can race with sessionStorage rehydration and conclude that
+  // there is nothing to resume. This bootstrap waits for both stores because
+  // queued uploads and multipart state must be restored together.
   const maybeResumePersistedUploads = () => {
     if (
       !useRecordingUploadStore.persist.hasHydrated() ||
@@ -38,7 +42,6 @@ function resumePersistedRecordingUploadsWhenHydrated() {
   };
 
   const unsubscribeRecordingHydration =
-    // This callback will be called once the recording upload store has rehydrated from persistence.
     useRecordingUploadStore.persist.onFinishHydration(
       maybeResumePersistedUploads,
     );
@@ -47,6 +50,8 @@ function resumePersistedRecordingUploadsWhenHydrated() {
       maybeResumePersistedUploads,
     );
 
+  // Also check immediately in case hydration already finished before these
+  // listeners were registered.
   maybeResumePersistedUploads();
 }
 

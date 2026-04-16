@@ -43,18 +43,29 @@ export type RecordingUploadServiceDependencies = {
 
 // FIXME write tests for this service, it is too complicated
 
-// This service is the only part allowed to write to the recording upload store, otherwise it would be too hard to manage the state.
-// This service needs the state to live outside of its own instance, so that the ui may access and react to it.
-// This service should be a singleton and only one upload at a time should be running to maximize throughput.
-// This service should be resilient to page reloads, so the upload can continue even if the user accidentally reloads the page in the middle of an upload.
-
-// This service combines data sources for its working. It uses indexedDB to store the recordings parts,
-// and uses a two persisted zustand stores to manage the state of the uploads and keep track of upload data, like the uploaded parts and uploadId.
+// This service is the only part allowed to write to the recording upload stores.
+// The UI may read store state, but it should delegate orchestration, cancellation,
+// resume behavior, multipart finalization, and cleanup to this service.
+//
+// The split is intentional:
+// - IndexedDB stores the actual file parts.
+// - Persisted Zustand stores keep reload-safe metadata such as queued uploads,
+//   multipart ids, uploaded part ETags, and lifecycle state.
+// - Runtime-only coordination such as abort controllers, the upload pipeline,
+//   and in-flight multipart-id rendezvous stays inside this service.
+//
+// This service should be a singleton and only one upload at a time should be
+// running to maximize throughput. It is also expected to survive accidental
+// reloads within the same tab by rebuilding runtime state from persisted state.
 
 export class RecordingUploadService {
   dbPromise: Promise<IDBDatabase> | null = null;
   uploadPipeline: Promise<void> = Promise.resolve();
   private readonly uploadAbortControllers = new Map<number, AbortController>();
+  // Later parts need multipart ids from part 1 before they can request their
+  // own presigned URL. Within one running page instance we coordinate that via
+  // a per-question deferred promise instead of polling persisted state.
+  // After reload, persisted multipart state is the source of truth again.
   private readonly multipartIdsByQuestion = new Map<
     string,
     {
@@ -82,6 +93,9 @@ export class RecordingUploadService {
     if (this.resumedPersistedUploads) return;
     this.resumedPersistedUploads = true;
 
+    // Runtime-only state such as abort controllers does not survive reload.
+    // We rebuild it here from the persisted queue once the client bootstrap has
+    // confirmed that both persisted stores have hydrated.
     const persistedRecordings = [
       ...this.dependencies.recordingUploadStore.getState().recordings,
     ];
@@ -341,6 +355,9 @@ export class RecordingUploadService {
       mimeType ?? (await this.getFileFromIndexedDB(fileIndex)).type;
 
     if (partNumber === 1) {
+      // The first part creates the multipart session. Its presign response is
+      // the earliest point where later parts can safely learn uploadId and
+      // videoUuid without waiting for store writes.
       const preSignedUrlPromise =
         this.dependencies.client.createPresignedS3RecordingMultipartUploadUrl({
           multipartUploadMode: "new" as const,
@@ -356,6 +373,9 @@ export class RecordingUploadService {
       return preSignedUrlPromise;
     }
 
+    // Later parts must attach to the multipart session created by part 1.
+    // On reload, waitForMultipartIds can resolve immediately from persisted
+    // multipart state instead of the in-memory deferred promise.
     const { uploadId, videoUuid } =
       await this.waitForMultipartIds(questionUuid);
 
@@ -424,8 +444,9 @@ export class RecordingUploadService {
     return deferredMultipartIds;
   }
 
-  // This waits for multipart ids to be known for the question. On fresh uploads, part 1 resolves them.
-  // On reload, persisted multipart store state can already provide them immediately.
+  // Fresh uploads resolve this from the deferred promise above. Reloaded uploads
+  // resolve from persisted multipart state, which is why the service can resume
+  // after a page refresh without needing to recreate old promises.
   private async waitForMultipartIds(questionUuid: string) {
     const uploadedPartsForQuestion =
       this.dependencies.uploadedRecordingPartsStore.getState().uploadedParts[
@@ -648,6 +669,9 @@ export class RecordingUploadService {
 
     if (!isLastPart) return;
 
+    // Finalization is a boundary: once storage finalization fails, we do not
+    // attempt saveAnswer because the application-level answer state must not say
+    // "uploaded" unless the multipart upload was actually completed.
     this.dependencies.uploadedRecordingPartsStore
       .getState()
       .setUploadLifecycleStatus({
@@ -741,6 +765,9 @@ export class RecordingUploadService {
   }: {
     questionUuid: string;
   }) {
+    // Fatal cleanup is question-scoped because multipart ids and uploaded parts
+    // are tracked per question. Recoverable network errors intentionally skip
+    // this path so resumable state stays intact.
     const recordingsForQuestion = this.dependencies.recordingUploadStore
       .getState()
       .recordings.filter(

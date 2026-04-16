@@ -50,8 +50,12 @@ export const useRecordingUploadStore = create<RecordingUploadStore>()(
     }),
     {
       name: "RecordingUploadStore",
-      // Both stores are stored in session storage, so they are resilient to page reloads, but cleared when the tab is closed.
-      // Local storage would be shared between tabs, which could cause issues if the user has multiple tabs open and we try to resume operations in one of them, of items the tab does not own.
+      // This store is reload-safe metadata only. It persists the queued uploads
+      // needed to reconstruct service runtime state after a refresh.
+      //
+      // We use sessionStorage so uploads survive reloads in the same tab but do
+      // not become a shared cross-tab coordination mechanism.
+      // Duplicate-tab behavior is not treated as a supported scenario.
       // When the user uses "duplicate tab", the state will be copied to the new tab, this could cause problems, but we assume this will never happen while the store has data.
       storage: createJSONStorage(() => sessionStorage),
     },
@@ -102,9 +106,13 @@ type UploadedRecordingPartsStore = {
   removeUploadedPartsForQuestion: (questionUuid: string) => void;
 };
 
-// The recording upload service owns writes to the recording upload stores.
-// The UI may read these stores, but it should delegate upload orchestration,
-// resume/finalization, cancellation, and cleanup to the service.
+// This store persists multipart session identity and uploaded S3 parts per
+// question. That persisted state is the reload-safe source of truth for resumed
+// uploads, especially once part 1 has already received uploadId and videoUuid.
+//
+// The recording upload service still owns all writes. The UI may read state,
+// but it should delegate orchestration, resume/finalization, cancellation, and
+// cleanup to the service.
 export const useUploadedRecordingPartsStore =
   create<UploadedRecordingPartsStore>()(
     persist(
@@ -126,7 +134,9 @@ export const useUploadedRecordingPartsStore =
               },
             },
           })),
-        // Only happens once per question, always before the call to addUploadedPart
+        // A question has at most one active multipart session at a time.
+        // Initializing this more than once means the client lost track of that
+        // invariant and should fail loudly instead of silently corrupting state.
         setMultipartIds: ({ questionUuid, videoUuid, uploadId }) =>
           set((state) => {
             if (state.uploadedParts[questionUuid]) {
@@ -147,7 +157,9 @@ export const useUploadedRecordingPartsStore =
               },
             };
           }),
-        // Only happens after setMultipartIds initialized the multipart session for the question.
+        // `finalizing` is persisted so the UI can reflect that state after a
+        // reload, even though the exact resume behavior for already-finalizing
+        // uploads is still a separate design decision.
         setUploadLifecycleStatus: ({ questionUuid, status }) =>
           set((state) => {
             if (!state.uploadedParts[questionUuid]) {
