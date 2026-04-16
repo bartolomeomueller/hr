@@ -191,7 +191,6 @@ function createService({
   createPresignedS3RecordingMultipartUploadUrl,
   createXmlHttpRequest = () => new XMLHttpRequest(),
   finishMultipartUploadForRecording = vi.fn(),
-  saveAnswer = vi.fn(),
   queryClient = createQueryClientDouble(),
   isPreSignedUrlStillValid = vi.fn(() => true),
   indexedDb = createIndexedDbDouble(),
@@ -199,7 +198,6 @@ function createService({
   createPresignedS3RecordingMultipartUploadUrl: ReturnType<typeof vi.fn>;
   createXmlHttpRequest?: () => XMLHttpRequest;
   finishMultipartUploadForRecording?: ReturnType<typeof vi.fn>;
-  saveAnswer?: ReturnType<typeof vi.fn>;
   queryClient?: ReturnType<typeof createQueryClientDouble>;
   isPreSignedUrlStillValid?: ReturnType<typeof vi.fn>;
   indexedDb?: IDBFactory;
@@ -208,7 +206,6 @@ function createService({
     client: {
       createPresignedS3RecordingMultipartUploadUrl,
       finishMultipartUploadForRecording,
-      saveAnswer,
       getInterviewRelatedDataByInterviewUuid: vi.fn(),
     },
     getQueryClient: () => queryClient as never,
@@ -337,10 +334,7 @@ describe("RecordingUploadService", () => {
 
   it("retries multipart finalization on bootstrap when a question is persisted as finalizing", async () => {
     const createPresignedS3RecordingMultipartUploadUrl = vi.fn();
-    const finishMultipartUploadForRecording = vi
-      .fn()
-      .mockResolvedValue(undefined);
-    const saveAnswer = vi.fn().mockResolvedValue({
+    const finishMultipartUploadForRecording = vi.fn().mockResolvedValue({
       questionUuid: "question-1",
       answerPayload: {
         videoUuid: "video-1",
@@ -383,7 +377,6 @@ describe("RecordingUploadService", () => {
       createPresignedS3RecordingMultipartUploadUrl,
       createXmlHttpRequest,
       finishMultipartUploadForRecording,
-      saveAnswer,
       queryClient,
       indexedDb: createIndexedDbDouble(),
     });
@@ -393,6 +386,8 @@ describe("RecordingUploadService", () => {
     await vi.waitFor(() => {
       expect(finishMultipartUploadForRecording).toHaveBeenCalledWith(
         {
+          interviewUuid: "interview-1",
+          questionUuid: "question-1",
           videoUuid: "video-1",
           uploadId: "upload-1",
           parts: [
@@ -412,24 +407,6 @@ describe("RecordingUploadService", () => {
 
     expect(createPresignedS3RecordingMultipartUploadUrl).not.toHaveBeenCalled();
     expect(createXmlHttpRequest).not.toHaveBeenCalled();
-
-    await vi.waitFor(() => {
-      expect(saveAnswer).toHaveBeenCalledWith(
-        {
-          interviewUuid: "interview-1",
-          questionUuid: "question-1",
-          answerPayload: {
-            videoUuid: "video-1",
-            status: "uploaded",
-          },
-        },
-        {
-          context: {
-            retry: 2,
-          },
-        },
-      );
-    });
 
     await vi.waitFor(() => {
       expect(useRecordingUploadStore.getState().recordings).toHaveLength(0);
@@ -683,23 +660,21 @@ describe("RecordingUploadService", () => {
     const createPresignedS3RecordingMultipartUploadUrl = vi
       .fn()
       .mockReturnValueOnce(presignedUrl.promise);
-    const finishMultipartUploadForRecording = vi
-      .fn()
-      .mockReturnValueOnce(finishMultipartUpload.promise);
-    const saveAnswer = vi.fn().mockResolvedValue({
-      questionUuid: "question-1",
-      answerPayload: {
-        videoUuid: "video-1",
-        status: "uploaded",
-      },
-    });
+    const finishMultipartUploadForRecording = vi.fn().mockReturnValueOnce(
+      finishMultipartUpload.promise.then(() => ({
+        questionUuid: "question-1",
+        answerPayload: {
+          videoUuid: "video-1",
+          status: "uploaded",
+        },
+      })),
+    );
     const queryClient = createQueryClientDouble();
     const xhr = createXhrDouble();
     const service = createService({
       createPresignedS3RecordingMultipartUploadUrl,
       createXmlHttpRequest: () => xhr,
       finishMultipartUploadForRecording,
-      saveAnswer,
       queryClient,
     });
 
@@ -729,6 +704,8 @@ describe("RecordingUploadService", () => {
     await vi.waitFor(() => {
       expect(finishMultipartUploadForRecording).toHaveBeenCalledWith(
         {
+          interviewUuid: "interview-1",
+          questionUuid: "question-1",
           videoUuid: "video-1",
           uploadId: "upload-1",
           parts: [
@@ -763,24 +740,6 @@ describe("RecordingUploadService", () => {
     finishMultipartUpload.resolve();
 
     await vi.waitFor(() => {
-      expect(saveAnswer).toHaveBeenCalledWith(
-        {
-          interviewUuid: "interview-1",
-          questionUuid: "question-1",
-          answerPayload: {
-            videoUuid: "video-1",
-            status: "uploaded",
-          },
-        },
-        {
-          context: {
-            retry: 2,
-          },
-        },
-      );
-    });
-
-    await vi.waitFor(() => {
       expect(
         useUploadedRecordingPartsStore.getState().uploadedParts["question-1"],
       ).toBeUndefined();
@@ -803,10 +762,7 @@ describe("RecordingUploadService", () => {
     const createPresignedS3RecordingMultipartUploadUrl = vi
       .fn()
       .mockReturnValueOnce(presignedUrl.promise);
-    const finishMultipartUploadForRecording = vi
-      .fn()
-      .mockResolvedValueOnce(undefined);
-    const saveAnswer = vi.fn().mockResolvedValue({
+    const finishMultipartUploadForRecording = vi.fn().mockResolvedValueOnce({
       questionUuid: "question-1",
       answerPayload: {
         videoUuid: "video-1",
@@ -820,7 +776,6 @@ describe("RecordingUploadService", () => {
       client: {
         createPresignedS3RecordingMultipartUploadUrl,
         finishMultipartUploadForRecording,
-        saveAnswer,
         getInterviewRelatedDataByInterviewUuid: vi.fn(),
       },
       getQueryClient: () => queryClient as never,
@@ -860,6 +815,8 @@ describe("RecordingUploadService", () => {
     await vi.waitFor(() => {
       expect(finishMultipartUploadForRecording).toHaveBeenCalledWith(
         {
+          interviewUuid: "interview-1",
+          questionUuid: "question-1",
           videoUuid: "video-1",
           uploadId: "upload-1",
           parts: [
@@ -878,24 +835,6 @@ describe("RecordingUploadService", () => {
     });
 
     expect(toastError).not.toHaveBeenCalled();
-
-    await vi.waitFor(() => {
-      expect(saveAnswer).toHaveBeenCalledWith(
-        {
-          interviewUuid: "interview-1",
-          questionUuid: "question-1",
-          answerPayload: {
-            videoUuid: "video-1",
-            status: "uploaded",
-          },
-        },
-        {
-          context: {
-            retry: 2,
-          },
-        },
-      );
-    });
 
     await vi.waitFor(() => {
       expect(
@@ -918,7 +857,6 @@ describe("RecordingUploadService", () => {
     const finishMultipartUploadForRecording = vi
       .fn()
       .mockRejectedValue(new Error("finalization failed"));
-    const saveAnswer = vi.fn();
     const toastError = vi.fn();
     const queryClient = createQueryClientDouble();
     const xhr = createXhrDouble();
@@ -926,7 +864,6 @@ describe("RecordingUploadService", () => {
       client: {
         createPresignedS3RecordingMultipartUploadUrl,
         finishMultipartUploadForRecording,
-        saveAnswer,
         getInterviewRelatedDataByInterviewUuid: vi.fn(),
       },
       getQueryClient: () => queryClient as never,
@@ -966,6 +903,8 @@ describe("RecordingUploadService", () => {
     await vi.waitFor(() => {
       expect(finishMultipartUploadForRecording).toHaveBeenCalledWith(
         {
+          interviewUuid: "interview-1",
+          questionUuid: "question-1",
           videoUuid: "video-1",
           uploadId: "upload-1",
           parts: [
@@ -989,7 +928,6 @@ describe("RecordingUploadService", () => {
       );
     });
 
-    expect(saveAnswer).not.toHaveBeenCalled();
     expect(queryClient.setQueryData).not.toHaveBeenCalled();
     expect(queryClient.invalidateQueries).not.toHaveBeenCalled();
     expect(
@@ -1093,7 +1031,6 @@ describe("RecordingUploadService", () => {
       client: {
         createPresignedS3RecordingMultipartUploadUrl,
         finishMultipartUploadForRecording: vi.fn(),
-        saveAnswer: vi.fn(),
         getInterviewRelatedDataByInterviewUuid: vi.fn(),
       },
       getQueryClient: () => createQueryClientDouble() as never,
@@ -1174,7 +1111,6 @@ describe("RecordingUploadService", () => {
       client: {
         createPresignedS3RecordingMultipartUploadUrl,
         finishMultipartUploadForRecording: vi.fn(),
-        saveAnswer: vi.fn(),
         getInterviewRelatedDataByInterviewUuid: vi.fn(),
       },
       getQueryClient: () => createQueryClientDouble() as never,

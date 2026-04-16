@@ -1,10 +1,8 @@
 import type { QueryKey } from "@tanstack/react-query";
 import type { toast } from "sonner";
-import type z from "zod";
 import type { getQueryClient } from "@/lib/query-client";
 import type { isPreSignedURLStillValid } from "@/lib/utils";
 import type { client } from "@/orpc/client";
-import type { AnswerSelectSchema } from "@/orpc/schema";
 import type {
   Recording,
   useRecordingUploadStore,
@@ -16,7 +14,6 @@ export type RecordingUploadServiceDependencies = {
     typeof client,
     | "createPresignedS3RecordingMultipartUploadUrl"
     | "finishMultipartUploadForRecording"
-    | "saveAnswer"
     | "getInterviewRelatedDataByInterviewUuid"
   >;
   getQueryClient: typeof getQueryClient;
@@ -24,7 +21,7 @@ export type RecordingUploadServiceDependencies = {
   toast: Pick<typeof toast, "error">;
   recordingUploadStore: typeof useRecordingUploadStore;
   uploadedRecordingPartsStore: typeof useUploadedRecordingPartsStore;
-  createXmlHttpRequest: () => XMLHttpRequest;
+  createXmlHttpRequest: () => XMLHttpRequest; // FIXME should be the same type
   indexedDb: IDBFactory;
 };
 
@@ -696,9 +693,9 @@ export class RecordingUploadService {
       return;
     }
 
-    // Finalization is a boundary: once storage finalization fails, we do not
-    // attempt saveAnswer because the application-level answer state must not say
-    // "uploaded" unless the multipart upload was actually completed.
+    // Finalization is a boundary: the combined RPC finalizes storage and writes
+    // the uploaded video answer. If that fails, the application-level answer
+    // state must not say "uploaded".
     this.dependencies.uploadedRecordingPartsStore
       .getState()
       .setUploadLifecycleStatus({
@@ -743,51 +740,21 @@ export class RecordingUploadService {
     }
 
     try {
-      await this.dependencies.client.finishMultipartUploadForRecording(
-        {
-          videoUuid,
-          uploadId,
-          parts: uploadedPartsForQuestion.parts,
-        },
-        {
-          context: {
-            retry: RecordingUploadService.MULTIPART_FINALIZATION_RETRIES,
-          },
-        },
-      );
-    } catch (error) {
-      this.dependencies.toast.error(
-        "Das Abschließen des Video-Uploads ist fehlgeschlagen. Bitte lade die Seite erneut, um es erneut zu versuchen.",
-      );
-      console.error("Error finishing multipart upload:", error);
-      return;
-    }
-
-    let updatedAnswer: z.infer<typeof AnswerSelectSchema> | null = null;
-    try {
-      updatedAnswer = await this.dependencies.client.saveAnswer(
-        {
-          interviewUuid,
-          questionUuid,
-          answerPayload: {
+      const updatedAnswer =
+        await this.dependencies.client.finishMultipartUploadForRecording(
+          {
+            interviewUuid,
+            questionUuid,
             videoUuid,
-            status: "uploaded",
+            uploadId,
+            parts: uploadedPartsForQuestion.parts,
           },
-        },
-        {
-          context: {
-            retry: RecordingUploadService.MULTIPART_FINALIZATION_RETRIES,
+          {
+            context: {
+              retry: RecordingUploadService.MULTIPART_FINALIZATION_RETRIES,
+            },
           },
-        },
-      );
-    } catch (error) {
-      this.dependencies.toast.error(
-        "Das Hochladen des Videos ist fehlgeschlagen. Bitte lade die Seite erneut, um es erneut zu versuchen.",
-      );
-      console.error("Error adding recording to answer:", error);
-    }
-
-    if (updatedAnswer) {
+        );
       this.dependencies
         .getQueryClient()
         .setQueryData<
@@ -805,7 +772,14 @@ export class RecordingUploadService {
             ),
           };
         });
+    } catch (error) {
+      this.dependencies.toast.error(
+        "Das Abschließen des Video-Uploads ist fehlgeschlagen. Bitte lade die Seite erneut, um es erneut zu versuchen.",
+      );
+      console.error("Error finalizing uploaded video answer:", error);
+      return;
     }
+
     await this.dependencies.getQueryClient().invalidateQueries({
       queryKey: queryKeyToInvalidateAnswers,
     });

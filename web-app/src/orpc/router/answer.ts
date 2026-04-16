@@ -19,6 +19,86 @@ import { base } from "../base";
 import { debugMiddleware } from "../middlewares";
 import { AnswerSelectSchema } from "../schema";
 
+export async function saveAnswerAndHandleVideoEffects(input: {
+  interviewUuid: string;
+  questionUuid: string;
+  answerPayload: z.infer<typeof AnswerSelectSchema.shape.answerPayload>;
+}) {
+  let existingAnswerPayload = null;
+
+  const savedAnswer = await db.transaction(async (tx) => {
+    const [existingAnswer] = await tx
+      .select()
+      .from(Answer)
+      .where(
+        and(
+          eq(Answer.interviewUuid, input.interviewUuid),
+          eq(Answer.questionUuid, input.questionUuid),
+        ),
+      )
+      .limit(1);
+
+    if (existingAnswer) {
+      existingAnswerPayload = existingAnswer.answerPayload;
+
+      const [updatedAnswer] = await tx
+        .update(Answer)
+        .set({
+          answerPayload: input.answerPayload,
+          answeredAt: new Date(),
+        })
+        .where(eq(Answer.uuid, existingAnswer.uuid))
+        .returning();
+
+      return updatedAnswer;
+    }
+
+    const [insertedAnswer] = await tx
+      .insert(Answer)
+      .values({
+        interviewUuid: input.interviewUuid,
+        questionUuid: input.questionUuid,
+        answerPayload: input.answerPayload,
+        answeredAt: new Date(),
+      })
+      .returning();
+
+    return insertedAnswer;
+  });
+
+  // If the answer payload is a video answer, add a processing job to the queue.
+  const videoAnswerPayloadResult = VideoAnswerPayloadType.safeParse(
+    input.answerPayload,
+  );
+  if (videoAnswerPayloadResult.success) {
+    await videoProcessingQueue.add("video-processing", {
+      uuid: videoAnswerPayloadResult.data.videoUuid,
+    });
+
+    // If a previous video answer exists, delete the old video and processed video from object storage.
+    if (existingAnswerPayload) {
+      const existingVideoAnswerPayload = VideoAnswerPayloadType.parse(
+        existingAnswerPayload,
+      );
+      // FIXME this does not stop an ongoing processing job for the old video, add stopping of a running processing job
+      if (existingVideoAnswerPayload.status === "uploaded") {
+        void deleteObject(
+          getObjectKeyForVideoUuid(existingVideoAnswerPayload.videoUuid),
+        );
+      }
+      if (existingVideoAnswerPayload.status === "processed") {
+        void deleteObjectsForPrefix(
+          getObjectKeyForProcessedVideoUuid(
+            existingVideoAnswerPayload.videoUuid,
+          ),
+        );
+      }
+    }
+  }
+
+  return savedAnswer;
+}
+
 // NOTE maybe move to an upsert
 export const saveAnswer = base
   .use(debugMiddleware)
@@ -30,81 +110,7 @@ export const saveAnswer = base
     }),
   )
   .output(AnswerSelectSchema)
-  .handler(async ({ input }) => {
-    let existingAnswerPayload = null;
-
-    const savedAnswer = await db.transaction(async (tx) => {
-      const [existingAnswer] = await tx
-        .select()
-        .from(Answer)
-        .where(
-          and(
-            eq(Answer.interviewUuid, input.interviewUuid),
-            eq(Answer.questionUuid, input.questionUuid),
-          ),
-        )
-        .limit(1);
-
-      if (existingAnswer) {
-        existingAnswerPayload = existingAnswer.answerPayload;
-
-        const [updatedAnswer] = await tx
-          .update(Answer)
-          .set({
-            answerPayload: input.answerPayload,
-            answeredAt: new Date(),
-          })
-          .where(eq(Answer.uuid, existingAnswer.uuid))
-          .returning();
-
-        return updatedAnswer;
-      }
-
-      const [insertedAnswer] = await tx
-        .insert(Answer)
-        .values({
-          interviewUuid: input.interviewUuid,
-          questionUuid: input.questionUuid,
-          answerPayload: input.answerPayload,
-          answeredAt: new Date(),
-        })
-        .returning();
-
-      return insertedAnswer;
-    });
-
-    // If the answer payload is a video answer, add a processing job to the queue.
-    const videoAnswerPayloadResult = VideoAnswerPayloadType.safeParse(
-      input.answerPayload,
-    );
-    if (videoAnswerPayloadResult.success) {
-      await videoProcessingQueue.add("video-processing", {
-        uuid: videoAnswerPayloadResult.data.videoUuid,
-      });
-
-      // If a previous video answer exists, delete the old video and processed video from object storage.
-      if (existingAnswerPayload) {
-        const existingVideoAnswerPayload = VideoAnswerPayloadType.parse(
-          existingAnswerPayload,
-        );
-        // FIXME this does not stop an ongoing processing job for the old video, add stopping of a running processing job
-        if (existingVideoAnswerPayload.status === "uploaded") {
-          void deleteObject(
-            getObjectKeyForVideoUuid(existingVideoAnswerPayload.videoUuid),
-          );
-        }
-        if (existingVideoAnswerPayload.status === "processed") {
-          void deleteObjectsForPrefix(
-            getObjectKeyForProcessedVideoUuid(
-              existingVideoAnswerPayload.videoUuid,
-            ),
-          );
-        }
-      }
-    }
-
-    return savedAnswer;
-  });
+  .handler(async ({ input }) => saveAnswerAndHandleVideoEffects(input));
 
 export const addNewDocumentToAnswer = base
   .use(debugMiddleware)

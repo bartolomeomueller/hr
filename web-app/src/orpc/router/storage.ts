@@ -9,6 +9,8 @@ import {
 } from "@/lib/s3.server";
 import { base } from "../base";
 import { debugMiddleware } from "../middlewares";
+import { AnswerSelectSchema } from "../schema";
+import { saveAnswerAndHandleVideoEffects } from "./answer";
 
 export const createPresignedS3RecordingMultipartUploadUrl = base
   .use(debugMiddleware)
@@ -67,6 +69,8 @@ export const finishMultipartUploadForRecording = base
   .use(debugMiddleware)
   .input(
     z.object({
+      interviewUuid: z.string(),
+      questionUuid: z.string(),
       videoUuid: z.uuidv7(),
       uploadId: z.string(),
       parts: z.array(
@@ -77,12 +81,22 @@ export const finishMultipartUploadForRecording = base
       ),
     }),
   )
-  // .output()
+  .output(AnswerSelectSchema)
   .handler(async ({ input }) => {
     await completeMultipartUploadForVideo({
       uploadId: input.uploadId,
       videoUuid: input.videoUuid,
       parts: input.parts,
+    });
+
+    // This promise will be awaited by orpc
+    return saveAnswerAndHandleVideoEffects({
+      interviewUuid: input.interviewUuid,
+      questionUuid: input.questionUuid,
+      answerPayload: {
+        videoUuid: input.videoUuid,
+        status: "uploaded",
+      },
     });
   });
 
