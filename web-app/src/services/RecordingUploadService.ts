@@ -293,16 +293,19 @@ export class RecordingUploadService {
         maxAttempts: 3,
         getDelayMs: (attempt) => attempt * 1000,
         onFinalError: async (error) => {
-          this.dependencies.toast.error(
-            "Das Hochladen des Dokuments ist fehlgeschlagen. Bitte versuche es erneut.",
-          );
           console.error(error);
-
           if (!this.isRecoverableNetworkError(error)) {
             await this.removeUploadsForQuestion({
               questionUuid: recording.questionUuid,
             });
+            this.dependencies.toast.error(
+              "Das Hochladen des Videos ist fehlgeschlagen. Du musst dein Video erneut aufnehmen.",
+            );
+            return;
           }
+          this.dependencies.toast.error(
+            "Das Hochladen des Dokuments ist fehlgeschlagen. Bitte lade die Seite erneut, um es erneut zu versuchen.",
+          );
         },
       }),
     );
@@ -696,7 +699,7 @@ export class RecordingUploadService {
       );
     } catch (error) {
       this.dependencies.toast.error(
-        "Das Abschließen des Video-Uploads ist fehlgeschlagen. Bitte versuche es erneut.",
+        "Das Abschließen des Video-Uploads ist fehlgeschlagen. Bitte lade die Seite erneut, um es erneut zu versuchen.",
       );
       console.error("Error finishing multipart upload:", error);
       return;
@@ -704,17 +707,24 @@ export class RecordingUploadService {
 
     let updatedAnswer: z.infer<typeof AnswerSelectSchema> | null = null;
     try {
-      updatedAnswer = await this.dependencies.client.saveAnswer({
-        interviewUuid,
-        questionUuid,
-        answerPayload: {
-          videoUuid,
-          status: "uploaded",
+      updatedAnswer = await this.dependencies.client.saveAnswer(
+        {
+          interviewUuid,
+          questionUuid,
+          answerPayload: {
+            videoUuid,
+            status: "uploaded",
+          },
         },
-      });
+        {
+          context: {
+            retry: RecordingUploadService.MULTIPART_FINALIZATION_RETRIES,
+          },
+        },
+      );
     } catch (error) {
       this.dependencies.toast.error(
-        "Das Hochladen des Videos ist fehlgeschlagen. Bitte versuche es erneut.",
+        "Das Hochladen des Videos ist fehlgeschlagen. Bitte lade die Seite erneut, um es erneut zu versuchen.",
       );
       console.error("Error adding recording to answer:", error);
     }
