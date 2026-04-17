@@ -21,6 +21,7 @@ export const MultipleChoiceQuestionPayloadType = z.object({
 });
 export const DocumentQuestionPayloadType = z.object({
   prompt: z.string(),
+  minUploads: z.number().min(0).max(1),
   maxUploads: z.number().min(1).max(20),
 });
 
@@ -52,15 +53,25 @@ export const SingleChoiceAnswerPayloadType = z.object({
 export const MultipleChoiceAnswerPayloadType = z.object({
   selectedOptions: z.array(z.string()),
 });
-export const DocumentAnswerPayloadType = z.object({
-  documents: z.array(
-    z.object({
-      documentUuid: z.uuidv7(),
-      fileName: z.string(),
-      mimeType: z.string(),
-    }),
-  ),
-});
+export const DocumentAnswerPayloadType = z.discriminatedUnion("kind", [
+  z.object({
+    // user uploaded documents
+    kind: z.literal("documents"),
+    documents: z
+      .array(
+        z.object({
+          documentUuid: z.uuidv7(),
+          fileName: z.string(),
+          mimeType: z.string(),
+        }),
+      )
+      .min(1),
+  }),
+  z.object({
+    // user chose to provide no documents
+    kind: z.literal("no_documents"),
+  }),
+]);
 
 export const AnswerPayloadType = z.xor([
   VideoAnswerPayloadType,

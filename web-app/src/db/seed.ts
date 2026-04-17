@@ -229,6 +229,7 @@ async function seed() {
           questionType: "document",
           questionPayload: {
             prompt: "Lege hier deinen Lebenslauf ab",
+            minUploads: 1,
             maxUploads: 1,
           },
           isCv: true,
@@ -239,6 +240,7 @@ async function seed() {
           questionType: "document",
           questionPayload: {
             prompt: "Lege hier deine Zeugnisse ab",
+            minUploads: 0,
             maxUploads: 10,
           },
         },
@@ -248,6 +250,7 @@ async function seed() {
           questionType: "document",
           questionPayload: {
             prompt: "Lege hier deine Arbeitszeugnisse ab",
+            minUploads: 0,
             maxUploads: 10,
           },
         },

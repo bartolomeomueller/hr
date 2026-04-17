@@ -21,6 +21,7 @@ import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { documentUploadService } from "@/services/DocumentUploadService";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { Label } from "../ui/label";
 
 // NOTE implement option that you can get a mail later to upload your documents, if you currently do not have them
@@ -51,13 +52,21 @@ export function DocumentQuestion({
   );
   const [documents, setDocuments] = useState(
     answerPayloadParseResult.success
-      ? answerPayloadParseResult.data.documents
+      ? answerPayloadParseResult.data.kind === "documents"
+        ? answerPayloadParseResult.data.documents
+        : []
       : [],
+  );
+  const [userHasNoAptDocuments, setUserHasNoAptDocuments] = useState(
+    answerPayloadParseResult.success
+      ? answerPayloadParseResult.data.kind === "no_documents"
+      : false,
   );
   // Always update the uploaded documents state, when the corresponding answer changes, as updates will happen outside of this component.
   useEffect(() => {
     if (!answer) {
       setDocuments([]);
+      setUserHasNoAptDocuments(false);
       return;
     }
 
@@ -71,7 +80,14 @@ export function DocumentQuestion({
       return;
     }
 
-    setDocuments(answerPayloadParseResult.data.documents);
+    setDocuments(
+      answerPayloadParseResult.data.kind === "documents"
+        ? answerPayloadParseResult.data.documents
+        : [],
+    );
+    setUserHasNoAptDocuments(
+      answerPayloadParseResult.data.kind === "no_documents",
+    );
   }, [answer]);
 
   const documentsToUpload = useDocumentUploadStore(
@@ -79,12 +95,41 @@ export function DocumentQuestion({
       state.getDocumentsToUploadForQuestionUuid(question.uuid),
     ),
   );
+  const {
+    mutate: saveDocumentAnswerMutate,
+    isPending: saveDocumentAnswerIsPending,
+  } = useMutation({
+    ...orpc.saveAnswer.mutationOptions(),
+    onSettled: (_data, _error, _variables, _onMutateResult, context) =>
+      context.client.invalidateQueries({
+        queryKey: queryKeyToInvalidateAnswers,
+      }),
+    retry: 1,
+  });
+  const {
+    mutate: deleteDocumentAnswerMutate,
+    isPending: deleteDocumentAnswerIsPending,
+  } = useMutation({
+    ...orpc.deleteAnswer.mutationOptions(),
+    onSettled: (_data, _error, _variables, _onMutateResult, context) =>
+      context.client.invalidateQueries({
+        queryKey: queryKeyToInvalidateAnswers,
+      }),
+    retry: 1,
+  });
+  const noDocumentsAnswerIsPending =
+    saveDocumentAnswerIsPending || deleteDocumentAnswerIsPending;
 
   // This component owns question-specific file selection policy such as
   // single-vs-multi upload behavior, duplicate filtering, max-upload trimming,
   // and replacement of already uploaded documents. The upload service owns the
   // actual upload pipeline, store writes, cancellation, and cache updates.
   async function appendFiles(nextFiles: File[], isSingleFileUpload: boolean) {
+    // Immediately set that the user has documents to upload, when they try to upload documents.
+    if (userHasNoAptDocuments) {
+      setUserHasNoAptDocuments(false);
+    }
+
     // Sort files by name to make the behavior deterministic, when we have to cut out files, because there are too many
     let filesToAddToUpload = nextFiles.sort((a, b) =>
       a.name.localeCompare(b.name),
@@ -161,6 +206,12 @@ export function DocumentQuestion({
     }
   }
 
+  const zeroUploadsAreAllowed = questionPayload.minUploads === 0;
+  const questionHasNoDocuments =
+    documents.length === 0 && documentsToUpload.length === 0;
+  const showNoDocumentsCheckbox =
+    zeroUploadsAreAllowed && (userHasNoAptDocuments || questionHasNoDocuments);
+
   return (
     <div className="flex flex-col gap-2 p-2">
       <Label htmlFor={id}>{questionPayload.prompt}</Label>
@@ -171,6 +222,43 @@ export function DocumentQuestion({
           isSingleFileUpload={questionPayload.maxUploads === 1}
           appendFiles={appendFiles}
         />
+        {showNoDocumentsCheckbox && (
+          <Label
+            htmlFor={`${id}-no-documents`}
+            className={`flex w-full items-center justify-end gap-2 px-2 py-2 text-xs text-muted-foreground transition-opacity ${
+              noDocumentsAnswerIsPending
+                ? "cursor-not-allowed opacity-60"
+                : "cursor-pointer"
+            }`}
+            aria-disabled={noDocumentsAnswerIsPending}
+          >
+            <span>Ich habe keine passenden Dokumente</span>
+            <Checkbox
+              id={`${id}-no-documents`}
+              checked={userHasNoAptDocuments}
+              disabled={noDocumentsAnswerIsPending}
+              onCheckedChange={(checked) => {
+                const nextDocumentsWereNotProvided = checked === true;
+                setUserHasNoAptDocuments(nextDocumentsWereNotProvided);
+                if (nextDocumentsWereNotProvided) {
+                  saveDocumentAnswerMutate({
+                    interviewUuid,
+                    questionUuid: question.uuid,
+                    answerPayload: {
+                      kind: "no_documents",
+                    },
+                  });
+                  return;
+                }
+
+                deleteDocumentAnswerMutate({
+                  interviewUuid,
+                  questionUuid: question.uuid,
+                });
+              }}
+            />
+          </Label>
+        )}
         {documents.map((document) => {
           return (
             <File
@@ -361,6 +449,12 @@ function File({
     // onSuccess update the query cache to remove the deleted document. Without this, the refetching by onSettled would be invalidated by later deletions.
     // This would lead to documents coming back with full opacity, confusing the user, because the mutation is not pending anymore, but the data was also not yet updated.
     onSuccess(data, _variables, _onMutateResult, context) {
+      if (!uploadedDocument) {
+        throw new Error(
+          "Uploaded document metadata should always be defined for document deletion.",
+        );
+      }
+
       context.client.setQueryData<
         Awaited<
           ReturnType<typeof client.getInterviewRelatedDataByInterviewUuid>
@@ -369,9 +463,14 @@ function File({
         if (!old) return old;
         return {
           ...old,
-          answers: old.answers.map((answer) =>
-            answer.questionUuid === data.questionUuid ? data : answer,
-          ),
+          answers: data
+            ? old.answers.map((answer) =>
+                answer.questionUuid === data.questionUuid ? data : answer,
+              )
+            : old.answers.filter(
+                (answer) =>
+                  answer.questionUuid !== uploadedDocument.questionUuid,
+              ),
         };
       });
     },

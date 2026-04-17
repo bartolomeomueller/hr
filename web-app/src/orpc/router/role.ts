@@ -67,7 +67,7 @@ export const getAllFinishedInterviewsForRoleByRoleSlug = base
       z.object({
         interview: InterviewSelectSchema,
         candidate: CandidateSelectSchema,
-        cvDocument: DocumentAnswerPayloadType.shape.documents.element,
+        cvDocument: DocumentAnswerPayloadType.options[0].shape.documents.element,
         evaluations: z.array(EvaluationSelectSchema),
       }),
     ),
@@ -128,7 +128,9 @@ export const getAllFinishedInterviewsForRoleByRoleSlug = base
           cvAnswer.answerPayload,
         );
         const cvDocument = parsedCvAnswer.success
-          ? parsedCvAnswer.data.documents[0]
+          ? parsedCvAnswer.data.kind === "documents"
+            ? parsedCvAnswer.data.documents[0]
+            : undefined
           : undefined;
 
         if (!cvDocument) return [];

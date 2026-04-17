@@ -298,6 +298,7 @@ describe("DocumentUploadService", () => {
     const addNewDocumentToAnswer = vi.fn().mockResolvedValue({
       questionUuid: "question-1",
       answerPayload: {
+        kind: "documents",
         documents: [
           {
             documentUuid: "document-1",

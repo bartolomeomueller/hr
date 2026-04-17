@@ -1,5 +1,6 @@
 import {
   addNewDocumentToAnswer,
+  deleteAnswer,
   deleteDocumentFromObjectStorageAndFromAnswer,
   saveAnswer,
 } from "./answer";
@@ -29,6 +30,7 @@ export default {
   getInterviewRelatedDataByInterviewUuid,
   addParticipantToInterview,
   saveAnswer,
+  deleteAnswer,
   addNewDocumentToAnswer,
   deleteDocumentFromObjectStorageAndFromAnswer,
 

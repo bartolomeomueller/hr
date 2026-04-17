@@ -120,6 +120,28 @@ export const saveAnswer = base
   .output(AnswerSelectSchema)
   .handler(async ({ input }) => saveAnswerAndHandleVideoEffects(input));
 
+export const deleteAnswer = base
+  .use(debugMiddleware)
+  .input(
+    AnswerSelectSchema.pick({
+      interviewUuid: true,
+      questionUuid: true,
+    }),
+  )
+  .output(z.null())
+  .handler(async ({ input }) => {
+    await db
+      .delete(Answer)
+      .where(
+        and(
+          eq(Answer.interviewUuid, input.interviewUuid),
+          eq(Answer.questionUuid, input.questionUuid),
+        ),
+      );
+
+    return null;
+  });
+
 export const addNewDocumentToAnswer = base
   .use(debugMiddleware)
   .input(
@@ -127,7 +149,7 @@ export const addNewDocumentToAnswer = base
       interviewUuid: true,
       questionUuid: true,
     }).extend({
-      document: DocumentAnswerPayloadType.shape.documents.element,
+      document: DocumentAnswerPayloadType.options[0].shape.documents.element,
       isSingleFileUpload: z.boolean(),
     }),
   )
@@ -155,6 +177,7 @@ export const addNewDocumentToAnswer = base
             interviewUuid: input.interviewUuid,
             questionUuid: input.questionUuid,
             answerPayload: {
+              kind: "documents",
               documents: [input.document],
             },
             answeredAt: new Date(),
@@ -164,10 +187,28 @@ export const addNewDocumentToAnswer = base
         return insertedAnswer;
       }
 
-      // If there exists a document with the same name, it will be replaced. Otherwise the document will just be added.
       const existingAnswerPayload = DocumentAnswerPayloadType.parse(
         existingAnswer.answerPayload,
       );
+
+      // If there were previously no documents, just add the new document to the answer.
+      if (existingAnswerPayload.kind === "no_documents") {
+        const [updatedAnswer] = await tx
+          .update(Answer)
+          .set({
+            answerPayload: {
+              kind: "documents",
+              documents: [input.document],
+            },
+            answeredAt: new Date(),
+          })
+          .where(eq(Answer.uuid, existingAnswer.uuid))
+          .returning();
+
+        return updatedAnswer;
+      }
+
+      // If there exists a document with the same name, it will be replaced. Otherwise the document will just be added.
       const existingDocumentWithSameName = existingAnswerPayload.documents.find(
         (document) => document.fileName === input.document.fileName,
       );
@@ -192,6 +233,7 @@ export const addNewDocumentToAnswer = base
         .update(Answer)
         .set({
           answerPayload: {
+            kind: "documents",
             documents: [
               ...existingDocumentsWithoutSameNameDocument,
               input.document,
@@ -229,10 +271,11 @@ export const deleteDocumentFromObjectStorageAndFromAnswer = base
       questionUuid: true,
     }).extend({
       documentUuid:
-        DocumentAnswerPayloadType.shape.documents.element.shape.documentUuid,
+        DocumentAnswerPayloadType.options[0].shape.documents.element.shape
+          .documentUuid,
     }),
   )
-  .output(AnswerSelectSchema)
+  .output(AnswerSelectSchema.nullable())
   .handler(async ({ input, context }) => {
     await deleteObject(getObjectKeyForDocumentUuid(input.documentUuid));
     return db.transaction(async (tx) => {
@@ -255,6 +298,11 @@ export const deleteDocumentFromObjectStorageAndFromAnswer = base
       const existingAnswerPayload = DocumentAnswerPayloadType.parse(
         existingAnswer.answerPayload,
       );
+      if (existingAnswerPayload.kind === "no_documents") {
+        throw new Error(
+          `If a document should be deleted from an answer, the answer payload must contain uploaded documents.`,
+        );
+      }
 
       const existingDocumentWithSameUuid = existingAnswerPayload.documents.find(
         (document) => document.documentUuid === input.documentUuid,
@@ -272,10 +320,16 @@ export const deleteDocumentFromObjectStorageAndFromAnswer = base
         );
       }
 
+      if (existingDocumentsWithoutSameUuidDocument.length === 0) {
+        await tx.delete(Answer).where(eq(Answer.uuid, existingAnswer.uuid));
+        return null;
+      }
+
       const [updatedAnswer] = await tx
         .update(Answer)
         .set({
           answerPayload: {
+            kind: "documents",
             documents: existingDocumentsWithoutSameUuidDocument,
           },
           answeredAt: new Date(),
