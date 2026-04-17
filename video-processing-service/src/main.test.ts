@@ -70,6 +70,8 @@ describe("video-processing worker", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     uploadedArtifactsByVideoUuid.clear();
+    delete process.env.FFPROBE_TIMEOUT_MS;
+    delete process.env.FFMPEG_TIMEOUT_MS;
     await rm(path.join(process.cwd(), "tmp"), { recursive: true, force: true });
     if (queue) {
       await removeExistingJobs(queue);
@@ -341,6 +343,44 @@ describe("video-processing worker", () => {
     expect(await reloadedJob?.getState()).toBe("failed");
     expect(reloadedJob?.failedReason).toContain("ffprobe exited with code");
     expect(uploadedArtifactsByVideoUuid.has(uuid)).toBe(false);
+    expect(recursiveStreamingUploadMock).not.toHaveBeenCalled();
+    expect(moveObjectToBackupPrefixMock).not.toHaveBeenCalled();
+  });
+
+  it("does not upload artifacts when ffprobe times out", async () => {
+    if (!queue || !queueEvents) {
+      throw new Error("Queue test setup did not complete");
+    }
+
+    process.env.FFPROBE_TIMEOUT_MS = "1";
+
+    const uuid = randomUUID();
+
+    streamingDownloadMock.mockImplementation(async ({ uuid, downloadsDir }) => {
+      const outputPath = path.join(downloadsDir, `${uuid}.webm`);
+      createSampleVideo(outputPath);
+      return outputPath;
+    });
+    recursiveStreamingUploadMock.mockImplementation(
+      async ({ uuid, localDirectory }) => {
+        uploadedArtifactsByVideoUuid.set(
+          uuid,
+          await readDirectoryContents(localDirectory),
+        );
+      },
+    );
+
+    const job = await queue.add(testQueueName, { uuid }, { jobId: uuid });
+
+    await expect(job.waitUntilFinished(queueEvents, 5000)).rejects.toThrow(
+      "ffprobe timed out after 1ms",
+    );
+
+    const reloadedJob = await queue.getJob(uuid);
+
+    expect(await reloadedJob?.getState()).toBe("failed");
+    expect(reloadedJob?.failedReason).toContain("ffprobe timed out after 1ms");
+    expect(streamingDownloadMock).toHaveBeenCalledTimes(1);
     expect(recursiveStreamingUploadMock).not.toHaveBeenCalled();
     expect(moveObjectToBackupPrefixMock).not.toHaveBeenCalled();
   });

@@ -49,52 +49,12 @@ export default async function processVideo({
     throw signal.reason ?? createCancellationError(uuid);
   }
 
-  ffprobeStdout = await new Promise<string>((resolve, reject) => {
-    const proc = spawn("ffprobe", probeArgs, {
-      stdio: ["ignore", "pipe", "pipe"],
-      signal,
-    });
-
-    let out = "";
-    let err = "";
-
-    proc.stdout.on("data", (chunk: Buffer) => {
-      out += chunk.toString();
-    });
-
-    proc.stderr.on("data", (chunk: Buffer) => {
-      err += chunk.toString();
-    });
-
-    proc.on("error", (spawnErr) => {
-      if (signal.aborted) {
-        reject(signal.reason ?? createCancellationError(uuid));
-        return;
-      }
-
-      reject(new Error(`Failed to spawn ffprobe: ${spawnErr.message}`));
-    });
-
-    proc.on("close", (code) => {
-      if (signal.aborted) {
-        reject(signal.reason ?? createCancellationError(uuid));
-        return;
-      }
-
-      if (code === 0) {
-        resolve(out);
-        return;
-      }
-
-      const tail = err.trim().slice(-500);
-      reject(
-        new Error(
-          "ffprobe exited with code " +
-            code +
-            (tail.length > 0 ? ": " + tail : ""),
-        ),
-      );
-    });
+  ffprobeStdout = await runCommand({
+    args: probeArgs,
+    command: "ffprobe",
+    signal,
+    timeoutMs: getCommandTimeoutMs("FFPROBE_TIMEOUT_MS", 30_000),
+    uuid,
   });
 
   if (!ffprobeStdout) {
@@ -182,42 +142,145 @@ export default async function processVideo({
     throw signal.reason ?? createCancellationError(uuid);
   }
 
-  await new Promise<void>((resolve, reject) => {
-    const proc = spawn("ffmpeg", ffmpegArgs, {
-      stdio: ["ignore", "ignore", "pipe"],
-      signal,
-    });
-    let stderrBuf = "";
-    proc.stderr.on("data", (chunk: Buffer) => {
-      stderrBuf += chunk.toString();
-    });
-    proc.on("close", (code) => {
-      if (signal.aborted) {
-        reject(signal.reason ?? createCancellationError(uuid));
-        return;
-      }
-
-      if (code === 0) resolve();
-      else
-        reject(
-          new Error(
-            `FFmpeg exited with code ${code}: ${stderrBuf.slice(-500)}`,
-          ),
-        );
-    });
-    proc.on("error", (err) => {
-      if (signal.aborted) {
-        reject(signal.reason ?? createCancellationError(uuid));
-        return;
-      }
-
-      reject(new Error(`Failed to spawn ffmpeg: ${err.message}`));
-    });
+  await runCommand({
+    args: ffmpegArgs,
+    command: "ffmpeg",
+    signal,
+    timeoutMs: getCommandTimeoutMs("FFMPEG_TIMEOUT_MS", 15 * 60_000),
+    uuid,
   });
 
   console.log(`[Worker ${threadId}] Processed: ${uuid}`);
 
   return path.join(processedDir, uuid);
+}
+
+function getCommandTimeoutMs(name: string, fallbackMs: number) {
+  const value = process.env[name];
+
+  if (!value) {
+    return fallbackMs;
+  }
+
+  const timeoutMs = Number(value);
+
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error(`Expected ${name} to be a positive number`);
+  }
+
+  return timeoutMs;
+}
+
+function runCommand({
+  command,
+  args,
+  signal,
+  timeoutMs,
+  uuid,
+}: {
+  command: string;
+  args: string[];
+  signal: AbortSignal;
+  timeoutMs: number;
+  uuid: string;
+}) {
+  const commandController = new AbortController();
+  const timeoutError = new Error(`${command} timed out after ${timeoutMs}ms`);
+  const onAbort = () => {
+    commandController.abort(signal.reason ?? createCancellationError(uuid));
+  };
+  const timeoutId = setTimeout(() => {
+    commandController.abort(timeoutError);
+  }, timeoutMs);
+
+  if (signal.aborted) {
+    onAbort();
+  } else {
+    signal.addEventListener("abort", onAbort, { once: true });
+  }
+
+  return new Promise<string>((resolve, reject) => {
+    const proc = spawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      signal: commandController.signal,
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    proc.on("error", (error) => {
+      reject(
+        getCommandError({
+          command,
+          commandSignal: commandController.signal,
+          error,
+          stderr,
+          uuid,
+        }),
+      );
+    });
+
+    proc.on("close", (code) => {
+      clearTimeout(timeoutId);
+      signal.removeEventListener("abort", onAbort);
+
+      if (code === 0) {
+        resolve(stdout);
+        return;
+      }
+
+      reject(
+        getCommandError({
+          command,
+          commandSignal: commandController.signal,
+          code,
+          stderr,
+          uuid,
+        }),
+      );
+    });
+  });
+}
+
+function getCommandError({
+  command,
+  commandSignal,
+  error,
+  code,
+  stderr,
+  uuid,
+}: {
+  command: string;
+  commandSignal: AbortSignal;
+  error?: Error;
+  code?: number | null;
+  stderr: string;
+  uuid: string;
+}) {
+  if (commandSignal.aborted) {
+    if (commandSignal.reason instanceof Error) {
+      return commandSignal.reason;
+    }
+
+    return commandSignal.reason ?? createCancellationError(uuid);
+  }
+
+  if (error) {
+    return new Error(`Failed to spawn ${command}: ${error.message}`);
+  }
+
+  const tail = stderr.trim().slice(-500);
+  return new Error(
+    `${command} exited with code ${code}${tail.length > 0 ? `: ${tail}` : ""}`,
+  );
 }
 
 function createCancellationError(uuid: string) {
