@@ -385,6 +385,44 @@ describe("video-processing worker", () => {
     expect(moveObjectToBackupPrefixMock).not.toHaveBeenCalled();
   });
 
+  it("does not upload artifacts when ffmpeg times out", async () => {
+    if (!queue || !queueEvents) {
+      throw new Error("Queue test setup did not complete");
+    }
+
+    process.env.FFMPEG_TIMEOUT_MS = "1";
+
+    const uuid = randomUUID();
+
+    streamingDownloadMock.mockImplementation(async ({ uuid, downloadsDir }) => {
+      const outputPath = path.join(downloadsDir, `${uuid}.webm`);
+      createSampleVideo(outputPath);
+      return outputPath;
+    });
+    recursiveStreamingUploadMock.mockImplementation(
+      async ({ uuid, localDirectory }) => {
+        uploadedArtifactsByVideoUuid.set(
+          uuid,
+          await readDirectoryContents(localDirectory),
+        );
+      },
+    );
+
+    const job = await queue.add(testQueueName, { uuid }, { jobId: uuid });
+
+    await expect(job.waitUntilFinished(queueEvents, 5000)).rejects.toThrow(
+      "ffmpeg timed out after 1ms",
+    );
+
+    const reloadedJob = await queue.getJob(uuid);
+
+    expect(await reloadedJob?.getState()).toBe("failed");
+    expect(reloadedJob?.failedReason).toContain("ffmpeg timed out after 1ms");
+    expect(streamingDownloadMock).toHaveBeenCalledTimes(1);
+    expect(recursiveStreamingUploadMock).not.toHaveBeenCalled();
+    expect(moveObjectToBackupPrefixMock).not.toHaveBeenCalled();
+  });
+
   it("does not process jobs with invalid payloads", async () => {
     if (!queue || !queueEvents) {
       throw new Error("Queue test setup did not complete");
@@ -449,9 +487,17 @@ describe("video-processing worker", () => {
       },
     );
 
-    const firstJob = await queue.add(testQueueName, { uuid: firstUuid }, { jobId: firstUuid });
+    const firstJob = await queue.add(
+      testQueueName,
+      { uuid: firstUuid },
+      { jobId: firstUuid },
+    );
     await firstDownloadCreated;
-    const secondJob = await queue.add(testQueueName, { uuid: secondUuid }, { jobId: secondUuid });
+    const secondJob = await queue.add(
+      testQueueName,
+      { uuid: secondUuid },
+      { jobId: secondUuid },
+    );
 
     try {
       await Promise.all([

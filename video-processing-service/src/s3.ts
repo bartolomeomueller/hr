@@ -92,16 +92,17 @@ export async function recursiveStreamingUpload({
 
   const limit = pLimit(4); // Limit concurrent file uploads to 4
 
-  // TODO think about content type or mime type
   const uploadPromises = sortedFiles.map(async (file) =>
     limit(async () => {
       const filePath = `${localDirectory}/${file}`;
       const fileStream = createReadStream(filePath);
+      const contentType = getContentTypeForDashArtifact(file);
 
       const uploadParams = {
         Bucket: s3Config.bucketName,
         Key: `${uploadPrefix}/${uuid}/${file}`,
         Body: fileStream,
+        ContentType: contentType,
       };
 
       return new Upload({
@@ -117,6 +118,22 @@ export async function recursiveStreamingUpload({
   );
 
   await Promise.all(uploadPromises);
+}
+
+export function getContentTypeForDashArtifact(filename: string): string {
+  if (filename.endsWith(".mpd") || filename === "manifest.mpd") {
+    return "application/dash+xml";
+  }
+  if (filename.endsWith(".webm")) {
+    return "video/webm";
+  }
+  if (filename.endsWith(".m4s") || filename.endsWith(".mp4")) {
+    return "video/mp4";
+  }
+  if (filename.endsWith(".m4a")) {
+    return "audio/mp4";
+  }
+  return "application/octet-stream";
 }
 
 export async function moveObjectToBackupPrefix({
