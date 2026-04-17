@@ -1,6 +1,6 @@
 ---
 name: No Tools
-description: Use when you want very fast chat responses with zero tool calls, no file reads, and no terminal usage..
+description: Use when you want very fast chat responses with zero tool calls, no file reads, and no terminal usage.
 tools: ["edit/editFiles"]
 agents: []
 argument-hint: Ask a direct question or paste text to summarize, rewrite, or explain.

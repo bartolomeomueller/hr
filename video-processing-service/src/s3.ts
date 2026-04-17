@@ -10,16 +10,32 @@ import {
 import { Upload } from "@aws-sdk/lib-storage";
 import pLimit from "p-limit";
 
-export const s3Config = {
-  // TODO use credentials with less priveleges and refactor them to env vars
-  credentials: {
-    accessKeyId: "admin",
-    secretAccessKey: "key",
-  },
-  bucketName: "hr-app-data",
-  endpoint: "http://s3:8333",
-  region: "us-east-1", // is ignored by S3Client when using a custom endpoint
-} as const;
+export const s3Config = loadS3Config();
+function loadS3Config() {
+  // TODO use credentials with less priveleges
+  const accessKeyId = requiredEnv("S3_ACCESS_KEY_ID");
+  const secretAccessKey = requiredEnv("S3_SECRET_ACCESS_KEY");
+  const bucketName = requiredEnv("S3_BUCKET_NAME");
+  const endpoint = requiredEnv("S3_ENDPOINT");
+
+  const region = process.env.S3_REGION ?? "us-east-1"; // is ignored by S3Client when using a custom endpoint
+
+  return {
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+    bucketName,
+    endpoint,
+    region,
+  } as const;
+}
+
+function requiredEnv(name: string) {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing required environment variable ${name}`);
+  return value;
+}
 
 const s3Client = new S3Client({
   credentials: s3Config.credentials,

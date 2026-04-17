@@ -4,6 +4,8 @@ services:
       context: .
     depends_on:
       - redis
+    env_file:
+      - .env
     restart: unless-stopped
 
   redis:

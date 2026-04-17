@@ -12,8 +12,9 @@ For the `video-processing-service/`: Please assume docker compose is running thi
 If possible, please try to write top down functions. So the main function is at the top of the file and the called functions in the main function are defined below it.
 If you only need a type at one place, do not introduce a new typescript type for it, just use an inline type definition.
 Do not define functions that are only used once and consist of one line, just inline them. Only if they are used multiple times or are more complex and abstract real work, define a new function for them.
+If you check any invariants, fail hard like in tiger style, if this bug should be fixed by the implementation and cannot happen by other external factors.
 
-Do not delete any comments you do not directly solve.
+Do not delete any comments you do not directly solve. If you refactor take those comments with your refactor and adjust them if necessary.
 Do not fix other stuff you encounter on your task, that I did not told you to fix. Just propose that you could fix it after you finished your task.
 Ask questions if something is unclear to you.
 
