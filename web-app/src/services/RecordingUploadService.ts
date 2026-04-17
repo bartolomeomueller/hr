@@ -21,7 +21,7 @@ export type RecordingUploadServiceDependencies = {
   toast: Pick<typeof toast, "error">;
   recordingUploadStore: typeof useRecordingUploadStore;
   uploadedRecordingPartsStore: typeof useUploadedRecordingPartsStore;
-  createXmlHttpRequest: () => XMLHttpRequest; // FIXME should be the same type
+  createXmlHttpRequest: () => XMLHttpRequest;
   indexedDb: IDBFactory;
 };
 
@@ -37,8 +37,6 @@ export type RecordingUploadServiceDependencies = {
 //   - 5MiB parts minimum: 5MiB parts would take 5000/(50/8)=0.8 seconds to upload on a 50Mbps upload connection.
 
 // TODO maybe implement if available then: tracking upload progress for fetch https://jakearchibald.com/2025/fetch-streams-not-for-progress/ -> otherwise have to use XMLHttpRequest
-
-// FIXME write tests for this service, it is too complicated
 
 // This service is the only part allowed to write to the recording upload stores.
 // The UI may read store state, but it should delegate orchestration, cancellation,
@@ -853,6 +851,4 @@ export class RecordingUploadService {
   }
 }
 
-// TODO think about how to start the upload pipeline on page reload
-
-// TODO think about aborting, and how it works now
+// TODO manually test the aborting behaviour when recording a new question, implement it in the UI first

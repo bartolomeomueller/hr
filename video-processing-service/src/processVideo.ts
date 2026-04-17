@@ -1,5 +1,5 @@
-import { execFileSync as execFile, spawn } from "node:child_process";
-import { access, mkdir, rename, unlink } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { access, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { threadId } from "node:worker_threads";
 
@@ -13,9 +13,11 @@ import { threadId } from "node:worker_threads";
 export default async function processVideo({
   fileToProcess,
   processedDir,
+  signal,
 }: {
   fileToProcess: string;
   processedDir: string;
+  signal: AbortSignal;
 }): Promise<string> {
   // The file path is set by the main thread, so it never throws.
   const uuid = path.basename(fileToProcess, ".webm");
@@ -42,47 +44,58 @@ export default async function processVideo({
   ];
 
   let ffprobeStdout: string;
-  try {
-    ffprobeStdout = await new Promise<string>((resolve, reject) => {
-      const proc = spawn("ffprobe", probeArgs, {
-        stdio: ["ignore", "pipe", "pipe"],
-      });
 
-      let out = "";
-      let err = "";
-
-      proc.stdout.on("data", (chunk: Buffer) => {
-        out += chunk.toString();
-      });
-
-      proc.stderr.on("data", (chunk: Buffer) => {
-        err += chunk.toString();
-      });
-
-      proc.on("error", (spawnErr) => {
-        reject(new Error("Failed to spawn ffprobe: " + spawnErr.message));
-      });
-
-      proc.on("close", (code) => {
-        if (code === 0) {
-          resolve(out);
-          return;
-        }
-
-        const tail = err.trim().slice(-500);
-        reject(
-          new Error(
-            "ffprobe exited with code " +
-              code +
-              (tail.length > 0 ? ": " + tail : ""),
-          ),
-        );
-      });
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(message);
+  if (signal.aborted) {
+    throw signal.reason ?? createCancellationError(uuid);
   }
+
+  ffprobeStdout = await new Promise<string>((resolve, reject) => {
+    const proc = spawn("ffprobe", probeArgs, {
+      stdio: ["ignore", "pipe", "pipe"],
+      signal,
+    });
+
+    let out = "";
+    let err = "";
+
+    proc.stdout.on("data", (chunk: Buffer) => {
+      out += chunk.toString();
+    });
+
+    proc.stderr.on("data", (chunk: Buffer) => {
+      err += chunk.toString();
+    });
+
+    proc.on("error", (spawnErr) => {
+      if (signal.aborted) {
+        reject(signal.reason ?? createCancellationError(uuid));
+        return;
+      }
+
+      reject(new Error(`Failed to spawn ffprobe: ${spawnErr.message}`));
+    });
+
+    proc.on("close", (code) => {
+      if (signal.aborted) {
+        reject(signal.reason ?? createCancellationError(uuid));
+        return;
+      }
+
+      if (code === 0) {
+        resolve(out);
+        return;
+      }
+
+      const tail = err.trim().slice(-500);
+      reject(
+        new Error(
+          "ffprobe exited with code " +
+            code +
+            (tail.length > 0 ? ": " + tail : ""),
+        ),
+      );
+    });
+  });
 
   if (!ffprobeStdout) {
     throw new Error("ffprobe did not return any output");
@@ -121,7 +134,7 @@ export default async function processVideo({
   // -adaptation_sets "id=0,streams=v id=1,streams=a" \
   // <uuid>/manifest.mpd
   const mapArgs = targets
-    .flatMap((t) => ["-map", "0:v:0"])
+    .flatMap(() => ["-map", "0:v:0"])
     .concat(["-map", "0:a:0"]);
   const filterArgs = targets.flatMap((t, i) => [
     `-filter:v:${i}`,
@@ -165,15 +178,25 @@ export default async function processVideo({
     outputPath,
   ];
 
+  if (signal.aborted) {
+    throw signal.reason ?? createCancellationError(uuid);
+  }
+
   await new Promise<void>((resolve, reject) => {
     const proc = spawn("ffmpeg", ffmpegArgs, {
       stdio: ["ignore", "ignore", "pipe"],
+      signal,
     });
     let stderrBuf = "";
     proc.stderr.on("data", (chunk: Buffer) => {
       stderrBuf += chunk.toString();
     });
     proc.on("close", (code) => {
+      if (signal.aborted) {
+        reject(signal.reason ?? createCancellationError(uuid));
+        return;
+      }
+
       if (code === 0) resolve();
       else
         reject(
@@ -183,6 +206,11 @@ export default async function processVideo({
         );
     });
     proc.on("error", (err) => {
+      if (signal.aborted) {
+        reject(signal.reason ?? createCancellationError(uuid));
+        return;
+      }
+
       reject(new Error(`Failed to spawn ffmpeg: ${err.message}`));
     });
   });
@@ -190,4 +218,8 @@ export default async function processVideo({
   console.log(`[Worker ${threadId}] Processed: ${uuid}`);
 
   return path.join(processedDir, uuid);
+}
+
+function createCancellationError(uuid: string) {
+  return new Error(`Video processing cancelled for ${uuid}`);
 }

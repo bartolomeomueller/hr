@@ -3,15 +3,64 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { Answer } from "@/db/schema";
 
+const VIDEO_PROCESSING_QUEUE_NAME = "video-processing";
+const VIDEO_PROCESSING_CANCELLATION_CHANNEL = `${VIDEO_PROCESSING_QUEUE_NAME}:cancel`;
+
 // TODO secure this connection
-export const videoProcessingQueue = new Queue("video-processing", {
+export const videoProcessingQueue = new Queue(VIDEO_PROCESSING_QUEUE_NAME, {
   connection: { host: "localhost", port: 6379 },
 });
 
 // This will be started at the start of the server since this module is imported indirectly by the router.
-const queueEvents = new QueueEvents("video-processing", {
+const queueEvents = new QueueEvents(VIDEO_PROCESSING_QUEUE_NAME, {
   connection: { host: "localhost", port: 6379 },
 });
+
+// Make enqueuing idempotent, as the orpc handler calling this may be retried.
+export async function enqueueVideoProcessingJob(uuid: string) {
+  await videoProcessingQueue.add(
+    VIDEO_PROCESSING_QUEUE_NAME,
+    { uuid },
+    { jobId: uuid },
+  );
+}
+
+export async function cancelVideoProcessingJob(uuid: string) {
+  const job = await videoProcessingQueue.getJob(uuid);
+
+  if (!job) {
+    return false;
+  }
+
+  try {
+    const jobState = await job.getState();
+
+    if (jobState !== "active") {
+      await job.remove();
+      return true;
+    }
+  } catch {
+    // If removal raced with the worker taking the job, fall through to publishing a cancellation request.
+  }
+
+  await publishVideoProcessingCancellation({
+    jobId: String(job.id),
+    reason: `Video processing cancelled for ${uuid}`,
+  });
+
+  return true;
+}
+
+async function publishVideoProcessingCancellation(input: {
+  jobId: string;
+  reason: string;
+}) {
+  const client = await videoProcessingQueue.client;
+  await client.publish(
+    VIDEO_PROCESSING_CANCELLATION_CHANNEL,
+    JSON.stringify(input),
+  );
+}
 
 queueEvents.on("completed", async (job) => {
   const completedJob = await videoProcessingQueue.getJob(job.jobId);
@@ -35,10 +84,9 @@ queueEvents.on("completed", async (job) => {
       console.log(
         `No answer found for video UUID ${uuid}. It is assumed that this is because a new video has been recorded.`,
       );
-      // TODO delete the old video in S3 if it exists
       return;
     }
-    const [updatedAnswer] = await db
+    await db
       .update(Answer)
       .set({
         answerPayload: {

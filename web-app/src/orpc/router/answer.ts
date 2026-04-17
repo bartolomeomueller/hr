@@ -7,7 +7,10 @@ import {
   VideoAnswerPayloadType,
 } from "@/db/payload-types";
 import { Answer } from "@/db/schema";
-import { videoProcessingQueue } from "@/lib/bullmq.server";
+import {
+  enqueueVideoProcessingJob,
+  cancelVideoProcessingJob as tryCancelVideoProcessingJob,
+} from "@/lib/bullmq.server";
 import {
   deleteObject,
   deleteObjectsForPrefix,
@@ -71,16 +74,21 @@ export async function saveAnswerAndHandleVideoEffects(input: {
     input.answerPayload,
   );
   if (videoAnswerPayloadResult.success) {
-    await videoProcessingQueue.add("video-processing", {
-      uuid: videoAnswerPayloadResult.data.videoUuid,
-    });
+    await enqueueVideoProcessingJob(videoAnswerPayloadResult.data.videoUuid);
 
     // If a previous video answer exists, delete the old video and processed video from object storage.
     if (existingAnswerPayload) {
       const existingVideoAnswerPayload = VideoAnswerPayloadType.parse(
         existingAnswerPayload,
       );
-      // FIXME this does not stop an ongoing processing job for the old video, add stopping of a running processing job
+
+      if (
+        existingVideoAnswerPayload.videoUuid !==
+        videoAnswerPayloadResult.data.videoUuid
+      ) {
+        await tryCancelVideoProcessingJob(existingVideoAnswerPayload.videoUuid);
+      }
+
       if (existingVideoAnswerPayload.status === "uploaded") {
         void deleteObject(
           getObjectKeyForVideoUuid(existingVideoAnswerPayload.videoUuid),

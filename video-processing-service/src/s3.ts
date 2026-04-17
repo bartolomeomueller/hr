@@ -1,7 +1,12 @@
 import { createReadStream, createWriteStream } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  CopyObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import pLimit from "p-limit";
 
@@ -96,4 +101,32 @@ export async function recursiveStreamingUpload({
   );
 
   await Promise.all(uploadPromises);
+}
+
+export async function moveObjectToBackupPrefix({
+  uuid,
+  sourcePrefix,
+  backupPrefix,
+}: {
+  uuid: string;
+  sourcePrefix: string;
+  backupPrefix: string;
+}) {
+  const sourceKey = `${sourcePrefix}/${uuid}`;
+  const destinationKey = `${backupPrefix}/${uuid}`;
+
+  await s3Client.send(
+    new CopyObjectCommand({
+      Bucket: s3Config.bucketName,
+      CopySource: `${s3Config.bucketName}/${sourceKey}`,
+      Key: destinationKey,
+    }),
+  );
+
+  await s3Client.send(
+    new DeleteObjectCommand({
+      Bucket: s3Config.bucketName,
+      Key: sourceKey,
+    }),
+  );
 }
