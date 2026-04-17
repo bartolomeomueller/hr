@@ -14,9 +14,12 @@ import {
   vi,
 } from "vitest";
 
+process.loadEnvFile?.(".env");
+
 const redisConnection = {
   host: process.env.REDIS_HOST ?? "localhost",
   port: Number(process.env.REDIS_PORT ?? "6379"),
+  password: process.env.REDIS_PASSWORD,
   connectTimeout: 1000,
 } as const;
 
@@ -43,7 +46,11 @@ describe("video-processing worker", () => {
   beforeAll(async () => {
     process.env.REDIS_HOST = redisConnection.host;
     process.env.REDIS_PORT = String(redisConnection.port);
+    if (redisConnection.password) {
+      process.env.REDIS_PASSWORD = redisConnection.password;
+    }
     process.env.VIDEO_PROCESSING_QUEUE_NAME = testQueueName;
+    process.env.WORKER_CONCURRENCY = "1";
 
     await assertRedisHostIsReachable();
     assertMediaToolsAreAvailable();
@@ -57,11 +64,7 @@ describe("video-processing worker", () => {
     await queue.waitUntilReady();
     await queueEvents.waitUntilReady();
 
-    ({
-      worker: importedWorker,
-      closeVideoProcessingCancellationSubscriber: closeCancellationSubscriber,
-    } = await import("./main.js"));
-    await importedWorker.waitUntilReady();
+    await restartWorkerWithConcurrency(1);
   }, 5000);
 
   beforeEach(async () => {
@@ -140,7 +143,7 @@ describe("video-processing worker", () => {
     expect(streamingDownloadMock).toHaveBeenCalledWith({
       uuid,
       downloadPrefix: "videos/uploads",
-      downloadsDir: "tmp/downloads",
+      downloadsDir: `tmp/jobs/${uuid}/downloads`,
     });
     expect(uploadedArtifacts).toBeDefined();
     expect(uploadedArtifactNames).toContain("manifest.mpd");
@@ -154,7 +157,7 @@ describe("video-processing worker", () => {
     expect(manifest).toContain("Representation");
     expect(recursiveStreamingUploadMock).toHaveBeenCalledWith({
       uuid,
-      localDirectory: `tmp/processed/${uuid}`,
+      localDirectory: `tmp/jobs/${uuid}/processed/${uuid}`,
       uploadPrefix: "videos/processed",
     });
     expect(moveObjectToBackupPrefixMock).toHaveBeenCalledWith({
@@ -341,6 +344,117 @@ describe("video-processing worker", () => {
     expect(recursiveStreamingUploadMock).not.toHaveBeenCalled();
     expect(moveObjectToBackupPrefixMock).not.toHaveBeenCalled();
   });
+
+  it("does not process jobs with invalid payloads", async () => {
+    if (!queue || !queueEvents) {
+      throw new Error("Queue test setup did not complete");
+    }
+
+    const job = await queue.add(
+      testQueueName,
+      { uuid: "../not-a-uuid" } as never,
+      { jobId: randomUUID() },
+    );
+
+    await expect(job.waitUntilFinished(queueEvents, 5000)).rejects.toThrow();
+
+    const reloadedJob = await queue.getJob(String(job.id));
+
+    expect(await reloadedJob?.getState()).toBe("failed");
+    expect(reloadedJob?.failedReason).toMatch(/uuid/i);
+    expect(streamingDownloadMock).not.toHaveBeenCalled();
+    expect(recursiveStreamingUploadMock).not.toHaveBeenCalled();
+    expect(moveObjectToBackupPrefixMock).not.toHaveBeenCalled();
+  });
+
+  it("processes two jobs in parallel without interfering with each other's temp files", async () => {
+    if (!queue || !queueEvents || !importedWorker) {
+      throw new Error("Queue test setup did not complete");
+    }
+
+    await restartWorkerWithConcurrency(2);
+
+    const firstUuid = randomUUID();
+    const secondUuid = randomUUID();
+    let resolveFirstDownloadCreated: (() => void) | undefined;
+    let resolveSecondDownloadStarted: (() => void) | undefined;
+    const firstDownloadCreated = new Promise<void>((resolve) => {
+      resolveFirstDownloadCreated = resolve;
+    });
+    const secondDownloadStarted = new Promise<void>((resolve) => {
+      resolveSecondDownloadStarted = resolve;
+    });
+
+    streamingDownloadMock.mockImplementation(async ({ uuid, downloadsDir }) => {
+      const outputPath = path.join(downloadsDir, `${uuid}.webm`);
+      createSampleVideo(outputPath);
+
+      if (uuid === firstUuid) {
+        resolveFirstDownloadCreated?.();
+        await secondDownloadStarted;
+      }
+
+      if (uuid === secondUuid) {
+        resolveSecondDownloadStarted?.();
+      }
+
+      return outputPath;
+    });
+    recursiveStreamingUploadMock.mockImplementation(
+      async ({ uuid, localDirectory }) => {
+        uploadedArtifactsByVideoUuid.set(
+          uuid,
+          await readDirectoryContents(localDirectory),
+        );
+      },
+    );
+
+    const firstJob = await queue.add(testQueueName, { uuid: firstUuid }, { jobId: firstUuid });
+    await firstDownloadCreated;
+    const secondJob = await queue.add(testQueueName, { uuid: secondUuid }, { jobId: secondUuid });
+
+    try {
+      await Promise.all([
+        firstJob.waitUntilFinished(queueEvents, 5000),
+        secondJob.waitUntilFinished(queueEvents, 5000),
+      ]);
+    } catch {
+      const reloadedFirstJob = await queue.getJob(firstUuid);
+      const reloadedSecondJob = await queue.getJob(secondUuid);
+      throw new Error(
+        [
+          `first state: ${await reloadedFirstJob?.getState()}`,
+          `first failedReason: ${reloadedFirstJob?.failedReason ?? "<missing>"}`,
+          `second state: ${await reloadedSecondJob?.getState()}`,
+          `second failedReason: ${reloadedSecondJob?.failedReason ?? "<missing>"}`,
+        ].join("\n"),
+      );
+    }
+
+    expect(uploadedArtifactsByVideoUuid.has(firstUuid)).toBe(true);
+    expect(uploadedArtifactsByVideoUuid.has(secondUuid)).toBe(true);
+  });
+
+  async function restartWorkerWithConcurrency(concurrency: number) {
+    if (closeCancellationSubscriber) {
+      await closeCancellationSubscriber();
+      closeCancellationSubscriber = undefined;
+    }
+
+    if (importedWorker) {
+      await importedWorker.close();
+      importedWorker = undefined;
+    }
+
+    vi.resetModules();
+    process.env.WORKER_CONCURRENCY = String(concurrency);
+
+    ({
+      worker: importedWorker,
+      closeVideoProcessingCancellationSubscriber: closeCancellationSubscriber,
+    } = await import("./main.js"));
+    await importedWorker.waitUntilReady();
+  }
 });
 
 function assertMediaToolsAreAvailable() {

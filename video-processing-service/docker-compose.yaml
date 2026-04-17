@@ -10,6 +10,9 @@ services:
 
   redis:
     image: redis:8.6.1-trixie
+    command: [ "redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}" ]
+    env_file:
+      - .env
     ports:
       - "6379:6379"
 

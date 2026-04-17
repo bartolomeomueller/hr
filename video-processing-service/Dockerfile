@@ -30,8 +30,14 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /app/node_modules /app/node_modules
+# Create a tmp directory for the service to use
+RUN mkdir -p /app/tmp \
+    && chown -R node:node /app
 
-COPY --from=build /app/dist /app/dist
+COPY --from=build --chown=node:node /app/node_modules /app/node_modules
+
+COPY --from=build --chown=node:node /app/dist /app/dist
+
+USER node
 
 CMD ["node", "dist/main.js"]

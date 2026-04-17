@@ -10,7 +10,7 @@ import {
 import { Upload } from "@aws-sdk/lib-storage";
 import pLimit from "p-limit";
 
-export const s3Config = loadS3Config();
+const s3Config = loadS3Config();
 function loadS3Config() {
   // TODO use credentials with less priveleges
   const accessKeyId = requiredEnv("S3_ACCESS_KEY_ID");

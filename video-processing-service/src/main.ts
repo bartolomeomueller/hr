@@ -1,4 +1,5 @@
 import { mkdir, rm } from "node:fs/promises";
+import path from "node:path";
 import type { Job } from "bullmq";
 import { UnrecoverableError, Worker } from "bullmq";
 import z from "zod";
@@ -9,45 +10,46 @@ import {
   streamingDownload,
 } from "./s3.js";
 
-const downloadsDir = "tmp/downloads";
-const processedDir = "tmp/processed";
+const jobsDir = "tmp/jobs";
 const videoProcessingQueueName =
   process.env.VIDEO_PROCESSING_QUEUE_NAME ?? "video-processing";
 const redisConnection = {
   host: process.env.REDIS_HOST ?? "redis",
   port: Number(process.env.REDIS_PORT ?? "6379"),
+  password: process.env.REDIS_PASSWORD,
 };
 
 const s3UploadsPrefix = "videos/uploads";
 const s3UploadsBackupPrefix = "videos/uploads-backup";
 const s3ProcessedPrefix = "videos/processed";
 const videoProcessingCancellationChannel = `${videoProcessingQueueName}:cancel`;
+const videoProcessingJobDataSchema = z.object({
+  uuid: z.uuid(),
+});
 const videoProcessingCancellationMessageSchema = z.object({
   jobId: z.string(),
   reason: z.string(),
 });
 const activeVideoProcessingJobs = new Map<string, string>();
 
-// TODO test failures and retries, does not seem to work correctly currently
+// TODO manually test failures and retries
 export const worker = new Worker(
   videoProcessingQueueName,
   async (job, _token, signal) => {
     const jobId = getJobId(job);
     const cancellationSignal = getCancellationSignal(signal);
-    activeVideoProcessingJobs.set(jobId, job.data.uuid);
+    const { uuid } = videoProcessingJobDataSchema.parse(job.data);
+    activeVideoProcessingJobs.set(jobId, uuid);
 
     try {
-      await executeProcessingJob(job, cancellationSignal);
+      await executeProcessingJob(uuid, cancellationSignal);
     } catch (error) {
       if (
         cancellationSignal.aborted ||
         isVideoProcessingCancellationError(error)
       ) {
         throw new UnrecoverableError(
-          getVideoProcessingCancellationReason(
-            cancellationSignal,
-            job.data.uuid,
-          ),
+          getVideoProcessingCancellationReason(cancellationSignal, uuid),
         );
       }
 
@@ -56,32 +58,35 @@ export const worker = new Worker(
       activeVideoProcessingJobs.delete(jobId);
     }
   },
-  { connection: redisConnection },
+  {
+    connection: redisConnection,
+    concurrency: Number(process.env.WORKER_CONCURRENCY ?? 1),
+  },
 );
 
 const cancellationSubscriberPromise = setupCancellationSubscriber();
 
 async function executeProcessingJob(
-  job: Job<{ uuid: string }>,
+  uuid: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const { uuid } = job.data;
+  const workspace = getWorkspace(uuid);
 
   try {
     throwIfCancellationRequested(signal, uuid);
-    await cleanupAndSetup(); // Clean up if something failed previously
+    await cleanupAndSetup(workspace);
     throwIfCancellationRequested(signal, uuid);
 
     const fileToProcess = await streamingDownload({
       uuid,
       downloadPrefix: s3UploadsPrefix,
-      downloadsDir,
+      downloadsDir: workspace.downloadsDir,
     });
     throwIfCancellationRequested(signal, uuid);
 
     const processedVideoDir = await processVideo({
       fileToProcess,
-      processedDir,
+      processedDir: workspace.processedDir,
       signal,
     });
     throwIfCancellationRequested(signal, uuid);
@@ -107,16 +112,30 @@ async function executeProcessingJob(
 
     console.error(`Error processing video ${uuid}:`, error);
     throw error; // Let BullMQ handle retries
+  } finally {
+    await rm(workspace.rootDir, { recursive: true, force: true });
   }
 }
 
-// This makes it non concurrentable FIXME
-async function cleanupAndSetup() {
-  await rm(downloadsDir, { recursive: true, force: true });
-  await rm(processedDir, { recursive: true, force: true });
+function getWorkspace(uuid: string) {
+  const rootDir = path.join(jobsDir, uuid);
 
-  await mkdir(downloadsDir, { recursive: true });
-  await mkdir(processedDir, { recursive: true });
+  return {
+    rootDir,
+    downloadsDir: path.join(rootDir, "downloads"),
+    processedDir: path.join(rootDir, "processed"),
+  };
+}
+
+async function cleanupAndSetup(workspace: {
+  rootDir: string;
+  downloadsDir: string;
+  processedDir: string;
+}) {
+  await rm(workspace.rootDir, { recursive: true, force: true });
+
+  await mkdir(workspace.downloadsDir, { recursive: true });
+  await mkdir(workspace.processedDir, { recursive: true });
 }
 
 function throwIfCancellationRequested(signal: AbortSignal, uuid: string) {

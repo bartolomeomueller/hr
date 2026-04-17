@@ -5,15 +5,19 @@ import { Answer } from "@/db/schema";
 
 const VIDEO_PROCESSING_QUEUE_NAME = "video-processing";
 const VIDEO_PROCESSING_CANCELLATION_CHANNEL = `${VIDEO_PROCESSING_QUEUE_NAME}:cancel`;
+const redisConnection = {
+  host: process.env.REDIS_HOST ?? "localhost",
+  port: Number(process.env.REDIS_PORT ?? "6379"),
+  password: process.env.REDIS_PASSWORD,
+};
 
-// TODO secure this connection
 export const videoProcessingQueue = new Queue(VIDEO_PROCESSING_QUEUE_NAME, {
-  connection: { host: "localhost", port: 6379 },
+  connection: redisConnection,
 });
 
 // This will be started at the start of the server since this module is imported indirectly by the router.
 const queueEvents = new QueueEvents(VIDEO_PROCESSING_QUEUE_NAME, {
-  connection: { host: "localhost", port: 6379 },
+  connection: redisConnection,
 });
 
 // Make enqueuing idempotent, as the orpc handler calling this may be retried.
