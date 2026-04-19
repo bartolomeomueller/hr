@@ -6,7 +6,7 @@ import {
   DocumentAnswerPayloadType,
   VideoAnswerPayloadType,
 } from "@/db/payload-types";
-import { Answer } from "@/db/schema";
+import { Answer, Question } from "@/db/schema";
 import {
   enqueueVideoProcessingJob,
   cancelVideoProcessingJob as tryCancelVideoProcessingJob,
@@ -18,6 +18,7 @@ import {
   getObjectKeyForProcessedVideoUuid,
   getObjectKeyForVideoUuid,
 } from "@/lib/s3.server";
+import { validateAnswerPayloadForQuestionType } from "@/lib/validate-answer-payload";
 import { base } from "../base";
 import { debugMiddleware } from "../middlewares";
 import { AnswerSelectSchema } from "../schema";
@@ -30,6 +31,21 @@ export async function saveAnswerAndHandleVideoEffects(input: {
   let existingAnswerPayload = null;
 
   const savedAnswer = await db.transaction(async (tx) => {
+    const question = await tx.query.Question.findFirst({
+      where: eq(Question.uuid, input.questionUuid),
+      columns: {
+        questionType: true,
+      },
+    });
+    if (!question) {
+      throw new Error(`Question ${input.questionUuid} was not found.`);
+    }
+
+    const answerPayload = validateAnswerPayloadForQuestionType({
+      questionType: question.questionType,
+      answerPayload: input.answerPayload,
+    });
+
     const [existingAnswer] = await tx
       .select()
       .from(Answer)
@@ -47,7 +63,7 @@ export async function saveAnswerAndHandleVideoEffects(input: {
       const [updatedAnswer] = await tx
         .update(Answer)
         .set({
-          answerPayload: input.answerPayload,
+          answerPayload,
           answeredAt: new Date(),
         })
         .where(eq(Answer.uuid, existingAnswer.uuid))
@@ -61,7 +77,7 @@ export async function saveAnswerAndHandleVideoEffects(input: {
       .values({
         interviewUuid: input.interviewUuid,
         questionUuid: input.questionUuid,
-        answerPayload: input.answerPayload,
+        answerPayload,
         answeredAt: new Date(),
       })
       .returning();
@@ -71,7 +87,7 @@ export async function saveAnswerAndHandleVideoEffects(input: {
 
   // If the answer payload is a video answer, add a processing job to the queue.
   const videoAnswerPayloadResult = VideoAnswerPayloadType.safeParse(
-    input.answerPayload,
+    answerPayload,
   );
   if (videoAnswerPayloadResult.success) {
     await enqueueVideoProcessingJob(videoAnswerPayloadResult.data.videoUuid);

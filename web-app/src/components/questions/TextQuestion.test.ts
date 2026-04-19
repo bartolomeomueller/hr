@@ -4,6 +4,9 @@ import type z from "zod";
 
 vi.mock("@/orpc/client", () => ({
   orpc: {
+    deleteAnswer: {
+      mutationOptions: vi.fn(() => ({})),
+    },
     saveAnswer: {
       mutationOptions: vi.fn(() => ({})),
     },

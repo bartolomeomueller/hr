@@ -1,7 +1,10 @@
 import { type QueryKey, useMutation } from "@tanstack/react-query";
-import z from "zod";
+import type z from "zod";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
-import { TextQuestionPayloadType } from "@/db/payload-types";
+import {
+  TextAnswerPayloadType,
+  TextQuestionPayloadType,
+} from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import type { InterviewFormType } from "../Interview";
@@ -36,10 +39,19 @@ export function TextQuestion({
       `Question payload does not match expected type for text question. This should never happen, please report it. ${questionPayloadResult.error.message}`,
     );
   const questionPayload = questionPayloadResult.data;
+  const answerValidator = TextAnswerPayloadType.shape.answer;
 
   const { mutate } = useMutation({
     ...orpc.saveAnswer.mutationOptions(),
     // isPending is false as soon as the new (previously invalidated) query data arrives, since we are returning the promise
+    onSettled: (_data, _error, _variables, _onMutateResult, context) =>
+      context.client.invalidateQueries({
+        queryKey: queryKeyToInvalidateAnswers,
+      }),
+    retry: 1,
+  });
+  const { mutate: deleteAnswer } = useMutation({
+    ...orpc.deleteAnswer.mutationOptions(),
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
         queryKey: queryKeyToInvalidateAnswers,
@@ -51,11 +63,19 @@ export function TextQuestion({
     <form.Field
       name={question.uuid}
       validators={{
-        onChange: z.string().min(1, "Bitte gib eine Antwort an."),
+        onChange: answerValidator,
       }}
       listeners={{
         onChangeDebounceMs: 500,
         onChange: ({ value }) => {
+          if (!answerValidator.safeParse(value).success) {
+            deleteAnswer({
+              interviewUuid,
+              questionUuid: question.uuid,
+            });
+            return;
+          }
+
           mutate({
             interviewUuid,
             questionUuid: question.uuid,
