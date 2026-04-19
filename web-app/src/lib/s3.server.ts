@@ -30,11 +30,17 @@ const s3Client = new S3Client({
   region: s3Config.region,
 });
 
+const PDF_MIME_TYPE = "application/pdf";
+
 export async function createPresignedUploadUrlForDocument({
   mimeType,
 }: {
   mimeType: string;
 }) {
+  if (mimeType !== PDF_MIME_TYPE) {
+    throw new Error("Only PDF documents are allowed.");
+  }
+
   const uuid = uuidv7();
   const uploadUrl = await createPresignedUploadUrl({
     objectKey: getObjectKeyForDocumentUuid(uuid),

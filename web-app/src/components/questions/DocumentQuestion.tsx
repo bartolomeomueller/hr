@@ -24,6 +24,8 @@ import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Label } from "../ui/label";
 
+const PDF_MIME_TYPE = "application/pdf";
+
 // NOTE implement option that you can get a mail later to upload your documents, if you currently do not have them
 
 export function DocumentQuestion({
@@ -125,13 +127,22 @@ export function DocumentQuestion({
   // and replacement of already uploaded documents. The upload service owns the
   // actual upload pipeline, store writes, cancellation, and cache updates.
   async function appendFiles(nextFiles: File[], isSingleFileUpload: boolean) {
+    const pdfFiles = nextFiles.filter((file) => file.type === PDF_MIME_TYPE);
+    if (pdfFiles.length !== nextFiles.length) {
+      toast.info("Es können hier nur PDF-Dateien hochgeladen werden.");
+    }
+
+    if (pdfFiles.length === 0) {
+      return;
+    }
+
     // Immediately set that the user has documents to upload, when they try to upload documents.
     if (userHasNoAptDocuments) {
       setUserHasNoAptDocuments(false);
     }
 
     // Sort files by name to make the behavior deterministic, when we have to cut out files, because there are too many
-    let filesToAddToUpload = nextFiles.sort((a, b) =>
+    let filesToAddToUpload = pdfFiles.sort((a, b) =>
       a.name.localeCompare(b.name),
     );
 
@@ -150,7 +161,7 @@ export function DocumentQuestion({
         documentUploadService.cancelUpload(currentUploadingDocument.localUuid);
       }
 
-      filesToAddToUpload = nextFiles.slice(0, 1);
+      filesToAddToUpload = pdfFiles.slice(0, 1);
 
       // For single file upload, if there is already a document that was uploaded, we want to replace it.
       const uploadedDocumentToReplace = documents.at(0);
@@ -352,7 +363,7 @@ function FileDragAndDrop({
       <input
         type="file"
         id={id}
-        accept="image/*, .pdf, .doc, .docx, .txt, .rtf, .odt, .md"
+        accept=".pdf"
         className="hidden"
         ref={fileInputRef}
         onChange={(e) => {

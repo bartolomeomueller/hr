@@ -14,6 +14,8 @@ const {
   deleteAnswerMutationFnMock,
   deleteDocumentMutationFnMock,
   createDocumentDownloadUrlMutationFnMock,
+  addToUploadPipelineMock,
+  cancelUploadMock,
   toastErrorMock,
   toastInfoMock,
 } = vi.hoisted(() => ({
@@ -21,6 +23,8 @@ const {
   deleteAnswerMutationFnMock: vi.fn().mockResolvedValue(null),
   deleteDocumentMutationFnMock: vi.fn().mockResolvedValue(null),
   createDocumentDownloadUrlMutationFnMock: vi.fn().mockResolvedValue(null),
+  addToUploadPipelineMock: vi.fn(),
+  cancelUploadMock: vi.fn(),
   toastErrorMock: vi.fn(),
   toastInfoMock: vi.fn(),
 }));
@@ -62,8 +66,8 @@ vi.mock("@/lib/query-client", () => ({
 
 vi.mock("@/services/DocumentUploadService", () => ({
   documentUploadService: {
-    addToUploadPipeline: vi.fn(),
-    cancelUpload: vi.fn(),
+    addToUploadPipeline: addToUploadPipelineMock,
+    cancelUpload: cancelUploadMock,
   },
 }));
 
@@ -134,6 +138,8 @@ describe("DocumentQuestion", () => {
     deleteAnswerMutationFnMock.mockClear();
     deleteDocumentMutationFnMock.mockClear();
     createDocumentDownloadUrlMutationFnMock.mockClear();
+    addToUploadPipelineMock.mockClear();
+    cancelUploadMock.mockClear();
     toastErrorMock.mockClear();
     toastInfoMock.mockClear();
     useDocumentUploadStore.setState({ documentsToUpload: [] });
@@ -152,6 +158,34 @@ describe("DocumentQuestion", () => {
     const checkbox = screen.getByRole("checkbox");
     expect(checkbox).toBeTruthy();
     expect(checkbox.getAttribute("data-state")).toBe("unchecked");
+  });
+
+  it("shows an info toast and does not queue an upload for non-pdf files", async () => {
+    const { container } = renderDocumentQuestion({
+      questionPayload: {
+        prompt: "Upload your supporting documents",
+        minUploads: 0,
+        maxUploads: 3,
+      },
+    });
+
+    const fileInput = container.querySelector('input[type="file"]');
+    if (!fileInput) {
+      throw new Error("Expected document question to render a file input.");
+    }
+
+    fireEvent.change(fileInput, {
+      target: {
+        files: [
+          new File(["plain text"], "notes.txt", {
+            type: "text/plain",
+          }),
+        ],
+      },
+    });
+
+    expect(toastInfoMock).toHaveBeenCalledTimes(1);
+    expect(addToUploadPipelineMock).not.toHaveBeenCalled();
   });
 
   it("reflects an existing 'no_documents' answer as checked", () => {
