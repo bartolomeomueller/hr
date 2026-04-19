@@ -318,7 +318,7 @@ function FileDragAndDrop({
   return (
     <div>
       <Button
-        // TODO think about whether supporting paste events for files and folders also
+        // NOTE evaluate optional paste support for files, currently not well supported across browsers
         type="button"
         variant="outline"
         className={`flex h-20 w-full flex-row items-center justify-center rounded-xl border border-dashed border-gray-200 py-5 shadow transition ${
@@ -357,10 +357,10 @@ function FileDragAndDrop({
       >
         <Upload className="text-muted-foreground" />
         <p className="text-muted-foreground">
-          Ziehe deine Dateien hierher, klick hier oder füg sie ein
+          Ziehe deine Dateien hierher oder wähle sie aus
         </p>
       </Button>
-      {/* Allow directories on click also */}
+      {/* Allowing directories on click, is not really supported :/ */}
       <input
         type="file"
         id={id}
