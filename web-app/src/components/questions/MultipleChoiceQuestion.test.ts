@@ -2,12 +2,22 @@
 
 import { useForm } from "@tanstack/react-form";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import React from "react";
 import { v7 as uuidv7 } from "uuid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type z from "zod";
-import { MultipleChoiceQuestion, isMultipleChoiceQuestionAnswered } from "@/components/questions/MultipleChoiceQuestion";
+import type { InterviewFormType } from "@/components/Interview";
+import {
+  isMultipleChoiceQuestionAnswered,
+  MultipleChoiceQuestion,
+} from "@/components/questions/MultipleChoiceQuestion";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 
 const { deleteAnswerMutationFnMock, saveAnswerMutationFnMock } = vi.hoisted(
@@ -79,11 +89,12 @@ function renderMultipleChoiceQuestion() {
   };
 
   function TestForm() {
+    const defaultValues: Record<string, string | string[]> = {
+      [question.uuid]: [] as string[],
+    };
     const form = useForm({
-      defaultValues: {
-        [question.uuid]: [] as string[],
-      },
-    });
+      defaultValues,
+    }) as InterviewFormType;
 
     return React.createElement(MultipleChoiceQuestion, {
       form,
@@ -115,18 +126,21 @@ describe("MultipleChoiceQuestion", () => {
 
     fireEvent.click(screen.getByTestId("Option A"));
 
-    await waitFor(() => {
-      expect(saveAnswerMutationFnMock).toHaveBeenCalledWith(
-        {
-          interviewUuid: "interview-1",
-          questionUuid: "question-1",
-          answerPayload: {
-            selectedOptions: ["Option A"],
+    await waitFor(
+      () => {
+        expect(saveAnswerMutationFnMock).toHaveBeenCalledWith(
+          {
+            interviewUuid: "interview-1",
+            questionUuid: "question-1",
+            answerPayload: {
+              selectedOptions: ["Option A"],
+            },
           },
-        },
-        expect.anything(),
-      );
-    }, { timeout: 1500 });
+          expect.anything(),
+        );
+      },
+      { timeout: 1500 },
+    );
 
     expect(deleteAnswerMutationFnMock).not.toHaveBeenCalled();
   });
@@ -135,23 +149,29 @@ describe("MultipleChoiceQuestion", () => {
     renderMultipleChoiceQuestion();
 
     fireEvent.click(screen.getByTestId("Option A"));
-    await waitFor(() => {
-      expect(saveAnswerMutationFnMock).toHaveBeenCalledTimes(1);
-    }, { timeout: 1500 });
+    await waitFor(
+      () => {
+        expect(saveAnswerMutationFnMock).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 1500 },
+    );
 
     saveAnswerMutationFnMock.mockClear();
 
     fireEvent.click(screen.getByTestId("Option A"));
 
-    await waitFor(() => {
-      expect(deleteAnswerMutationFnMock).toHaveBeenCalledWith(
-        {
-          interviewUuid: "interview-1",
-          questionUuid: "question-1",
-        },
-        expect.anything(),
-      );
-    }, { timeout: 1500 });
+    await waitFor(
+      () => {
+        expect(deleteAnswerMutationFnMock).toHaveBeenCalledWith(
+          {
+            interviewUuid: "interview-1",
+            questionUuid: "question-1",
+          },
+          expect.anything(),
+        );
+      },
+      { timeout: 1500 },
+    );
 
     expect(saveAnswerMutationFnMock).not.toHaveBeenCalled();
   });

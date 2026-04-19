@@ -2,12 +2,22 @@
 
 import { useForm } from "@tanstack/react-form";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import React from "react";
 import { v7 as uuidv7 } from "uuid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type z from "zod";
-import { TextQuestion, isTextQuestionAnswered } from "@/components/questions/TextQuestion";
+import type { InterviewFormType } from "@/components/Interview";
+import {
+  isTextQuestionAnswered,
+  TextQuestion,
+} from "@/components/questions/TextQuestion";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 
 const { deleteAnswerMutationFnMock, saveAnswerMutationFnMock } = vi.hoisted(
@@ -51,11 +61,12 @@ function renderTextQuestion() {
   };
 
   function TestForm() {
+    const defaultValues: Record<string, string | string[]> = {
+      [question.uuid]: "",
+    };
     const form = useForm({
-      defaultValues: {
-        [question.uuid]: "",
-      },
-    });
+      defaultValues,
+    }) as InterviewFormType;
 
     return React.createElement(TextQuestion, {
       form,
@@ -89,18 +100,21 @@ describe("TextQuestion", () => {
       target: { value: "I like the team." },
     });
 
-    await waitFor(() => {
-      expect(saveAnswerMutationFnMock).toHaveBeenCalledWith(
-        {
-          interviewUuid: "interview-1",
-          questionUuid: "question-1",
-          answerPayload: {
-            answer: "I like the team.",
+    await waitFor(
+      () => {
+        expect(saveAnswerMutationFnMock).toHaveBeenCalledWith(
+          {
+            interviewUuid: "interview-1",
+            questionUuid: "question-1",
+            answerPayload: {
+              answer: "I like the team.",
+            },
           },
-        },
-        expect.anything(),
-      );
-    }, { timeout: 1500 });
+          expect.anything(),
+        );
+      },
+      { timeout: 1500 },
+    );
 
     expect(deleteAnswerMutationFnMock).not.toHaveBeenCalled();
   });
@@ -112,9 +126,12 @@ describe("TextQuestion", () => {
       target: { value: "Temporary answer" },
     });
 
-    await waitFor(() => {
-      expect(saveAnswerMutationFnMock).toHaveBeenCalledTimes(1);
-    }, { timeout: 1500 });
+    await waitFor(
+      () => {
+        expect(saveAnswerMutationFnMock).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 1500 },
+    );
 
     saveAnswerMutationFnMock.mockClear();
 
@@ -122,15 +139,18 @@ describe("TextQuestion", () => {
       target: { value: "" },
     });
 
-    await waitFor(() => {
-      expect(deleteAnswerMutationFnMock).toHaveBeenCalledWith(
-        {
-          interviewUuid: "interview-1",
-          questionUuid: "question-1",
-        },
-        expect.anything(),
-      );
-    }, { timeout: 1500 });
+    await waitFor(
+      () => {
+        expect(deleteAnswerMutationFnMock).toHaveBeenCalledWith(
+          {
+            interviewUuid: "interview-1",
+            questionUuid: "question-1",
+          },
+          expect.anything(),
+        );
+      },
+      { timeout: 1500 },
+    );
 
     expect(saveAnswerMutationFnMock).not.toHaveBeenCalled();
   });

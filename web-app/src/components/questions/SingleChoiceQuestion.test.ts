@@ -2,12 +2,22 @@
 
 import { useForm } from "@tanstack/react-form";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import React from "react";
 import { v7 as uuidv7 } from "uuid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type z from "zod";
-import { SingleChoiceQuestion, isSingleChoiceQuestionAnswered } from "@/components/questions/SingleChoiceQuestion";
+import type { InterviewFormType } from "@/components/Interview";
+import {
+  isSingleChoiceQuestionAnswered,
+  SingleChoiceQuestion,
+} from "@/components/questions/SingleChoiceQuestion";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 
 const { deleteAnswerMutationFnMock, saveAnswerMutationFnMock } = vi.hoisted(
@@ -71,13 +81,7 @@ vi.mock("@/components/ui/radio-group", async () => {
         ),
       );
     },
-    RadioGroupItem({
-      id,
-      value,
-    }: {
-      id?: string;
-      value: string;
-    }) {
+    RadioGroupItem({ id, value }: { id?: string; value: string }) {
       const onValueChange = React.useContext(radioGroupContext);
       return React.createElement(
         "button",
@@ -112,11 +116,12 @@ function renderSingleChoiceQuestion() {
   };
 
   function TestForm() {
+    const defaultValues: Record<string, string | string[]> = {
+      [question.uuid]: "",
+    };
     const form = useForm({
-      defaultValues: {
-        [question.uuid]: "",
-      },
-    });
+      defaultValues,
+    }) as InterviewFormType;
 
     return React.createElement(SingleChoiceQuestion, {
       form,
@@ -148,18 +153,21 @@ describe("SingleChoiceQuestion", () => {
 
     fireEvent.click(screen.getByTestId("Option A"));
 
-    await waitFor(() => {
-      expect(saveAnswerMutationFnMock).toHaveBeenCalledWith(
-        {
-          interviewUuid: "interview-1",
-          questionUuid: "question-1",
-          answerPayload: {
-            selectedOption: "Option A",
+    await waitFor(
+      () => {
+        expect(saveAnswerMutationFnMock).toHaveBeenCalledWith(
+          {
+            interviewUuid: "interview-1",
+            questionUuid: "question-1",
+            answerPayload: {
+              selectedOption: "Option A",
+            },
           },
-        },
-        expect.anything(),
-      );
-    }, { timeout: 1500 });
+          expect.anything(),
+        );
+      },
+      { timeout: 1500 },
+    );
 
     expect(deleteAnswerMutationFnMock).not.toHaveBeenCalled();
   });
@@ -169,15 +177,18 @@ describe("SingleChoiceQuestion", () => {
 
     fireEvent.click(screen.getByText("Clear selection"));
 
-    await waitFor(() => {
-      expect(deleteAnswerMutationFnMock).toHaveBeenCalledWith(
-        {
-          interviewUuid: "interview-1",
-          questionUuid: "question-1",
-        },
-        expect.anything(),
-      );
-    }, { timeout: 1500 });
+    await waitFor(
+      () => {
+        expect(deleteAnswerMutationFnMock).toHaveBeenCalledWith(
+          {
+            interviewUuid: "interview-1",
+            questionUuid: "question-1",
+          },
+          expect.anything(),
+        );
+      },
+      { timeout: 1500 },
+    );
 
     expect(saveAnswerMutationFnMock).not.toHaveBeenCalled();
   });
