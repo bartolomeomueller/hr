@@ -1,7 +1,10 @@
 import { type QueryKey, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type z from "zod";
-import { SingleChoiceQuestionPayloadType } from "@/db/payload-types";
+import {
+  SingleChoiceAnswerPayloadType,
+  SingleChoiceQuestionPayloadType,
+} from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import type { InterviewFormType } from "../Interview";
@@ -43,6 +46,7 @@ export function SingleChoiceQuestion({
       `Question payload does not match expected type for single choice question. This should never happen, please report it. ${questionPayloadResult.error.message}`,
     );
   const questionPayload = questionPayloadResult.data;
+  const answerValidator = SingleChoiceAnswerPayloadType.shape.selectedOption;
 
   const { mutate } = useMutation({
     ...orpc.saveAnswer.mutationOptions(),
@@ -61,14 +65,33 @@ export function SingleChoiceQuestion({
       }),
     retry: 1,
   });
+  const { mutate: deleteAnswer } = useMutation({
+    ...orpc.deleteAnswer.mutationOptions(),
+    onSettled: (_data, _error, _variables, _onMutateResult, context) =>
+      context.client.invalidateQueries({
+        queryKey: queryKeyToInvalidateAnswers,
+      }),
+    retry: 1,
+  });
 
   return (
     <form.Field
       name={question.uuid}
+      validators={{
+        onChange: answerValidator,
+      }}
       // Listeners will be run even if the component unmounts
       listeners={{
         onChangeDebounceMs: 500,
         onChange: ({ value }) => {
+          if (!answerValidator.safeParse(value).success) {
+            deleteAnswer({
+              interviewUuid,
+              questionUuid: question.uuid,
+            });
+            return;
+          }
+
           mutate({
             interviewUuid,
             questionUuid: question.uuid,

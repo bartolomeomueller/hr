@@ -1,6 +1,9 @@
 import { type QueryKey, useMutation } from "@tanstack/react-query";
 import type z from "zod";
-import { MultipleChoiceQuestionPayloadType } from "@/db/payload-types";
+import {
+  MultipleChoiceAnswerPayloadType,
+  MultipleChoiceQuestionPayloadType,
+} from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import type { InterviewFormType } from "../Interview";
@@ -41,10 +44,19 @@ export function MultipleChoiceQuestion({
       `Question payload does not match expected type for multiple choice question. This should never happen, please report it. ${questionPayloadResult.error.message}`,
     );
   const questionPayload = questionPayloadResult.data;
+  const answerValidator = MultipleChoiceAnswerPayloadType.shape.selectedOptions;
 
   const { mutate } = useMutation({
     ...orpc.saveAnswer.mutationOptions(),
     // isPending is false as soon as the new (previously invalidated) query data arrives, since we are returning the promise
+    onSettled: (_data, _error, _variables, _onMutateResult, context) =>
+      context.client.invalidateQueries({
+        queryKey: queryKeyToInvalidateAnswers,
+      }),
+    retry: 1,
+  });
+  const { mutate: deleteAnswer } = useMutation({
+    ...orpc.deleteAnswer.mutationOptions(),
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
         queryKey: queryKeyToInvalidateAnswers,
@@ -56,9 +68,20 @@ export function MultipleChoiceQuestion({
     <form.Field
       name={question.uuid}
       mode="array"
+      validators={{
+        onChange: answerValidator,
+      }}
       listeners={{
         onChangeDebounceMs: 500,
         onChange: ({ value }) => {
+          if (!answerValidator.safeParse(value).success) {
+            deleteAnswer({
+              interviewUuid,
+              questionUuid: question.uuid,
+            });
+            return;
+          }
+
           mutate({
             interviewUuid,
             questionUuid: question.uuid,

@@ -51,10 +51,12 @@ export const TextAnswerPayloadType = z.object({
     .max(5_000_000, "Die Antwort ist zu lang."),
 });
 export const SingleChoiceAnswerPayloadType = z.object({
-  selectedOption: z.string(),
+  selectedOption: z.string().min(1, "Bitte wähle eine Option aus."),
 });
 export const MultipleChoiceAnswerPayloadType = z.object({
-  selectedOptions: z.array(z.string()),
+  selectedOptions: z
+    .array(z.string())
+    .min(1, "Bitte wähle mindestens eine Option aus."),
 });
 export const DocumentAnswerPayloadType = z.discriminatedUnion("kind", [
   z.object({
