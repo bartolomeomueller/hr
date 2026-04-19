@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { v7 as uuidv7 } from "uuid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type z from "zod";
 import { DocumentQuestion } from "@/components/questions/DocumentQuestion";
@@ -13,11 +14,15 @@ const {
   deleteAnswerMutationFnMock,
   deleteDocumentMutationFnMock,
   createDocumentDownloadUrlMutationFnMock,
+  toastErrorMock,
+  toastInfoMock,
 } = vi.hoisted(() => ({
   saveAnswerMutationFnMock: vi.fn().mockResolvedValue(null),
   deleteAnswerMutationFnMock: vi.fn().mockResolvedValue(null),
   deleteDocumentMutationFnMock: vi.fn().mockResolvedValue(null),
   createDocumentDownloadUrlMutationFnMock: vi.fn().mockResolvedValue(null),
+  toastErrorMock: vi.fn(),
+  toastInfoMock: vi.fn(),
 }));
 
 vi.mock("@/orpc/client", () => ({
@@ -64,8 +69,8 @@ vi.mock("@/services/DocumentUploadService", () => ({
 
 vi.mock("sonner", () => ({
   toast: {
-    error: vi.fn(),
-    info: vi.fn(),
+    error: toastErrorMock,
+    info: toastInfoMock,
   },
 }));
 
@@ -78,6 +83,14 @@ function createDeferredPromise<T>() {
   return {
     promise,
     resolve: resolvePromise,
+  };
+}
+
+function createUploadedDocument(fileName = "resume.pdf") {
+  return {
+    documentUuid: uuidv7(),
+    fileName,
+    mimeType: "application/pdf",
   };
 }
 
@@ -121,6 +134,8 @@ describe("DocumentQuestion", () => {
     deleteAnswerMutationFnMock.mockClear();
     deleteDocumentMutationFnMock.mockClear();
     createDocumentDownloadUrlMutationFnMock.mockClear();
+    toastErrorMock.mockClear();
+    toastInfoMock.mockClear();
     useDocumentUploadStore.setState({ documentsToUpload: [] });
   });
 
@@ -161,6 +176,104 @@ describe("DocumentQuestion", () => {
     expect(checkbox.getAttribute("data-state")).toBe("checked");
   });
 
+  it("shows an error and falls back to the empty optional state for an invalid answer payload", async () => {
+    renderDocumentQuestion({
+      questionPayload: {
+        prompt: "Upload your supporting documents",
+        minUploads: 0,
+        maxUploads: 3,
+      },
+      answer: {
+        uuid: "answer-1",
+        interviewUuid: "interview-1",
+        questionUuid: "question-1",
+        answerPayload: {
+          kind: "documents",
+          documents: [],
+        },
+        answeredAt: new Date(),
+      },
+    });
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledTimes(1);
+    });
+
+    const checkbox = screen.getByRole("checkbox");
+    expect(checkbox.getAttribute("data-state")).toBe("unchecked");
+  });
+
+  it("renders uploaded documents from the existing answer and hides the checkbox", () => {
+    renderDocumentQuestion({
+      questionPayload: {
+        prompt: "Upload your supporting documents",
+        minUploads: 0,
+        maxUploads: 3,
+      },
+      answer: {
+        uuid: "answer-1",
+        interviewUuid: "interview-1",
+        questionUuid: "question-1",
+        answerPayload: {
+          kind: "documents",
+          documents: [createUploadedDocument()],
+        },
+        answeredAt: new Date(),
+      },
+    });
+
+    expect(screen.getByText("resume.pdf")).toBeTruthy();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("renders multiple uploaded documents from the existing answer", () => {
+    renderDocumentQuestion({
+      questionPayload: {
+        prompt: "Upload your supporting documents",
+        minUploads: 0,
+        maxUploads: 3,
+      },
+      answer: {
+        uuid: "answer-1",
+        interviewUuid: "interview-1",
+        questionUuid: "question-1",
+        answerPayload: {
+          kind: "documents",
+          documents: [
+            createUploadedDocument("resume.pdf"),
+            createUploadedDocument("cover-letter.pdf"),
+          ],
+        },
+        answeredAt: new Date(),
+      },
+    });
+
+    expect(screen.getByText("resume.pdf")).toBeTruthy();
+    expect(screen.getByText("cover-letter.pdf")).toBeTruthy();
+  });
+
+  it("keeps the checkbox hidden when uploaded documents already exist", () => {
+    renderDocumentQuestion({
+      questionPayload: {
+        prompt: "Upload your supporting documents",
+        minUploads: 0,
+        maxUploads: 3,
+      },
+      answer: {
+        uuid: "answer-1",
+        interviewUuid: "interview-1",
+        questionUuid: "question-1",
+        answerPayload: {
+          kind: "documents",
+          documents: [createUploadedDocument()],
+        },
+        answeredAt: new Date(),
+      },
+    });
+
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
   it("does not show the checkbox when at least one upload is required", () => {
     renderDocumentQuestion({
       questionPayload: {
@@ -171,6 +284,88 @@ describe("DocumentQuestion", () => {
     });
 
     expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("renders uploading documents from the upload store and hides the checkbox", () => {
+    useDocumentUploadStore.setState({
+      documentsToUpload: [
+        {
+          localUuid: "local-1",
+          questionUuid: "question-1",
+          file: new File(["resume"], "resume.pdf", {
+            type: "application/pdf",
+          }),
+          progress: 25,
+          abortController: new AbortController(),
+        },
+      ],
+    });
+
+    renderDocumentQuestion({
+      questionPayload: {
+        prompt: "Upload your supporting documents",
+        minUploads: 0,
+        maxUploads: 3,
+      },
+    });
+
+    expect(screen.getByText("resume.pdf")).toBeTruthy();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("renders only uploading documents for the current question", () => {
+    useDocumentUploadStore.setState({
+      documentsToUpload: [
+        {
+          localUuid: "local-1",
+          questionUuid: "question-1",
+          file: new File(["resume"], "resume.pdf", {
+            type: "application/pdf",
+          }),
+          progress: 25,
+          abortController: new AbortController(),
+        },
+        {
+          localUuid: "local-2",
+          questionUuid: "question-2",
+          file: new File(["cover-letter"], "cover-letter.pdf", {
+            type: "application/pdf",
+          }),
+          progress: 50,
+          abortController: new AbortController(),
+        },
+      ],
+    });
+
+    renderDocumentQuestion({
+      questionPayload: {
+        prompt: "Upload your supporting documents",
+        minUploads: 0,
+        maxUploads: 3,
+      },
+    });
+
+    expect(screen.getByText("resume.pdf")).toBeTruthy();
+    expect(screen.queryByText("cover-letter.pdf")).toBeNull();
+  });
+
+  it("shows the checkbox in the empty optional state", () => {
+    useDocumentUploadStore.setState({
+      documentsToUpload: [],
+    });
+
+    renderDocumentQuestion({
+      questionPayload: {
+        prompt: "Upload your supporting documents",
+        minUploads: 0,
+        maxUploads: 3,
+      },
+      answer: undefined,
+    });
+
+    const checkbox = screen.getByRole("checkbox");
+    expect(checkbox).toBeTruthy();
+    expect(checkbox.getAttribute("data-state")).toBe("unchecked");
   });
 
   it("saves a no_documents answer when the checkbox is checked", async () => {
@@ -218,6 +413,43 @@ describe("DocumentQuestion", () => {
     });
 
     deferredSaveAnswer.resolve(null);
+
+    await waitFor(() => {
+      expect(checkbox.hasAttribute("disabled")).toBe(false);
+    });
+  });
+
+  it("disables the checkbox while deleting an existing no_documents answer", async () => {
+    const deferredDeleteAnswer = createDeferredPromise<null>();
+    deleteAnswerMutationFnMock.mockReturnValueOnce(
+      deferredDeleteAnswer.promise,
+    );
+
+    renderDocumentQuestion({
+      questionPayload: {
+        prompt: "Upload your supporting documents",
+        minUploads: 0,
+        maxUploads: 3,
+      },
+      answer: {
+        uuid: "answer-1",
+        interviewUuid: "interview-1",
+        questionUuid: "question-1",
+        answerPayload: {
+          kind: "no_documents",
+        },
+        answeredAt: new Date(),
+      },
+    });
+
+    const checkbox = screen.getByRole("checkbox");
+    fireEvent.click(checkbox);
+
+    await waitFor(() => {
+      expect(checkbox.hasAttribute("disabled")).toBe(true);
+    });
+
+    deferredDeleteAnswer.resolve(null);
 
     await waitFor(() => {
       expect(checkbox.hasAttribute("disabled")).toBe(false);
