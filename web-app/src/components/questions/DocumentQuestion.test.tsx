@@ -571,4 +571,37 @@ describe("DocumentQuestion", () => {
 
     windowOpenSpy.mockRestore();
   });
+
+  it("shows an error toast when deleting a document fails", async () => {
+    deleteDocumentMutationFnMock.mockRejectedValueOnce(
+      new Error("deletion failed"),
+    );
+
+    renderDocumentQuestion({
+      questionPayload: {
+        prompt: "Upload your supporting documents",
+        minUploads: 0,
+        maxUploads: 3,
+      },
+      answer: {
+        uuid: "answer-1",
+        interviewUuid: "interview-1",
+        questionUuid: "question-1",
+        answerPayload: {
+          kind: "documents",
+          documents: [createUploadedDocument()],
+        },
+        answeredAt: new Date(),
+      },
+    });
+
+    const deleteButton = screen.getByRole("button", {
+      name: "Dokument löschen",
+    });
+    fireEvent.click(deleteButton);
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledTimes(1);
+    });
+  });
 });

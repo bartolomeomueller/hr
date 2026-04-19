@@ -16,6 +16,7 @@ import {
   DocumentQuestionPayloadType,
 } from "@/db/payload-types";
 import { getQueryClient } from "@/lib/query-client";
+import { isPreSignedURLStillValid } from "@/lib/utils";
 import { client, orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { documentUploadService } from "@/services/DocumentUploadService";
@@ -399,28 +400,19 @@ function File({
   queryKeyToInvalidateAnswers: QueryKey;
 }) {
   const [viewIsClicked, setViewIsClicked] = useState(false);
-  const preSignedUrlRef = useRef<Promise<{
-    url: string;
-    timestamp: number;
-  }> | null>(null);
+  const preSignedUrlRef = useRef<Promise<string> | null>(null);
   const { mutateAsync: viewMutateAsync, isPending: viewIsPending } =
     useMutation({
       ...orpc.createPresignedS3DocumentDownloadUrlByUuid.mutationOptions(),
       onMutate(_variables, _context) {
-        let resolve!: (value: { url: string; timestamp: number }) => void;
-        preSignedUrlRef.current = new Promise<{
-          url: string;
-          timestamp: number;
-        }>((res) => {
+        let resolve!: (value: string) => void;
+        preSignedUrlRef.current = new Promise<string>((res) => {
           resolve = res;
         });
         return { resolve };
       },
       onSuccess: (data, _variables, onMutateResult, _context) => {
-        onMutateResult.resolve({
-          url: data.downloadUrl,
-          timestamp: Date.now(),
-        });
+        onMutateResult.resolve(data.downloadUrl);
       },
       onError: (error, _variables, _onMutateResult, _context) => {
         preSignedUrlRef.current = null;
@@ -446,21 +438,17 @@ function File({
 
     // If we got here after the first time await the promise to the presigned url
     const currentPreSignedUrl = await currentPreSignedUrlPromise;
-    const fourMinutesInMs = 4 * 60 * 1000;
-    // if the url is older than 4 minutes, get a new one
-    if (Date.now() - currentPreSignedUrl.timestamp > fourMinutesInMs) {
+    if (!isPreSignedURLStillValid(currentPreSignedUrl)) {
       await viewMutateAsync({ documentUuid: uploadedDocument.documentUuid });
       return preSignedUrlRef.current;
     }
 
-    // otherwise the url is still valid for longer than a minute
+    // otherwise the url is still valid
     return currentPreSignedUrlPromise;
   };
 
   const { mutate: deletionMutate, isPending: deletionIsPending } = useMutation({
     ...orpc.deleteDocumentFromObjectStorageAndFromAnswer.mutationOptions(),
-    // TODO add error indication to try again
-
     // onSuccess update the query cache to remove the deleted document. Without this, the refetching by onSettled would be invalidated by later deletions.
     // This would lead to documents coming back with full opacity, confusing the user, because the mutation is not pending anymore, but the data was also not yet updated.
     onSuccess(data, _variables, _onMutateResult, context) {
@@ -488,6 +476,12 @@ function File({
               ),
         };
       });
+    },
+    onError(error) {
+      toast.error(
+        "Das Dokument konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+      );
+      console.error("Error deleting document", error);
     },
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
@@ -519,7 +513,7 @@ function File({
                   const preSignedUrlPromise =
                     await fetchNewPresignedUrlIfNeeded();
                   if (preSignedUrlPromise)
-                    window.open((await preSignedUrlPromise).url, "_blank");
+                    window.open(await preSignedUrlPromise, "_blank");
                 } catch {}
                 setViewIsClicked(false);
               }}
