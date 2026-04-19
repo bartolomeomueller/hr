@@ -155,7 +155,7 @@ export function MultipleChoiceQuestion({
         onChange: answerValidator,
       }}
       listeners={{
-        onChangeDebounceMs: 500,
+        // onChangeDebounceMs: 500,
         onChange: ({ value }) => {
           if (!answerValidator.safeParse(value).success) {
             deleteAnswer({

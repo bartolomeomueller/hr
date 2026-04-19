@@ -25,6 +25,8 @@ import {
 } from "../ui/field";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 
+// TODO add support for skipping each question, if the admins allow it, make each question optional on admin request
+
 export function isSingleChoiceQuestionAnswered(
   answer: z.infer<typeof AnswerSelectSchema> | undefined,
 ) {
@@ -91,9 +93,6 @@ export function SingleChoiceQuestion({
         previousData,
       };
     },
-    onSuccess: () => {
-      toast.success("Answer saved.");
-    },
     onError(_error, _variables, onMutateResult, context) {
       context.client.setQueryData(
         queryKeyToInvalidateAnswers,
@@ -159,7 +158,7 @@ export function SingleChoiceQuestion({
       }}
       // Listeners will be run even if the component unmounts
       listeners={{
-        onChangeDebounceMs: 500,
+        // onChangeDebounceMs: 500,
         onChange: ({ value }) => {
           if (!answerValidator.safeParse(value).success) {
             deleteAnswer({
