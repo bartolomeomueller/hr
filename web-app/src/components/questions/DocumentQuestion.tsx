@@ -368,11 +368,9 @@ function FileDragAndDrop({
         ref={fileInputRef}
         onChange={(e) => {
           const files = e.target.files;
-
           if (files) {
             appendFiles(Array.from(files), isSingleFileUpload);
           }
-          // The duplication will be checked by appendFiles TODO
           e.target.value = ""; // reset file input, so that the same file can be uploaded again
         }}
         multiple
@@ -410,24 +408,29 @@ function File({
       ...orpc.createPresignedS3DocumentDownloadUrlByUuid.mutationOptions(),
       onMutate(_variables, _context) {
         let resolve!: (value: { url: string; timestamp: number }) => void;
-        let reject!: (reason?: unknown) => void;
         preSignedUrlRef.current = new Promise<{
           url: string;
           timestamp: number;
-        }>((res, rej) => {
+        }>((res) => {
           resolve = res;
-          reject = rej;
         });
-        return { resolve, reject };
+        return { resolve };
       },
-      // TODO add error indication to try again
       onSuccess: (data, _variables, onMutateResult, _context) => {
         onMutateResult.resolve({
           url: data.downloadUrl,
           timestamp: Date.now(),
         });
       },
+      onError: (error, _variables, _onMutateResult, _context) => {
+        preSignedUrlRef.current = null;
+        toast.error(
+          "Das Dokument konnte nicht geöffnet werden. Bitte versuchen Sie es erneut.",
+        );
+        console.error("Error fetching presigned url for document", error);
+      },
     });
+  // This function may throw since mutateAsync may throw.
   const fetchNewPresignedUrlIfNeeded = async () => {
     if (!uploadedDocument)
       throw new Error(
@@ -438,7 +441,7 @@ function File({
     const currentPreSignedUrlPromise = preSignedUrlRef.current;
     if (currentPreSignedUrlPromise == null) {
       await viewMutateAsync({ documentUuid: uploadedDocument.documentUuid });
-      return;
+      return preSignedUrlRef.current;
     }
 
     // If we got here after the first time await the promise to the presigned url
@@ -447,10 +450,11 @@ function File({
     // if the url is older than 4 minutes, get a new one
     if (Date.now() - currentPreSignedUrl.timestamp > fourMinutesInMs) {
       await viewMutateAsync({ documentUuid: uploadedDocument.documentUuid });
-      return;
+      return preSignedUrlRef.current;
     }
 
     // otherwise the url is still valid for longer than a minute
+    return currentPreSignedUrlPromise;
   };
 
   const { mutate: deletionMutate, isPending: deletionIsPending } = useMutation({
@@ -507,16 +511,17 @@ function File({
             <Button
               type="button"
               variant="ghost"
+              aria-label="Dokument ansehen"
               onMouseEnter={fetchNewPresignedUrlIfNeeded}
               onClick={async () => {
                 setViewIsClicked(true);
-                await fetchNewPresignedUrlIfNeeded();
-                if (preSignedUrlRef.current == null)
-                  throw new Error(
-                    "Pre-signed URL is not available. This should not be possible. Please report this.",
-                  );
+                try {
+                  const preSignedUrlPromise =
+                    await fetchNewPresignedUrlIfNeeded();
+                  if (preSignedUrlPromise)
+                    window.open((await preSignedUrlPromise).url, "_blank");
+                } catch {}
                 setViewIsClicked(false);
-                window.open((await preSignedUrlRef.current).url, "_blank");
               }}
               disabled={viewIsClicked}
             >
@@ -531,6 +536,7 @@ function File({
             <Button
               type="button"
               variant="ghost"
+              aria-label="Dokument löschen"
               onClick={() =>
                 deletionMutate({
                   documentUuid: uploadedDocument.documentUuid,

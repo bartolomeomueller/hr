@@ -520,4 +520,55 @@ describe("DocumentQuestion", () => {
       questionUuid: "question-1",
     });
   });
+
+  it("shows an error and allows retrying when opening a document fails", async () => {
+    const windowOpenSpy = vi
+      .spyOn(window, "open")
+      .mockImplementation(() => null);
+    createDocumentDownloadUrlMutationFnMock
+      .mockRejectedValueOnce(new Error("download failed"))
+      .mockResolvedValueOnce({
+        downloadUrl: "https://example.com/resume.pdf",
+      });
+
+    renderDocumentQuestion({
+      questionPayload: {
+        prompt: "Upload your supporting documents",
+        minUploads: 0,
+        maxUploads: 3,
+      },
+      answer: {
+        uuid: "answer-1",
+        interviewUuid: "interview-1",
+        questionUuid: "question-1",
+        answerPayload: {
+          kind: "documents",
+          documents: [createUploadedDocument()],
+        },
+        answeredAt: new Date(),
+      },
+    });
+
+    const viewButton = screen.getByRole("button", { name: "Dokument ansehen" });
+    fireEvent.click(viewButton);
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledTimes(1);
+    });
+    expect(windowOpenSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(viewButton);
+
+    await waitFor(() => {
+      expect(createDocumentDownloadUrlMutationFnMock).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(windowOpenSpy).toHaveBeenCalledWith(
+        "https://example.com/resume.pdf",
+        "_blank",
+      );
+    });
+
+    windowOpenSpy.mockRestore();
+  });
 });
