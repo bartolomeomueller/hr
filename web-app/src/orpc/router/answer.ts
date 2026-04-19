@@ -4,6 +4,7 @@ import z from "zod";
 import { db } from "@/db";
 import {
   DocumentAnswerPayloadType,
+  QuestionType,
   VideoAnswerPayloadType,
 } from "@/db/payload-types";
 import { Answer, Question } from "@/db/schema";
@@ -30,67 +31,77 @@ export async function saveAnswerAndHandleVideoEffects(input: {
 }) {
   let existingAnswerPayload = null;
 
-  const savedAnswer = await db.transaction(async (tx) => {
-    const question = await tx.query.Question.findFirst({
-      where: eq(Question.uuid, input.questionUuid),
-      columns: {
-        questionType: true,
-      },
-    });
-    if (!question) {
-      throw new Error(`Question ${input.questionUuid} was not found.`);
-    }
+  const { savedAnswer, answerPayload, questionType } = await db.transaction(
+    async (tx) => {
+      const question = await tx.query.Question.findFirst({
+        where: eq(Question.uuid, input.questionUuid),
+        columns: {
+          questionType: true,
+        },
+      });
+      if (!question) {
+        throw new Error(`Question ${input.questionUuid} was not found.`);
+      }
 
-    const answerPayload = validateAnswerPayloadForQuestionType({
-      questionType: question.questionType,
-      answerPayload: input.answerPayload,
-    });
+      const answerPayload = validateAnswerPayloadForQuestionType({
+        questionType: question.questionType,
+        answerPayload: input.answerPayload,
+      });
 
-    const [existingAnswer] = await tx
-      .select()
-      .from(Answer)
-      .where(
-        and(
-          eq(Answer.interviewUuid, input.interviewUuid),
-          eq(Answer.questionUuid, input.questionUuid),
-        ),
-      )
-      .limit(1);
+      const [existingAnswer] = await tx
+        .select()
+        .from(Answer)
+        .where(
+          and(
+            eq(Answer.interviewUuid, input.interviewUuid),
+            eq(Answer.questionUuid, input.questionUuid),
+          ),
+        )
+        .limit(1);
 
-    if (existingAnswer) {
-      existingAnswerPayload = existingAnswer.answerPayload;
+      if (existingAnswer) {
+        existingAnswerPayload = existingAnswer.answerPayload;
 
-      const [updatedAnswer] = await tx
-        .update(Answer)
-        .set({
+        const [updatedAnswer] = await tx
+          .update(Answer)
+          .set({
+            answerPayload,
+            answeredAt: new Date(),
+          })
+          .where(eq(Answer.uuid, existingAnswer.uuid))
+          .returning();
+
+        return {
+          savedAnswer: updatedAnswer,
+          answerPayload,
+          questionType: question.questionType,
+        };
+      }
+
+      const [insertedAnswer] = await tx
+        .insert(Answer)
+        .values({
+          interviewUuid: input.interviewUuid,
+          questionUuid: input.questionUuid,
           answerPayload,
           answeredAt: new Date(),
         })
-        .where(eq(Answer.uuid, existingAnswer.uuid))
         .returning();
 
-      return updatedAnswer;
-    }
-
-    const [insertedAnswer] = await tx
-      .insert(Answer)
-      .values({
-        interviewUuid: input.interviewUuid,
-        questionUuid: input.questionUuid,
+      return {
+        savedAnswer: insertedAnswer,
         answerPayload,
-        answeredAt: new Date(),
-      })
-      .returning();
-
-    return insertedAnswer;
-  });
+        questionType: question.questionType,
+      };
+    },
+  );
 
   // If the answer payload is a video answer, add a processing job to the queue.
-  const videoAnswerPayloadResult = VideoAnswerPayloadType.safeParse(
-    answerPayload,
-  );
-  if (videoAnswerPayloadResult.success) {
-    await enqueueVideoProcessingJob(videoAnswerPayloadResult.data.videoUuid);
+  if (questionType === QuestionType.video) {
+    const videoAnswerPayload = answerPayload as z.infer<
+      typeof VideoAnswerPayloadType
+    >;
+    await enqueueVideoProcessingJob(videoAnswerPayload.videoUuid);
 
     // If a previous video answer exists, delete the old video and processed video from object storage.
     if (existingAnswerPayload) {
@@ -99,8 +110,7 @@ export async function saveAnswerAndHandleVideoEffects(input: {
       );
 
       if (
-        existingVideoAnswerPayload.videoUuid !==
-        videoAnswerPayloadResult.data.videoUuid
+        existingVideoAnswerPayload.videoUuid !== videoAnswerPayload.videoUuid
       ) {
         await tryCancelVideoProcessingJob(existingVideoAnswerPayload.videoUuid);
       }
