@@ -5,6 +5,16 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function getRequiredEnvironmentVariable(name: string) {
+  const value = process.env[name];
+
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+
+  return value;
+}
+
 // Check if the pre-signed URL is still valid. If not, get a new one.
 // Url contains the information below as search params
 // X-Amz-Date=20260326T193627Z&X-Amz-Expires=300

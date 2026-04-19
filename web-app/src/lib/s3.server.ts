@@ -11,15 +11,15 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v7 as uuidv7 } from "uuid";
+import { getRequiredEnvironmentVariable } from "@/lib/utils";
 
 export const s3Config = {
-  // FIXME use credentials with less priveleges and refactor them to env vars
   credentials: {
-    accessKeyId: "admin",
-    secretAccessKey: "key",
+    accessKeyId: getRequiredEnvironmentVariable("S3_ACCESS_KEY_ID"),
+    secretAccessKey: getRequiredEnvironmentVariable("S3_SECRET_ACCESS_KEY"),
   },
-  bucketName: "hr-app-data",
-  endpoint: "http://localhost:8333",
+  bucketName: getRequiredEnvironmentVariable("S3_BUCKET_NAME"),
+  endpoint: getRequiredEnvironmentVariable("S3_ENDPOINT"),
   region: "us-east-1", // is ignored by S3Client when using a custom endpoint
 } as const;
 
