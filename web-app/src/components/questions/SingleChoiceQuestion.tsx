@@ -15,13 +15,19 @@ import {
 } from "../ui/field";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 
+export function isSingleChoiceQuestionAnswered(
+  answer: z.infer<typeof AnswerSelectSchema> | undefined,
+) {
+  return answer !== undefined;
+}
+
 // TODO With fewer than 10 options, radio buttons are used, with more a dropdown
 export function SingleChoiceQuestion({
   form,
   question,
   interviewUuid,
   queryKeyToInvalidateAnswers,
-  answer,
+  answer: _answer,
 }: {
   form: InterviewFormType;
   question: z.infer<typeof QuestionSelectSchema>;

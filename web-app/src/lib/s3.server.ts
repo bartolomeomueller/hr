@@ -13,97 +13,141 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v7 as uuidv7 } from "uuid";
 import { getRequiredEnvironmentVariable } from "@/lib/utils";
 
-export const s3Config = {
-  credentials: {
-    accessKeyId: getRequiredEnvironmentVariable("S3_ACCESS_KEY_ID"),
-    secretAccessKey: getRequiredEnvironmentVariable("S3_SECRET_ACCESS_KEY"),
-  },
-  bucketName: getRequiredEnvironmentVariable("S3_BUCKET_NAME"),
-  endpoint: getRequiredEnvironmentVariable("S3_ENDPOINT"),
-  region: "us-east-1", // is ignored by S3Client when using a custom endpoint
-} as const;
-
-const s3Client = new S3Client({
-  credentials: s3Config.credentials,
-  endpoint: s3Config.endpoint,
-  forcePathStyle: true,
-  region: s3Config.region,
-});
-
 const PDF_MIME_TYPE = "application/pdf";
 
-export async function createPresignedUploadUrlForDocument({
-  mimeType,
-}: {
-  mimeType: string;
-}) {
+export function getS3ConfigFromEnvironment() {
+  return {
+    credentials: {
+      accessKeyId: getRequiredEnvironmentVariable("S3_ACCESS_KEY_ID"),
+      secretAccessKey: getRequiredEnvironmentVariable("S3_SECRET_ACCESS_KEY"),
+    },
+    bucketName: getRequiredEnvironmentVariable("S3_BUCKET_NAME"),
+    endpoint: getRequiredEnvironmentVariable("S3_ENDPOINT"),
+    region: "us-east-1", // is ignored by S3Client when using a custom endpoint
+  } as const;
+}
+
+type S3Dependencies = {
+  config: ReturnType<typeof getS3ConfigFromEnvironment>;
+  client: S3Client;
+  getSignedUrl: typeof getSignedUrl;
+  paginateListObjectsV2: typeof paginateListObjectsV2;
+};
+
+let defaultS3Dependencies: S3Dependencies | null = null;
+
+function getDefaultS3Dependencies() {
+  if (defaultS3Dependencies) {
+    return defaultS3Dependencies;
+  }
+
+  const config = getS3ConfigFromEnvironment();
+  defaultS3Dependencies = {
+    config,
+    client: new S3Client({
+      credentials: config.credentials,
+      endpoint: config.endpoint,
+      forcePathStyle: true,
+      region: config.region,
+    }),
+    getSignedUrl,
+    paginateListObjectsV2,
+  };
+
+  return defaultS3Dependencies;
+}
+
+export async function createPresignedUploadUrlForDocument(
+  {
+    mimeType,
+  }: {
+    mimeType: string;
+  },
+  dependencies = getDefaultS3Dependencies(),
+) {
   if (mimeType !== PDF_MIME_TYPE) {
     throw new Error("Only PDF documents are allowed.");
   }
 
   const uuid = uuidv7();
-  const uploadUrl = await createPresignedUploadUrl({
-    objectKey: getObjectKeyForDocumentUuid(uuid),
-    mimeType,
-  });
+  const uploadUrl = await createPresignedUploadUrl(
+    {
+      objectKey: getObjectKeyForDocumentUuid(uuid),
+      mimeType,
+    },
+    dependencies,
+  );
 
   return { uuid, uploadUrl };
 }
 
-async function createPresignedUploadUrl({
-  objectKey,
-  mimeType,
-}: {
-  objectKey: string;
-  mimeType: string;
-}) {
+async function createPresignedUploadUrl(
+  {
+    objectKey,
+    mimeType,
+  }: {
+    objectKey: string;
+    mimeType: string;
+  },
+  dependencies: S3Dependencies,
+) {
   const uploadCommand = new PutObjectCommand({
-    Bucket: s3Config.bucketName,
+    Bucket: dependencies.config.bucketName,
     ContentType: mimeType,
     Key: objectKey,
   });
 
   // Does only local math, does not communicate with the bucket
-  const uploadUrl = await getSignedUrl(s3Client, uploadCommand, {
-    expiresIn: 300, // URL expires in 5 minutes
-  });
-
-  return uploadUrl;
+  return await dependencies.getSignedUrl(
+    dependencies.client,
+    uploadCommand,
+    {
+      expiresIn: 300, // URL expires in 5 minutes
+    },
+  );
 }
 
 export async function createPresignedDownloadUrl(
   objectKey: string,
   expiresInSeconds = 900,
+  dependencies = getDefaultS3Dependencies(),
 ) {
   const downloadCommand = new GetObjectCommand({
-    Bucket: s3Config.bucketName,
+    Bucket: dependencies.config.bucketName,
     Key: objectKey,
   });
 
-  const downloadUrl = await getSignedUrl(s3Client, downloadCommand, {
-    expiresIn: expiresInSeconds,
-  });
+  const downloadUrl = await dependencies.getSignedUrl(
+    dependencies.client,
+    downloadCommand,
+    {
+      expiresIn: expiresInSeconds,
+    },
+  );
 
   return {
-    bucketName: s3Config.bucketName,
+    bucketName: dependencies.config.bucketName,
     downloadUrl,
     objectKey,
-    objectUrl: `${s3Config.endpoint}/${s3Config.bucketName}/${objectKey}`,
+    objectUrl: `${dependencies.config.endpoint}/${dependencies.config.bucketName}/${objectKey}`,
   };
 }
 
-export async function initiateMultipartUploadForVideo({
-  mimeType,
-}: {
-  mimeType: string;
-}) {
+export async function initiateMultipartUploadForVideo(
+  {
+    mimeType,
+  }: {
+    mimeType: string;
+  },
+  dependencies = getDefaultS3Dependencies(),
+) {
   const uuid = uuidv7();
   const command = new CreateMultipartUploadCommand({
-    Bucket: s3Config.bucketName,
+    Bucket: dependencies.config.bucketName,
     Key: getObjectKeyForVideoUuid(uuid),
     ContentType: mimeType,
   });
-  const response = await s3Client.send(command);
+  const response = await dependencies.client.send(command);
 
   if (!response.UploadId) {
     throw new Error(
@@ -117,43 +161,51 @@ export async function initiateMultipartUploadForVideo({
   };
 }
 
-export async function createPresignedUploadUrlForVideoPart({
-  partNumber,
-  uploadId,
-  videoUuid,
-  expiresInSeconds = 900,
-}: {
-  partNumber: number;
-  uploadId: string;
-  videoUuid: string;
-  expiresInSeconds?: number;
-}) {
+export async function createPresignedUploadUrlForVideoPart(
+  {
+    partNumber,
+    uploadId,
+    videoUuid,
+    expiresInSeconds = 900,
+  }: {
+    partNumber: number;
+    uploadId: string;
+    videoUuid: string;
+    expiresInSeconds?: number;
+  },
+  dependencies = getDefaultS3Dependencies(),
+) {
   const command = new UploadPartCommand({
-    Bucket: s3Config.bucketName,
+    Bucket: dependencies.config.bucketName,
     Key: getObjectKeyForVideoUuid(videoUuid),
     UploadId: uploadId,
     PartNumber: partNumber,
   });
 
-  const uploadUrl = await getSignedUrl(s3Client, command, {
-    expiresIn: expiresInSeconds,
-  });
-
-  return uploadUrl;
+  return await dependencies.getSignedUrl(
+    dependencies.client,
+    command,
+    {
+      expiresIn: expiresInSeconds,
+    },
+  );
 }
 
-export async function completeMultipartUploadForVideo({
-  uploadId,
-  videoUuid,
-  parts,
-}: {
-  uploadId: string;
-  videoUuid: string;
-  parts: { ETag: string; PartNumber: number }[];
-}) {
+export async function completeMultipartUploadForVideo(
+  {
+    uploadId,
+    videoUuid,
+    parts,
+  }: {
+    uploadId: string;
+    videoUuid: string;
+    parts: { ETag: string; PartNumber: number }[];
+  },
+  dependencies = getDefaultS3Dependencies(),
+) {
   parts.sort((a, b) => a.PartNumber - b.PartNumber);
   const completeCommand = new CompleteMultipartUploadCommand({
-    Bucket: s3Config.bucketName,
+    Bucket: dependencies.config.bucketName,
     Key: getObjectKeyForVideoUuid(videoUuid),
     UploadId: uploadId,
     MultipartUpload: {
@@ -161,26 +213,32 @@ export async function completeMultipartUploadForVideo({
     },
   });
 
-  await s3Client.send(completeCommand);
+  await dependencies.client.send(completeCommand);
 }
 
-export async function deleteObject(objectKey: string) {
+export async function deleteObject(
+  objectKey: string,
+  dependencies = getDefaultS3Dependencies(),
+) {
   const deleteCommand = new DeleteObjectCommand({
-    Bucket: s3Config.bucketName,
+    Bucket: dependencies.config.bucketName,
     Key: objectKey,
   });
 
-  await s3Client.send(deleteCommand);
+  await dependencies.client.send(deleteCommand);
 }
 
-export async function deleteObjectsForPrefix(prefix: string) {
-  const paginator = paginateListObjectsV2(
+export async function deleteObjectsForPrefix(
+  prefix: string,
+  dependencies = getDefaultS3Dependencies(),
+) {
+  const paginator = dependencies.paginateListObjectsV2(
     {
-      client: s3Client,
+      client: dependencies.client,
       pageSize: 1000,
     },
     {
-      Bucket: s3Config.bucketName,
+      Bucket: dependencies.config.bucketName,
       Prefix: prefix,
     },
   );
@@ -191,13 +249,13 @@ export async function deleteObjectsForPrefix(prefix: string) {
     }
 
     const deleteCommand = new DeleteObjectsCommand({
-      Bucket: s3Config.bucketName,
+      Bucket: dependencies.config.bucketName,
       Delete: {
         Objects: page.Contents.map((object) => ({ Key: object.Key })),
       },
     });
 
-    await s3Client.send(deleteCommand);
+    await dependencies.client.send(deleteCommand);
   }
 }
 

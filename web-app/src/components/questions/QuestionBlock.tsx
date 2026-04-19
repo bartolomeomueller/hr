@@ -4,10 +4,19 @@ import type z from "zod";
 import { QuestionType } from "@/db/payload-types";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import type { InterviewFormType } from "../Interview";
-import { DocumentQuestion } from "./DocumentQuestion";
-import { MultipleChoiceQuestion } from "./MultipleChoiceQuestion";
-import { SingleChoiceQuestion } from "./SingleChoiceQuestion";
-import { TextQuestion } from "./TextQuestion";
+import {
+  isDocumentQuestionAnswered,
+  DocumentQuestion,
+} from "./DocumentQuestion";
+import {
+  isMultipleChoiceQuestionAnswered,
+  MultipleChoiceQuestion,
+} from "./MultipleChoiceQuestion";
+import {
+  isSingleChoiceQuestionAnswered,
+  SingleChoiceQuestion,
+} from "./SingleChoiceQuestion";
+import { isTextQuestionAnswered, TextQuestion } from "./TextQuestion";
 
 export function QuestionBlock({
   form,
@@ -86,4 +95,35 @@ export function QuestionBlock({
       })}
     </form>
   );
+}
+
+export function areQuestionBlockQuestionsAnswered({
+  questions,
+  answers,
+}: {
+  questions: Array<z.infer<typeof QuestionSelectSchema>>;
+  answers: Array<z.infer<typeof AnswerSelectSchema>>;
+}) {
+  return questions.every((question) => {
+    const answer = answers.find(
+      (currentAnswer) => currentAnswer.questionUuid === question.uuid,
+    );
+
+    switch (question.questionType) {
+      case QuestionType.video:
+        throw new Error("This is a bug, please report it");
+      case QuestionType.text:
+        return isTextQuestionAnswered(answer);
+      case QuestionType.single_choice:
+        return isSingleChoiceQuestionAnswered(answer);
+      case QuestionType.multiple_choice:
+        return isMultipleChoiceQuestionAnswered(answer);
+      case QuestionType.document:
+        return isDocumentQuestionAnswered(answer);
+      default:
+        throw new Error(
+          `Question type ${question.questionType} is not supported. Please report this bug.`,
+        );
+    }
+  });
 }

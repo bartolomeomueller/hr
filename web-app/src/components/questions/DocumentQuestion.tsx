@@ -29,6 +29,13 @@ const PDF_MIME_TYPE = "application/pdf";
 
 // NOTE implement option that you can get a mail later to upload your documents, if you currently do not have them
 
+// TODO think about including a file that is still being uploaded, but for now dont
+export function isDocumentQuestionAnswered(
+  answer: z.infer<typeof AnswerSelectSchema> | undefined,
+) {
+  return answer !== undefined;
+}
+
 export function DocumentQuestion({
   question,
   interviewUuid,
@@ -401,6 +408,7 @@ function File({
 }) {
   const [viewIsClicked, setViewIsClicked] = useState(false);
   const preSignedUrlRef = useRef<Promise<string> | null>(null);
+  // TODO only allow view if you can specify the interviewUuid also for a bit of authentication, otherwise people could maybe get presigned urls chosen uuids
   const { mutateAsync: viewMutateAsync, isPending: viewIsPending } =
     useMutation({
       ...orpc.createPresignedS3DocumentDownloadUrlByUuid.mutationOptions(),

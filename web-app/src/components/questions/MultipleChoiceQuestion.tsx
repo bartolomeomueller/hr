@@ -13,13 +13,19 @@ import {
   FieldSet,
 } from "../ui/field";
 
+export function isMultipleChoiceQuestionAnswered(
+  answer: z.infer<typeof AnswerSelectSchema> | undefined,
+) {
+  return answer !== undefined;
+}
+
 // TODO implement min and max selections logic
 export function MultipleChoiceQuestion({
   form,
   question,
   interviewUuid,
   queryKeyToInvalidateAnswers,
-  answer,
+  answer: _answer,
 }: {
   form: InterviewFormType;
   question: z.infer<typeof QuestionSelectSchema>;

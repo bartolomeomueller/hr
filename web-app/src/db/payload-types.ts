@@ -45,7 +45,7 @@ export const VideoAnswerPayloadType = z.object({
   status: z.enum(["uploaded", "processed"]),
 });
 export const TextAnswerPayloadType = z.object({
-  answer: z.string(),
+  answer: z.string().min(1).max(5_000_000),
 });
 export const SingleChoiceAnswerPayloadType = z.object({
   selectedOption: z.string(),

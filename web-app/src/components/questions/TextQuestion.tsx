@@ -8,12 +8,19 @@ import type { InterviewFormType } from "../Interview";
 import { SlideInFromTop } from "../ui/animation";
 import { Input } from "../ui/input";
 
+// TODO think about making each question optional possible, if the user does not want to answer a question
+export function isTextQuestionAnswered(
+  answer: z.infer<typeof AnswerSelectSchema> | undefined,
+) {
+  return answer !== undefined;
+}
+
 export function TextQuestion({
   form,
   question,
   interviewUuid,
   queryKeyToInvalidateAnswers,
-  answer,
+  answer: _answer,
 }: {
   form: InterviewFormType;
   question: z.infer<typeof QuestionSelectSchema>;
