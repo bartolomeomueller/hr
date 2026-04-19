@@ -270,11 +270,20 @@ export class DocumentUploadService {
           >
         >(queryKeyToInvalidateAnswers, (old) => {
           if (!old) return old;
+          // If no answer existed for this question yet, add the new answer.
+          const oldAnswerIndex = old.answers.findIndex(
+            (answer) => answer.questionUuid === questionUuid,
+          );
+          const answers =
+            oldAnswerIndex === -1
+              ? [...old.answers, updatedAnswer]
+              : old.answers.map((answer) =>
+                  answer.questionUuid === questionUuid ? updatedAnswer : answer,
+                );
+
           return {
             ...old,
-            answers: old.answers.map((answer) =>
-              answer.questionUuid === questionUuid ? updatedAnswer : answer,
-            ),
+            answers,
           };
         });
     }

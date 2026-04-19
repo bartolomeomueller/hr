@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type z from "zod";
 import { getQueryClient } from "@/lib/query-client";
 import { isPreSignedURLStillValid } from "@/lib/utils";
+import type { AnswerSelectSchema } from "@/orpc/schema";
 import { DocumentUploadService } from "@/services/DocumentUploadService";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 
@@ -360,6 +362,81 @@ describe("DocumentUploadService", () => {
     expect(queryClient.setQueryData).toHaveBeenCalledTimes(1);
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: ["answers", "interview-1"],
+    });
+  });
+
+  it("adds the uploaded answer to the query cache when the question has no answer yet", async () => {
+    const presignedUrl = createDeferredPromise<{
+      uuid: string;
+      uploadUrl: string;
+    }>();
+    const createPresignedS3DocumentUploadUrl = vi
+      .fn()
+      .mockReturnValueOnce(presignedUrl.promise);
+    const updatedAnswer: z.infer<typeof AnswerSelectSchema> = {
+      uuid: "answer-1",
+      interviewUuid: "interview-1",
+      questionUuid: "question-1",
+      answerPayload: {
+        kind: "documents",
+        documents: [
+          {
+            documentUuid: "document-1",
+            fileName: "resume.pdf",
+            mimeType: "application/pdf",
+          },
+        ],
+      },
+      answeredAt: new Date(),
+    };
+    const addNewDocumentToAnswer = vi.fn().mockResolvedValue(updatedAnswer);
+    const xhr = createXhrDouble();
+    const queryClient = createQueryClientDouble();
+    vi.mocked(getQueryClient).mockReturnValue(
+      queryClient as unknown as ReturnType<typeof getQueryClient>,
+    );
+
+    const service = createService({
+      createPresignedS3DocumentUploadUrl,
+      createXmlHttpRequest: () => xhr,
+      addNewDocumentToAnswer,
+    });
+
+    await service.addToUploadPipeline({
+      file: new File(["resume"], "resume.pdf", {
+        type: "application/pdf",
+      }),
+      interviewUuid: "interview-1",
+      questionUuid: "question-1",
+      queryKeyToInvalidateAnswers: ["answers", "interview-1"],
+      isSingleFileUpload: true,
+    });
+
+    presignedUrl.resolve({
+      uuid: "document-1",
+      uploadUrl: "https://example.com/upload",
+    });
+
+    await vi.waitFor(() => {
+      expect(xhr.send).toHaveBeenCalledTimes(1);
+    });
+
+    xhr.onload?.();
+
+    await vi.waitFor(() => {
+      expect(queryClient.setQueryData).toHaveBeenCalledTimes(1);
+    });
+
+    const setQueryDataUpdater = queryClient.setQueryData.mock.calls[0]?.[1];
+    expect(setQueryDataUpdater).toBeTypeOf("function");
+
+    const updatedQueryData = setQueryDataUpdater?.({
+      answers: [],
+      interview: { uuid: "interview-1" },
+    });
+
+    expect(updatedQueryData).toMatchObject({
+      answers: [updatedAnswer],
     });
   });
 
