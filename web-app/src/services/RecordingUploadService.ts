@@ -1,5 +1,6 @@
 import type { QueryKey } from "@tanstack/react-query";
 import type { toast } from "sonner";
+import { upsertAnswerInInterviewRelatedDataCache } from "@/lib/interview-related-data-cache";
 import type { getQueryClient } from "@/lib/query-client";
 import type { isPreSignedURLStillValid } from "@/lib/utils";
 import type { client } from "@/orpc/client";
@@ -777,15 +778,9 @@ export class RecordingUploadService {
               typeof this.dependencies.client.getInterviewRelatedDataByInterviewUuid
             >
           >
-        >(queryKeyToInvalidateAnswers, (old) => {
-          if (!old) return old;
-          return {
-            ...old,
-            answers: old.answers.map((answer) =>
-              answer.questionUuid === questionUuid ? updatedAnswer : answer,
-            ),
-          };
-        });
+        >(queryKeyToInvalidateAnswers, (old) =>
+          upsertAnswerInInterviewRelatedDataCache(old, updatedAnswer),
+        );
     } catch (error) {
       this.dependencies.toast.error(
         "Das Abschließen des Video-Uploads ist fehlgeschlagen. Bitte lade die Seite erneut, um es erneut zu versuchen.",

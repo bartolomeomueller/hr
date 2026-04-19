@@ -5,6 +5,11 @@ import {
   TextAnswerPayloadType,
   TextQuestionPayloadType,
 } from "@/db/payload-types";
+import type { InterviewRelatedDataQueryData } from "@/lib/interview-related-data-cache";
+import {
+  removeAnswerFromInterviewRelatedDataCache,
+  upsertAnswerInInterviewRelatedDataCache,
+} from "@/lib/interview-related-data-cache";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import type { InterviewFormType } from "../Interview";
@@ -43,6 +48,11 @@ export function TextQuestion({
 
   const { mutate } = useMutation({
     ...orpc.saveAnswer.mutationOptions(),
+    onSuccess: (updatedAnswer, _variables, _onMutateResult, context) =>
+      context.client.setQueryData<InterviewRelatedDataQueryData>(
+        queryKeyToInvalidateAnswers,
+        (oldData) => upsertAnswerInInterviewRelatedDataCache(oldData, updatedAnswer),
+      ),
     // isPending is false as soon as the new (previously invalidated) query data arrives, since we are returning the promise
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
@@ -52,6 +62,12 @@ export function TextQuestion({
   });
   const { mutate: deleteAnswer } = useMutation({
     ...orpc.deleteAnswer.mutationOptions(),
+    onSuccess: (_data, variables, _onMutateResult, context) =>
+      context.client.setQueryData<InterviewRelatedDataQueryData>(
+        queryKeyToInvalidateAnswers,
+        (oldData) =>
+          removeAnswerFromInterviewRelatedDataCache(oldData, variables.questionUuid),
+      ),
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
         queryKey: queryKeyToInvalidateAnswers,

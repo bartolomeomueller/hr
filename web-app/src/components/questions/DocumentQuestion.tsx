@@ -15,6 +15,11 @@ import {
   DocumentAnswerPayloadType,
   DocumentQuestionPayloadType,
 } from "@/db/payload-types";
+import type { InterviewRelatedDataQueryData } from "@/lib/interview-related-data-cache";
+import {
+  removeAnswerFromInterviewRelatedDataCache,
+  upsertAnswerInInterviewRelatedDataCache,
+} from "@/lib/interview-related-data-cache";
 import { getQueryClient } from "@/lib/query-client";
 import { isPreSignedURLStillValid } from "@/lib/utils";
 import { client, orpc } from "@/orpc/client";
@@ -110,6 +115,11 @@ export function DocumentQuestion({
     isPending: saveDocumentAnswerIsPending,
   } = useMutation({
     ...orpc.saveAnswer.mutationOptions(),
+    onSuccess: (updatedAnswer, _variables, _onMutateResult, context) =>
+      context.client.setQueryData<InterviewRelatedDataQueryData>(
+        queryKeyToInvalidateAnswers,
+        (oldData) => upsertAnswerInInterviewRelatedDataCache(oldData, updatedAnswer),
+      ),
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
         queryKey: queryKeyToInvalidateAnswers,
@@ -121,6 +131,12 @@ export function DocumentQuestion({
     isPending: deleteDocumentAnswerIsPending,
   } = useMutation({
     ...orpc.deleteAnswer.mutationOptions(),
+    onSuccess: (_data, variables, _onMutateResult, context) =>
+      context.client.setQueryData<InterviewRelatedDataQueryData>(
+        queryKeyToInvalidateAnswers,
+        (oldData) =>
+          removeAnswerFromInterviewRelatedDataCache(oldData, variables.questionUuid),
+      ),
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
         queryKey: queryKeyToInvalidateAnswers,

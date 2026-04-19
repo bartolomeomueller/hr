@@ -1,6 +1,7 @@
 import type { QueryKey } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type z from "zod";
+import { upsertAnswerInInterviewRelatedDataCache } from "@/lib/interview-related-data-cache";
 import { getQueryClient } from "@/lib/query-client";
 import { isPreSignedURLStillValid } from "@/lib/utils";
 import { client } from "@/orpc/client";
@@ -268,24 +269,7 @@ export class DocumentUploadService {
               typeof this.dependencies.client.getInterviewRelatedDataByInterviewUuid
             >
           >
-        >(queryKeyToInvalidateAnswers, (old) => {
-          if (!old) return old;
-          // If no answer existed for this question yet, add the new answer.
-          const oldAnswerIndex = old.answers.findIndex(
-            (answer) => answer.questionUuid === questionUuid,
-          );
-          const answers =
-            oldAnswerIndex === -1
-              ? [...old.answers, updatedAnswer]
-              : old.answers.map((answer) =>
-                  answer.questionUuid === questionUuid ? updatedAnswer : answer,
-                );
-
-          return {
-            ...old,
-            answers,
-          };
-        });
+        >(queryKeyToInvalidateAnswers, (old) => upsertAnswerInInterviewRelatedDataCache(old, updatedAnswer));
     }
     await this.dependencies.getQueryClient().invalidateQueries({
       queryKey: queryKeyToInvalidateAnswers,
