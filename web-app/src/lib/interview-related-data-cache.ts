@@ -6,6 +6,47 @@ export type InterviewRelatedDataQueryData = Awaited<
   ReturnType<typeof client.getInterviewRelatedDataByInterviewUuid>
 >;
 
+export function createOptimisticAnswer({
+  interviewUuid,
+  questionUuid,
+  answerPayload,
+  previousAnswer,
+}: {
+  interviewUuid: string;
+  questionUuid: string;
+  answerPayload: z.infer<typeof AnswerSelectSchema.shape.answerPayload>;
+  previousAnswer?: z.infer<typeof AnswerSelectSchema>;
+}): z.infer<typeof AnswerSelectSchema> {
+  return {
+    uuid:
+      previousAnswer?.uuid ??
+      globalThis.crypto?.randomUUID?.() ??
+      `optimistic-answer-${questionUuid}`,
+    interviewUuid,
+    questionUuid,
+    answerPayload,
+    answeredAt: previousAnswer?.answeredAt ?? new Date(),
+  };
+}
+
+export function findAnswerInInterviewRelatedDataCache<
+  T extends
+    | {
+        answers: Array<z.infer<typeof AnswerSelectSchema>>;
+      }
+    | null
+    | undefined,
+>(
+  oldData: T,
+  questionUuid: string,
+): z.infer<typeof AnswerSelectSchema> | undefined {
+  if (!oldData) {
+    return undefined;
+  }
+
+  return oldData.answers.find((answer) => answer.questionUuid === questionUuid);
+}
+
 export function upsertAnswerInInterviewRelatedDataCache<
   T extends
     | {

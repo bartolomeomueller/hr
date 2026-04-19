@@ -1,4 +1,5 @@
 import { type QueryKey, useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
 import type z from "zod";
 import {
   MultipleChoiceAnswerPayloadType,
@@ -6,6 +7,8 @@ import {
 } from "@/db/payload-types";
 import type { InterviewRelatedDataQueryData } from "@/lib/interview-related-data-cache";
 import {
+  createOptimisticAnswer,
+  findAnswerInInterviewRelatedDataCache,
   removeAnswerFromInterviewRelatedDataCache,
   upsertAnswerInInterviewRelatedDataCache,
 } from "@/lib/interview-related-data-cache";
@@ -33,7 +36,7 @@ export function MultipleChoiceQuestion({
   question,
   interviewUuid,
   queryKeyToInvalidateAnswers,
-  answer: _answer,
+  answer,
 }: {
   form: InterviewFormType;
   question: z.infer<typeof QuestionSelectSchema>;
@@ -53,11 +56,49 @@ export function MultipleChoiceQuestion({
 
   const { mutate } = useMutation({
     ...orpc.saveAnswer.mutationOptions(),
-    onSuccess: (updatedAnswer, _variables, _onMutateResult, context) =>
+    onMutate: async (variables, context) => {
+      await context.client.cancelQueries({
+        queryKey: queryKeyToInvalidateAnswers,
+      });
+
+      const previousData =
+        context.client.getQueryData<InterviewRelatedDataQueryData>(
+          queryKeyToInvalidateAnswers,
+        );
+
       context.client.setQueryData<InterviewRelatedDataQueryData>(
         queryKeyToInvalidateAnswers,
-        (oldData) => upsertAnswerInInterviewRelatedDataCache(oldData, updatedAnswer),
-      ),
+        (oldData) =>
+          upsertAnswerInInterviewRelatedDataCache(
+            oldData,
+            createOptimisticAnswer({
+              interviewUuid: variables.interviewUuid,
+              questionUuid: variables.questionUuid,
+              answerPayload: variables.answerPayload as z.infer<
+                typeof MultipleChoiceAnswerPayloadType
+              >,
+              previousAnswer:
+                findAnswerInInterviewRelatedDataCache(
+                  oldData,
+                  variables.questionUuid,
+                ) ?? answer,
+            }),
+          ),
+      );
+
+      return {
+        previousData,
+      };
+    },
+    onError: (_error, _variables, onMutateResult, context) => {
+      context.client.setQueryData(
+        queryKeyToInvalidateAnswers,
+        onMutateResult?.previousData,
+      );
+      toast.error(
+        "Deine Antwort konnte nicht gespeichert werden. Bitte versuche es erneut.",
+      );
+    },
     // isPending is false as soon as the new (previously invalidated) query data arrives, since we are returning the promise
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
@@ -67,12 +108,38 @@ export function MultipleChoiceQuestion({
   });
   const { mutate: deleteAnswer } = useMutation({
     ...orpc.deleteAnswer.mutationOptions(),
-    onSuccess: (_data, variables, _onMutateResult, context) =>
+    onMutate: async (variables, context) => {
+      await context.client.cancelQueries({
+        queryKey: queryKeyToInvalidateAnswers,
+      });
+
+      const previousData =
+        context.client.getQueryData<InterviewRelatedDataQueryData>(
+          queryKeyToInvalidateAnswers,
+        );
+
       context.client.setQueryData<InterviewRelatedDataQueryData>(
         queryKeyToInvalidateAnswers,
         (oldData) =>
-          removeAnswerFromInterviewRelatedDataCache(oldData, variables.questionUuid),
-      ),
+          removeAnswerFromInterviewRelatedDataCache(
+            oldData,
+            variables.questionUuid,
+          ),
+      );
+
+      return {
+        previousData,
+      };
+    },
+    onError: (_error, _variables, onMutateResult, context) => {
+      context.client.setQueryData(
+        queryKeyToInvalidateAnswers,
+        onMutateResult?.previousData,
+      );
+      toast.error(
+        "Deine Antwort konnte nicht gelöscht werden. Bitte versuche es erneut.",
+      );
+    },
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
         queryKey: queryKeyToInvalidateAnswers,

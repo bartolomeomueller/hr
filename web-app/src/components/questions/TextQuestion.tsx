@@ -7,6 +7,8 @@ import {
 } from "@/db/payload-types";
 import type { InterviewRelatedDataQueryData } from "@/lib/interview-related-data-cache";
 import {
+  createOptimisticAnswer,
+  findAnswerInInterviewRelatedDataCache,
   removeAnswerFromInterviewRelatedDataCache,
   upsertAnswerInInterviewRelatedDataCache,
 } from "@/lib/interview-related-data-cache";
@@ -28,7 +30,7 @@ export function TextQuestion({
   question,
   interviewUuid,
   queryKeyToInvalidateAnswers,
-  answer: _answer,
+  answer,
 }: {
   form: InterviewFormType;
   question: z.infer<typeof QuestionSelectSchema>;
@@ -48,11 +50,46 @@ export function TextQuestion({
 
   const { mutate } = useMutation({
     ...orpc.saveAnswer.mutationOptions(),
-    onSuccess: (updatedAnswer, _variables, _onMutateResult, context) =>
+    onMutate: async (variables, context) => {
+      await context.client.cancelQueries({
+        queryKey: queryKeyToInvalidateAnswers,
+      });
+
+      const previousData =
+        context.client.getQueryData<InterviewRelatedDataQueryData>(
+          queryKeyToInvalidateAnswers,
+        );
+
       context.client.setQueryData<InterviewRelatedDataQueryData>(
         queryKeyToInvalidateAnswers,
-        (oldData) => upsertAnswerInInterviewRelatedDataCache(oldData, updatedAnswer),
-      ),
+        (oldData) =>
+          upsertAnswerInInterviewRelatedDataCache(
+            oldData,
+            createOptimisticAnswer({
+              interviewUuid: variables.interviewUuid,
+              questionUuid: variables.questionUuid,
+              answerPayload: variables.answerPayload as z.infer<
+                typeof TextAnswerPayloadType
+              >,
+              previousAnswer:
+                findAnswerInInterviewRelatedDataCache(
+                  oldData,
+                  variables.questionUuid,
+                ) ?? answer,
+            }),
+          ),
+      );
+
+      return {
+        previousData,
+      };
+    },
+    onError: (_error, _variables, onMutateResult, context) => {
+      context.client.setQueryData(
+        queryKeyToInvalidateAnswers,
+        onMutateResult?.previousData,
+      );
+    },
     // isPending is false as soon as the new (previously invalidated) query data arrives, since we are returning the promise
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
@@ -62,12 +99,32 @@ export function TextQuestion({
   });
   const { mutate: deleteAnswer } = useMutation({
     ...orpc.deleteAnswer.mutationOptions(),
-    onSuccess: (_data, variables, _onMutateResult, context) =>
+    onMutate: async (variables, context) => {
+      await context.client.cancelQueries({
+        queryKey: queryKeyToInvalidateAnswers,
+      });
+
+      const previousData =
+        context.client.getQueryData<InterviewRelatedDataQueryData>(
+          queryKeyToInvalidateAnswers,
+        );
+
       context.client.setQueryData<InterviewRelatedDataQueryData>(
         queryKeyToInvalidateAnswers,
         (oldData) =>
           removeAnswerFromInterviewRelatedDataCache(oldData, variables.questionUuid),
-      ),
+      );
+
+      return {
+        previousData,
+      };
+    },
+    onError: (_error, _variables, onMutateResult, context) => {
+      context.client.setQueryData(
+        queryKeyToInvalidateAnswers,
+        onMutateResult?.previousData,
+      );
+    },
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
         queryKey: queryKeyToInvalidateAnswers,
