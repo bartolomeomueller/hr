@@ -3,7 +3,7 @@ import { FileVideo } from "lucide-react";
 import { VideoQuestionPayloadType } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
 import { useRecordingUploadStore } from "@/stores/recordingUploadStore";
-import { H2, Large, Lead, Muted } from "./ui/typography";
+import { Large, Lead } from "./ui/typography";
 
 // This is now mostly AI generated, if you wanna change it, just do it anew.
 
@@ -33,15 +33,11 @@ export function FinalizeInterview({
     return (
       <div className="flex justify-center px-2 sm:px-4 md:px-8">
         <div className="flex w-full flex-col gap-6 lg:w-9/12">
-          <div className="space-y-3">
-            <H2>Schließ diese Seite noch nicht</H2>
-            <Lead className="text-base sm:text-lg">
-              Deine Aufnahmen werden derzeit noch hochgeladen.
-            </Lead>
-            <Muted>
-              Wenn du diese Seite jetzt verlässt, gehen deine Daten verloren.
-            </Muted>
-          </div>
+          <Large>
+            Schließ diese Seite noch nicht. Deine Aufnahmen werden derzeit noch
+            hochgeladen. Wenn du diese Seite jetzt verlässt, gehen deine Daten
+            verloren.
+          </Large>
 
           <div className="space-y-4">
             {recordingGroups.map((group) => (
@@ -72,11 +68,10 @@ export function FinalizeInterview({
     <div className="flex justify-center px-2 sm:px-4 md:px-8">
       <div className="flex w-full flex-col gap-4 lg:w-9/12">
         <div className="rounded-lg border bg-card p-6 shadow-xs">
-          <H2>Danke für deine Bewerbung</H2>
-          <Lead className="mt-4 text-base sm:text-lg">
-            Deine Daten wurden erfolgreich gespeichert.
-          </Lead>
-          <Muted className="mt-2">Du kannst das Fenster nun schließen.</Muted>
+          <Large>
+            Danke für deine Bewerbung. Deine Daten wurden erfolgreich
+            gespeichert. Du kannst das Fenster nun schließen.
+          </Large>
         </div>
       </div>
     </div>
