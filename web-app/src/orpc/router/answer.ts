@@ -1,4 +1,5 @@
 import { getLogger } from "@orpc/experimental-pino";
+import { sql } from "drizzle-orm";
 import { and, eq } from "drizzle-orm/sql/expressions/conditions";
 import z from "zod";
 import { db } from "@/db";
@@ -181,8 +182,14 @@ export const addNewDocumentToAnswer = base
   )
   .output(AnswerSelectSchema)
   .handler(async ({ input, context }) => {
-    const { answer, documentUuidToDelete } = await runSerializableTransaction(
+    const { answer, documentUuidToDelete } = await db.transaction(
       async (tx) => {
+        await acquireDocumentAnswerTransactionLock({
+          tx,
+          interviewUuid: input.interviewUuid,
+          questionUuid: input.questionUuid,
+        });
+
         const [existingAnswer] = await tx
           .select()
           .from(Answer)
@@ -323,7 +330,13 @@ export const deleteDocumentFromObjectStorageAndFromAnswer = base
   .output(AnswerSelectSchema.nullable())
   .handler(async ({ input, context }) => {
     await deleteObject(getObjectKeyForDocumentUuid(input.documentUuid));
-    return runSerializableTransaction(async (tx) => {
+    return db.transaction(async (tx) => {
+      await acquireDocumentAnswerTransactionLock({
+        tx,
+        interviewUuid: input.interviewUuid,
+        questionUuid: input.questionUuid,
+      });
+
       const [existingAnswer] = await tx
         .select()
         .from(Answer)
@@ -386,55 +399,22 @@ export const deleteDocumentFromObjectStorageAndFromAnswer = base
     });
   });
 
-const SERIALIZATION_FAILURE_ERROR_CODE = "40001";
-const MAX_SERIALIZABLE_TRANSACTION_RETRIES = 3;
-
-async function runSerializableTransaction<T>(
-  callback: (
-    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  ) => Promise<T>,
-) {
-  for (
-    let currentAttempt = 1;
-    currentAttempt <= MAX_SERIALIZABLE_TRANSACTION_RETRIES;
-    currentAttempt++
-  ) {
-    try {
-      return await db.transaction(callback, {
-        isolationLevel: "serializable",
-      });
-    } catch (error) {
-      if (
-        !isSerializationFailureError(error) ||
-        currentAttempt >= MAX_SERIALIZABLE_TRANSACTION_RETRIES
-      ) {
-        throw error;
-      }
-    }
-  }
-
-  throw new Error(
-    "Invariant violation: serializable transaction retries should either return or throw the last serialization error.",
+// This lock is used to prevent concurrent modifications to the same document answer.
+// The lock is acquired for the duration of a transaction, so it will be released automatically when the transaction finishes.
+// No two transactions that try to acquire the lock for the same interviewUuid and questionUuid can run at the same time, thus they will run sequentially
+// and work with "read committed" isolation level, which is the default for Postgres.
+// Using "serializable" isolation level would also work, but retries would be too common to make this feasible.
+// In the future, these write operations dependent on calculations in backend code should be avoided in favor of more atomic operations.
+async function acquireDocumentAnswerTransactionLock({
+  tx,
+  interviewUuid,
+  questionUuid,
+}: {
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0];
+  interviewUuid: string;
+  questionUuid: string;
+}) {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtext(${interviewUuid}), hashtext(${questionUuid}))`,
   );
-}
-
-function isSerializationFailureError(error: unknown) {
-  let currentError: unknown = error;
-
-  while (typeof currentError === "object" && currentError !== null) {
-    if (
-      "code" in currentError &&
-      currentError.code === SERIALIZATION_FAILURE_ERROR_CODE
-    ) {
-      return true;
-    }
-
-    if (!("cause" in currentError)) {
-      return false;
-    }
-
-    currentError = currentError.cause;
-  }
-
-  return false;
 }
