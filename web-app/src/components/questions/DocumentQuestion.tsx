@@ -17,6 +17,8 @@ import {
 } from "@/db/payload-types";
 import type { InterviewRelatedDataQueryData } from "@/lib/interview-related-data-cache";
 import {
+  createOptimisticAnswer,
+  findAnswerInInterviewRelatedDataCache,
   removeAnswerFromInterviewRelatedDataCache,
   upsertAnswerInInterviewRelatedDataCache,
 } from "@/lib/interview-related-data-cache";
@@ -119,11 +121,46 @@ export function DocumentQuestion({
     isPending: saveDocumentAnswerIsPending,
   } = useMutation({
     ...orpc.saveAnswer.mutationOptions(),
-    onSuccess: (updatedAnswer, _variables, _onMutateResult, context) =>
+    onMutate: async (variables, context) => {
+      await context.client.cancelQueries({
+        queryKey: queryKeyToInvalidateAnswers,
+      });
+
+      const previousData =
+        context.client.getQueryData<InterviewRelatedDataQueryData>(
+          queryKeyToInvalidateAnswers,
+        );
+
       context.client.setQueryData<InterviewRelatedDataQueryData>(
         queryKeyToInvalidateAnswers,
-        (oldData) => upsertAnswerInInterviewRelatedDataCache(oldData, updatedAnswer),
-      ),
+        (oldData) =>
+          upsertAnswerInInterviewRelatedDataCache(
+            oldData,
+            createOptimisticAnswer({
+              interviewUuid: variables.interviewUuid,
+              questionUuid: variables.questionUuid,
+              answerPayload: variables.answerPayload as z.infer<
+                typeof DocumentAnswerPayloadType
+              >,
+              previousAnswer:
+                findAnswerInInterviewRelatedDataCache(
+                  oldData,
+                  variables.questionUuid,
+                ) ?? answer,
+            }),
+          ),
+      );
+
+      return {
+        previousData,
+      };
+    },
+    onError: (_error, _variables, onMutateResult, context) => {
+      context.client.setQueryData(
+        queryKeyToInvalidateAnswers,
+        onMutateResult?.previousData,
+      );
+    },
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
         queryKey: queryKeyToInvalidateAnswers,
@@ -135,12 +172,32 @@ export function DocumentQuestion({
     isPending: deleteDocumentAnswerIsPending,
   } = useMutation({
     ...orpc.deleteAnswer.mutationOptions(),
-    onSuccess: (_data, variables, _onMutateResult, context) =>
+    onMutate: async (variables, context) => {
+      await context.client.cancelQueries({
+        queryKey: queryKeyToInvalidateAnswers,
+      });
+
+      const previousData =
+        context.client.getQueryData<InterviewRelatedDataQueryData>(
+          queryKeyToInvalidateAnswers,
+        );
+
       context.client.setQueryData<InterviewRelatedDataQueryData>(
         queryKeyToInvalidateAnswers,
         (oldData) =>
           removeAnswerFromInterviewRelatedDataCache(oldData, variables.questionUuid),
-      ),
+      );
+
+      return {
+        previousData,
+      };
+    },
+    onError: (_error, _variables, onMutateResult, context) => {
+      context.client.setQueryData(
+        queryKeyToInvalidateAnswers,
+        onMutateResult?.previousData,
+      );
+    },
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
         queryKey: queryKeyToInvalidateAnswers,
@@ -477,35 +534,86 @@ function File({
 
   const { mutate: deletionMutate, isPending: deletionIsPending } = useMutation({
     ...orpc.deleteDocumentFromObjectStorageAndFromAnswer.mutationOptions(),
-    // onSuccess update the query cache to remove the deleted document. Without this, the refetching by onSettled would be invalidated by later deletions.
-    // This would lead to documents coming back with full opacity, confusing the user, because the mutation is not pending anymore, but the data was also not yet updated.
-    onSuccess(data, _variables, _onMutateResult, context) {
+    // Deleting a document should update the cache immediately so the list and next-button state react
+    // before the invalidation roundtrip finishes.
+    onMutate: async (_variables, context) => {
       if (!uploadedDocument) {
         throw new Error(
           "Uploaded document metadata should always be defined for document deletion.",
         );
       }
 
-      context.client.setQueryData<
-        Awaited<
-          ReturnType<typeof client.getInterviewRelatedDataByInterviewUuid>
-        >
-      >(queryKeyToInvalidateAnswers, (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          answers: data
-            ? old.answers.map((answer) =>
-                answer.questionUuid === data.questionUuid ? data : answer,
-              )
-            : old.answers.filter(
-                (answer) =>
-                  answer.questionUuid !== uploadedDocument.questionUuid,
-              ),
-        };
+      await context.client.cancelQueries({
+        queryKey: queryKeyToInvalidateAnswers,
       });
+
+      const previousData =
+        context.client.getQueryData<InterviewRelatedDataQueryData>(
+          queryKeyToInvalidateAnswers,
+        );
+
+      context.client.setQueryData<InterviewRelatedDataQueryData>(
+        queryKeyToInvalidateAnswers,
+        (oldData) => {
+          if (!oldData) {
+            return oldData;
+          }
+
+          return {
+            ...oldData,
+            answers: oldData.answers.flatMap((currentAnswer) => {
+              if (currentAnswer.questionUuid !== uploadedDocument.questionUuid) {
+                return [currentAnswer];
+              }
+
+              const answerPayloadParseResult = DocumentAnswerPayloadType.safeParse(
+                currentAnswer.answerPayload,
+              );
+              if (!answerPayloadParseResult.success) {
+                throw new Error(
+                  "Document answer payload should always be valid while deleting a document.",
+                );
+              }
+
+              if (answerPayloadParseResult.data.kind !== "documents") {
+                throw new Error(
+                  "Document deletion should only happen for answers with uploaded documents.",
+                );
+              }
+
+              const remainingDocuments =
+                answerPayloadParseResult.data.documents.filter(
+                  (document) =>
+                    document.documentUuid !== uploadedDocument.documentUuid,
+                );
+
+              if (remainingDocuments.length === 0) {
+                return [];
+              }
+
+              return [
+                {
+                  ...currentAnswer,
+                  answerPayload: {
+                    kind: "documents" as const,
+                    documents: remainingDocuments,
+                  },
+                },
+              ];
+            }),
+          };
+        },
+      );
+
+      return {
+        previousData,
+      };
     },
-    onError(error) {
+    onError(error, _variables, onMutateResult, context) {
+      context.client.setQueryData(
+        queryKeyToInvalidateAnswers,
+        onMutateResult?.previousData,
+      );
       toast.error(
         "Das Dokument konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
       );

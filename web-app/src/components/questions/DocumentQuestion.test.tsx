@@ -128,16 +128,20 @@ function renderDocumentQuestion({
     isCv: false,
   };
 
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <DocumentQuestion
-        question={question}
-        interviewUuid="interview-1"
-        queryKeyToInvalidateAnswers={["answers", "interview-1"]}
-        answer={answer}
-      />
-    </QueryClientProvider>,
-  );
+  return {
+    queryClient,
+    question,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <DocumentQuestion
+          question={question}
+          interviewUuid="interview-1"
+          queryKeyToInvalidateAnswers={["answers", "interview-1"]}
+          answer={answer}
+        />
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 describe("DocumentQuestion", () => {
@@ -462,6 +466,48 @@ describe("DocumentQuestion", () => {
     });
   });
 
+  it("updates the query cache immediately when a no_documents answer is checked", async () => {
+    const deferredSaveAnswer = createDeferredPromise<null>();
+    saveAnswerMutationFnMock.mockReturnValueOnce(deferredSaveAnswer.promise);
+
+    const { queryClient } = renderDocumentQuestion({
+      questionPayload: {
+        prompt: "Upload your supporting documents",
+        minUploads: 0,
+        maxUploads: 3,
+      },
+    });
+
+    queryClient.setQueryData(["answers", "interview-1"], {
+      answers: [],
+    });
+
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    await waitFor(() => {
+      expect(saveAnswerMutationFnMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(
+      queryClient.getQueryData<{ answers: Array<z.infer<typeof AnswerSelectSchema>> }>([
+        "answers",
+        "interview-1",
+      ]),
+    ).toMatchObject({
+      answers: [
+        {
+          interviewUuid: "interview-1",
+          questionUuid: "question-1",
+          answerPayload: {
+            kind: "no_documents",
+          },
+        },
+      ],
+    });
+
+    deferredSaveAnswer.resolve(null);
+  });
+
   it("disables the checkbox while deleting an existing no_documents answer", async () => {
     const deferredDeleteAnswer = createDeferredPromise<null>();
     deleteAnswerMutationFnMock.mockReturnValueOnce(
@@ -528,6 +574,52 @@ describe("DocumentQuestion", () => {
       interviewUuid: "interview-1",
       questionUuid: "question-1",
     });
+  });
+
+  it("removes the cached answer immediately when an existing no_documents answer is unchecked", async () => {
+    const deferredDeleteAnswer = createDeferredPromise<null>();
+    deleteAnswerMutationFnMock.mockReturnValueOnce(
+      deferredDeleteAnswer.promise,
+    );
+    const existingAnswer: z.infer<typeof AnswerSelectSchema> = {
+      uuid: "answer-1",
+      interviewUuid: "interview-1",
+      questionUuid: "question-1",
+      answerPayload: {
+        kind: "no_documents",
+      },
+      answeredAt: new Date(),
+    };
+
+    const { queryClient } = renderDocumentQuestion({
+      questionPayload: {
+        prompt: "Upload your supporting documents",
+        minUploads: 0,
+        maxUploads: 3,
+      },
+      answer: existingAnswer,
+    });
+
+    queryClient.setQueryData(["answers", "interview-1"], {
+      answers: [existingAnswer],
+    });
+
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    await waitFor(() => {
+      expect(deleteAnswerMutationFnMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(
+      queryClient.getQueryData<{ answers: Array<z.infer<typeof AnswerSelectSchema>> }>([
+        "answers",
+        "interview-1",
+      ]),
+    ).toMatchObject({
+      answers: [],
+    });
+
+    deferredDeleteAnswer.resolve(null);
   });
 
   it("shows an error and allows retrying when opening a document fails", async () => {
@@ -612,6 +704,66 @@ describe("DocumentQuestion", () => {
     await waitFor(() => {
       expect(toastErrorMock).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("removes a deleted document from the query cache immediately", async () => {
+    const deferredDeleteDocument = createDeferredPromise<null>();
+    deleteDocumentMutationFnMock.mockReturnValueOnce(
+      deferredDeleteDocument.promise,
+    );
+    const firstDocument = createUploadedDocument("resume.pdf");
+    const secondDocument = createUploadedDocument("cover-letter.pdf");
+    const existingAnswer: z.infer<typeof AnswerSelectSchema> = {
+      uuid: "answer-1",
+      interviewUuid: "interview-1",
+      questionUuid: "question-1",
+      answerPayload: {
+        kind: "documents",
+        documents: [firstDocument, secondDocument],
+      },
+      answeredAt: new Date(),
+    };
+
+    const { queryClient } = renderDocumentQuestion({
+      questionPayload: {
+        prompt: "Upload your supporting documents",
+        minUploads: 0,
+        maxUploads: 3,
+      },
+      answer: existingAnswer,
+    });
+
+    queryClient.setQueryData(["answers", "interview-1"], {
+      answers: [existingAnswer],
+    });
+
+    const deleteButtons = screen.getAllByRole("button", {
+      name: "Dokument löschen",
+    });
+    fireEvent.click(deleteButtons[0]);
+
+    await waitFor(() => {
+      expect(deleteDocumentMutationFnMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(
+      queryClient.getQueryData<{ answers: Array<z.infer<typeof AnswerSelectSchema>> }>([
+        "answers",
+        "interview-1",
+      ]),
+    ).toMatchObject({
+      answers: [
+        {
+          questionUuid: "question-1",
+          answerPayload: {
+            kind: "documents",
+            documents: [secondDocument],
+          },
+        },
+      ],
+    });
+
+    deferredDeleteDocument.resolve(null);
   });
 });
 
