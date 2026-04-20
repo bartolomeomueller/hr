@@ -217,6 +217,7 @@ export function SingleChoiceQuestion({
                     </FieldLabel>
                   ))}
                 </RadioGroup>
+                {/* This SlideInFromTop component currently will never show an error message, since the RadioGroup doesn't support deselection. */}
                 <SlideInFromTop isVisible={isInvalid}>
                   <FieldError errors={field.state.meta.errors} />
                 </SlideInFromTop>
