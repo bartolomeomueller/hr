@@ -181,97 +181,116 @@ export const addNewDocumentToAnswer = base
   )
   .output(AnswerSelectSchema)
   .handler(async ({ input, context }) => {
-    // Remember the uuid of the document to delete after the transaction has completed successfully.
-    let documentUuidToDelete = null;
+    const { answer, documentUuidToDelete } = await runSerializableTransaction(
+      async (tx) => {
+        const [existingAnswer] = await tx
+          .select()
+          .from(Answer)
+          .where(
+            and(
+              eq(Answer.interviewUuid, input.interviewUuid),
+              eq(Answer.questionUuid, input.questionUuid),
+            ),
+          )
+          .limit(1);
 
-    const answer = await db.transaction(async (tx) => {
-      const [existingAnswer] = await tx
-        .select()
-        .from(Answer)
-        .where(
-          and(
-            eq(Answer.interviewUuid, input.interviewUuid),
-            eq(Answer.questionUuid, input.questionUuid),
-          ),
-        )
-        .limit(1);
+        if (!existingAnswer) {
+          const [insertedAnswer] = await tx
+            .insert(Answer)
+            .values({
+              interviewUuid: input.interviewUuid,
+              questionUuid: input.questionUuid,
+              answerPayload: {
+                kind: "documents",
+                documents: [input.document],
+              },
+              answeredAt: new Date(),
+            })
+            .returning();
 
-      if (!existingAnswer) {
-        const [insertedAnswer] = await tx
-          .insert(Answer)
-          .values({
-            interviewUuid: input.interviewUuid,
-            questionUuid: input.questionUuid,
-            answerPayload: {
-              kind: "documents",
-              documents: [input.document],
-            },
-            answeredAt: new Date(),
-          })
-          .returning();
+          return {
+            answer: insertedAnswer,
+            documentUuidToDelete: null,
+          };
+        }
 
-        return insertedAnswer;
-      }
+        const existingAnswerPayload = DocumentAnswerPayloadType.parse(
+          existingAnswer.answerPayload,
+        );
 
-      const existingAnswerPayload = DocumentAnswerPayloadType.parse(
-        existingAnswer.answerPayload,
-      );
+        // If there were previously no documents, just add the new document to the answer.
+        if (existingAnswerPayload.kind === "no_documents") {
+          const [updatedAnswer] = await tx
+            .update(Answer)
+            .set({
+              answerPayload: {
+                kind: "documents",
+                documents: [input.document],
+              },
+              answeredAt: new Date(),
+            })
+            .where(eq(Answer.uuid, existingAnswer.uuid))
+            .returning();
 
-      // If there were previously no documents, just add the new document to the answer.
-      if (existingAnswerPayload.kind === "no_documents") {
+          return {
+            answer: updatedAnswer,
+            documentUuidToDelete: null,
+          };
+        }
+
+        const existingDocumentWithSameUuid =
+          existingAnswerPayload.documents.find(
+            (document) => document.documentUuid === input.document.documentUuid,
+          );
+        if (existingDocumentWithSameUuid) {
+          return {
+            answer: existingAnswer,
+            documentUuidToDelete: null,
+          };
+        }
+
+        // If there exists a document with the same name, it will be replaced. Otherwise the document will just be added.
+        const existingDocumentWithSameName =
+          existingAnswerPayload.documents.find(
+            (document) => document.fileName === input.document.fileName,
+          );
+        const existingDocumentsWithoutSameNameDocument =
+          existingAnswerPayload.documents.filter(
+            (document) =>
+              document.documentUuid !==
+              existingDocumentWithSameName?.documentUuid,
+          );
+        let documentUuidToDelete =
+          existingDocumentWithSameName?.documentUuid ?? null;
+
+        // If this is a single file upload, all existing documents will be replaced with the new one.
+        if (input.isSingleFileUpload) {
+          documentUuidToDelete =
+            existingAnswerPayload.documents.at(0)?.documentUuid ?? null;
+          existingDocumentsWithoutSameNameDocument.length = 0; // Clear the array, so only the new document will be in the answer.
+        }
+
         const [updatedAnswer] = await tx
           .update(Answer)
           .set({
             answerPayload: {
               kind: "documents",
-              documents: [input.document],
+              documents: [
+                ...existingDocumentsWithoutSameNameDocument,
+                input.document,
+              ],
             },
             answeredAt: new Date(),
           })
           .where(eq(Answer.uuid, existingAnswer.uuid))
           .returning();
 
-        return updatedAnswer;
-      }
-
-      // If there exists a document with the same name, it will be replaced. Otherwise the document will just be added.
-      const existingDocumentWithSameName = existingAnswerPayload.documents.find(
-        (document) => document.fileName === input.document.fileName,
-      );
-      const existingDocumentsWithoutSameNameDocument =
-        existingAnswerPayload.documents.filter(
-          (document) =>
-            document.documentUuid !==
-            existingDocumentWithSameName?.documentUuid,
-        );
-      if (existingDocumentWithSameName) {
-        documentUuidToDelete = existingDocumentWithSameName.documentUuid;
-      }
-
-      // If this is a single file upload, all existing documents will be replaced with the new one.
-      if (input.isSingleFileUpload) {
-        documentUuidToDelete =
-          existingAnswerPayload.documents.at(0)?.documentUuid;
-        existingDocumentsWithoutSameNameDocument.length = 0; // Clear the array, so only the new document will be in the answer.
-      }
-
-      const [updatedAnswer] = await tx
-        .update(Answer)
-        .set({
-          answerPayload: {
-            kind: "documents",
-            documents: [
-              ...existingDocumentsWithoutSameNameDocument,
-              input.document,
-            ],
-          },
-          answeredAt: new Date(),
-        })
-        .where(eq(Answer.uuid, existingAnswer.uuid))
-        .returning();
-
-      return updatedAnswer;
-    });
+        return {
+          answer: updatedAnswer,
+          documentUuidToDelete,
+        };
+      },
+    );
 
     // If the document deletion fails, it should not block the answer update.
     if (documentUuidToDelete) {
@@ -304,7 +323,7 @@ export const deleteDocumentFromObjectStorageAndFromAnswer = base
   .output(AnswerSelectSchema.nullable())
   .handler(async ({ input, context }) => {
     await deleteObject(getObjectKeyForDocumentUuid(input.documentUuid));
-    return db.transaction(async (tx) => {
+    return runSerializableTransaction(async (tx) => {
       const [existingAnswer] = await tx
         .select()
         .from(Answer)
@@ -366,3 +385,56 @@ export const deleteDocumentFromObjectStorageAndFromAnswer = base
       return updatedAnswer;
     });
   });
+
+const SERIALIZATION_FAILURE_ERROR_CODE = "40001";
+const MAX_SERIALIZABLE_TRANSACTION_RETRIES = 3;
+
+async function runSerializableTransaction<T>(
+  callback: (
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  ) => Promise<T>,
+) {
+  for (
+    let currentAttempt = 1;
+    currentAttempt <= MAX_SERIALIZABLE_TRANSACTION_RETRIES;
+    currentAttempt++
+  ) {
+    try {
+      return await db.transaction(callback, {
+        isolationLevel: "serializable",
+      });
+    } catch (error) {
+      if (
+        !isSerializationFailureError(error) ||
+        currentAttempt >= MAX_SERIALIZABLE_TRANSACTION_RETRIES
+      ) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error(
+    "Invariant violation: serializable transaction retries should either return or throw the last serialization error.",
+  );
+}
+
+function isSerializationFailureError(error: unknown) {
+  let currentError: unknown = error;
+
+  while (typeof currentError === "object" && currentError !== null) {
+    if (
+      "code" in currentError &&
+      currentError.code === SERIALIZATION_FAILURE_ERROR_CODE
+    ) {
+      return true;
+    }
+
+    if (!("cause" in currentError)) {
+      return false;
+    }
+
+    currentError = currentError.cause;
+  }
+
+  return false;
+}

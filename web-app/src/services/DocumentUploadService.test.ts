@@ -440,6 +440,132 @@ describe("DocumentUploadService", () => {
     });
   });
 
+  it("starts the next upload without waiting for the previous answer sync to finish", async () => {
+    const firstPresignedUrl = createDeferredPromise<{
+      uuid: string;
+      uploadUrl: string;
+    }>();
+    const secondPresignedUrl = createDeferredPromise<{
+      uuid: string;
+      uploadUrl: string;
+    }>();
+    const createPresignedS3DocumentUploadUrl = vi
+      .fn()
+      .mockReturnValueOnce(firstPresignedUrl.promise)
+      .mockReturnValueOnce(secondPresignedUrl.promise);
+    const firstAnswerSync = createDeferredPromise<{
+      questionUuid: string;
+      answerPayload: {
+        kind: "documents";
+        documents: Array<{
+          documentUuid: string;
+          fileName: string;
+          mimeType: string;
+        }>;
+      };
+    }>();
+    const addNewDocumentToAnswer = vi
+      .fn()
+      .mockReturnValueOnce(firstAnswerSync.promise)
+      .mockResolvedValueOnce({
+        questionUuid: "question-1",
+        answerPayload: {
+          kind: "documents",
+          documents: [
+            {
+              documentUuid: "document-1",
+              fileName: "resume.pdf",
+              mimeType: "application/pdf",
+            },
+            {
+              documentUuid: "document-2",
+              fileName: "cover-letter.pdf",
+              mimeType: "application/pdf",
+            },
+          ],
+        },
+      });
+    const firstXhr = createXhrDouble();
+    const secondXhr = createXhrDouble();
+    const queryClient = createQueryClientDouble();
+    vi.mocked(getQueryClient).mockReturnValue(
+      queryClient as unknown as ReturnType<typeof getQueryClient>,
+    );
+    const createXmlHttpRequest = vi
+      .fn()
+      .mockReturnValueOnce(firstXhr)
+      .mockReturnValueOnce(secondXhr);
+
+    const service = createService({
+      createPresignedS3DocumentUploadUrl,
+      createXmlHttpRequest,
+      addNewDocumentToAnswer,
+    });
+
+    await service.addToUploadPipeline({
+      file: new File(["resume"], "resume.pdf", {
+        type: "application/pdf",
+      }),
+      interviewUuid: "interview-1",
+      questionUuid: "question-1",
+      queryKeyToInvalidateAnswers: ["answers", "interview-1"],
+      isSingleFileUpload: false,
+    });
+    await service.addToUploadPipeline({
+      file: new File(["cover-letter"], "cover-letter.pdf", {
+        type: "application/pdf",
+      }),
+      interviewUuid: "interview-1",
+      questionUuid: "question-1",
+      queryKeyToInvalidateAnswers: ["answers", "interview-1"],
+      isSingleFileUpload: false,
+    });
+
+    firstPresignedUrl.resolve({
+      uuid: "document-1",
+      uploadUrl: "https://example.com/upload-1",
+    });
+
+    await vi.waitFor(() => {
+      expect(firstXhr.send).toHaveBeenCalledTimes(1);
+    });
+
+    firstXhr.onload?.();
+
+    await vi.waitFor(() => {
+      expect(addNewDocumentToAnswer).toHaveBeenCalledTimes(1);
+    });
+
+    secondPresignedUrl.resolve({
+      uuid: "document-2",
+      uploadUrl: "https://example.com/upload-2",
+    });
+
+    await vi.waitFor(() => {
+      expect(secondXhr.send).toHaveBeenCalledTimes(1);
+    });
+
+    firstAnswerSync.resolve({
+      questionUuid: "question-1",
+      answerPayload: {
+        kind: "documents",
+        documents: [
+          {
+            documentUuid: "document-1",
+            fileName: "resume.pdf",
+            mimeType: "application/pdf",
+          },
+        ],
+      },
+    });
+
+    secondXhr.onload?.();
+
+    await service.uploadPipeline;
+
+    expect(addNewDocumentToAnswer).toHaveBeenCalledTimes(2);
+  });
+
   it("requests a fresh presigned url when the first one is already expired", async () => {
     const createPresignedS3DocumentUploadUrl = vi
       .fn()
