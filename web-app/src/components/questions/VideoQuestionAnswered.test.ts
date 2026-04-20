@@ -1,30 +1,10 @@
 import { v7 as uuidv7 } from "uuid";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type z from "zod";
-
-const { recordingsMock } = vi.hoisted(() => ({
-  recordingsMock: [] as Array<{
-    questionUuid: string;
-    interviewUuid: string;
-    queryKeyToInvalidateAnswers: string[];
-    indexedDBId: number;
-    progress: number;
-    partNumber: number;
-    isLastPart: boolean;
-  }>,
-}));
 
 vi.mock("@/services/RecordingUploadService.client", () => ({
   recordingUploadService: {
     addToUploadPipeline: vi.fn(),
-  },
-}));
-
-vi.mock("@/stores/recordingUploadStore", () => ({
-  useRecordingUploadStore: {
-    getState: () => ({
-      recordings: recordingsMock,
-    }),
   },
 }));
 
@@ -48,14 +28,8 @@ function createVideoQuestion(): z.infer<typeof QuestionSelectSchema> {
 }
 
 describe("isVideoQuestionAnswered", () => {
-  beforeEach(() => {
-    recordingsMock.length = 0;
-  });
-
   it("returns false when no answer exists and no upload is in progress", () => {
-    const question = createVideoQuestion();
-
-    expect(isVideoQuestionAnswered(question, undefined)).toBe(false);
+    expect(isVideoQuestionAnswered(undefined)).toBe(false);
   });
 
   it("returns true when an answer exists", () => {
@@ -71,45 +45,14 @@ describe("isVideoQuestionAnswered", () => {
       answeredAt: new Date(),
     };
 
-    expect(isVideoQuestionAnswered(question, answer)).toBe(true);
+    expect(isVideoQuestionAnswered(answer)).toBe(true);
   });
 
-  it("returns false when only non-final parts are queued for the question", () => {
-    const question = createVideoQuestion();
-    recordingsMock.push({
-      questionUuid: question.uuid,
-      interviewUuid: uuidv7(),
-      queryKeyToInvalidateAnswers: ["answers", uuidv7()],
-      indexedDBId: 1,
-      progress: 50,
-      partNumber: 1,
-      isLastPart: false,
-    });
-
-    expect(isVideoQuestionAnswered(question, undefined)).toBe(false);
+  it("returns false when no final upload is in progress", () => {
+    expect(isVideoQuestionAnswered(undefined, false)).toBe(false);
   });
 
-  it("returns true when the final part is queued for the question", () => {
-    const question = createVideoQuestion();
-    recordingsMock.push({
-      questionUuid: question.uuid,
-      interviewUuid: uuidv7(),
-      queryKeyToInvalidateAnswers: ["answers", uuidv7()],
-      indexedDBId: 1,
-      progress: 50,
-      partNumber: 1,
-      isLastPart: false,
-    });
-    recordingsMock.push({
-      questionUuid: question.uuid,
-      interviewUuid: uuidv7(),
-      queryKeyToInvalidateAnswers: ["answers", uuidv7()],
-      indexedDBId: 2,
-      progress: 10,
-      partNumber: 2,
-      isLastPart: true,
-    });
-
-    expect(isVideoQuestionAnswered(question, undefined)).toBe(true);
+  it("returns true when the final upload is in progress", () => {
+    expect(isVideoQuestionAnswered(undefined, true)).toBe(true);
   });
 });

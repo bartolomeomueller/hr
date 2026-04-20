@@ -16,14 +16,9 @@ import {
 } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
-import {
-  areQuestionBlockQuestionsAnswered,
-  QuestionBlock,
-} from "./questions/QuestionBlock";
-import {
-  isVideoQuestionAnswered,
-  VideoQuestion,
-} from "./questions/VideoQuestion";
+import { QuestionBlock } from "./questions/QuestionBlock";
+import { useCurrentFlowStepIsAnswered } from "./questions/useCurrentFlowStepIsAnswered";
+import { VideoQuestion } from "./questions/VideoQuestion";
 import { Button } from "./ui/button";
 import { H1 } from "./ui/typography";
 
@@ -223,27 +218,11 @@ export function Interview({
   const previousFlowStep =
     activeFlowStepIndex > 0 ? flowSteps.at(activeFlowStepIndex - 1) : null;
   const nextFlowStep = flowSteps.at(activeFlowStepIndex + 1) ?? null;
-  const currentFlowStepIsAnswered =
-    currentFlowStepKind === "question_block"
-      ? areQuestionBlockQuestionsAnswered({
-          questions: currentFlowStepQuestions,
-          answers: interviewRelatedData.answers,
-        })
-      : (() => {
-          const currentVideoQuestion = currentFlowStepQuestions[0];
-          if (!currentVideoQuestion) {
-            throw new Error(
-              "Video flow steps should always have exactly one question. This should never happen, please report it.",
-            );
-          }
-
-          return isVideoQuestionAnswered(
-            currentVideoQuestion,
-            interviewRelatedData.answers.find(
-              (answer) => answer.questionUuid === currentVideoQuestion.uuid,
-            ),
-          );
-        })();
+  const currentFlowStepIsAnswered = useCurrentFlowStepIsAnswered({
+    currentFlowStepKind,
+    currentFlowStepQuestions,
+    answers: interviewRelatedData.answers,
+  });
 
   return (
     <div className="flex justify-center px-2 sm:px-4 md:px-8">

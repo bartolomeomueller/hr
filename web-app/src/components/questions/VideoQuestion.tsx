@@ -8,23 +8,18 @@ import {
 } from "@/db/payload-types";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { recordingUploadService } from "@/services/RecordingUploadService.client";
-import { useRecordingUploadStore } from "@/stores/recordingUploadStore";
 import { Large } from "../ui/typography";
 import { VideoRecorder } from "./VideoRecorder";
 
 export function isVideoQuestionAnswered(
-  question: z.infer<typeof QuestionSelectSchema>,
   answer: z.infer<typeof AnswerSelectSchema> | undefined,
+  hasUploadingRecordingForQuestion = false,
 ) {
   if (answer) {
     return true;
   }
 
-  const recordingsForQuestion = useRecordingUploadStore
-    .getState()
-    .recordings.filter((recording) => recording.questionUuid === question.uuid);
-
-  return recordingsForQuestion.at(-1)?.isLastPart ?? false;
+  return hasUploadingRecordingForQuestion;
 }
 
 export function VideoQuestion({

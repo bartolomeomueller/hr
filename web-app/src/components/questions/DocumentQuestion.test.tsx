@@ -11,7 +11,10 @@ import {
 import { v7 as uuidv7 } from "uuid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type z from "zod";
-import { DocumentQuestion } from "@/components/questions/DocumentQuestion";
+import {
+  DocumentQuestion,
+  isDocumentQuestionAnswered,
+} from "@/components/questions/DocumentQuestion";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 
@@ -609,5 +612,29 @@ describe("DocumentQuestion", () => {
     await waitFor(() => {
       expect(toastErrorMock).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe("isDocumentQuestionAnswered", () => {
+  it("returns false when no answer exists", () => {
+    expect(isDocumentQuestionAnswered(undefined)).toBe(false);
+  });
+
+  it("returns true when an answer exists", () => {
+    const answer: z.infer<typeof AnswerSelectSchema> = {
+      uuid: uuidv7(),
+      interviewUuid: uuidv7(),
+      questionUuid: uuidv7(),
+      answerPayload: {
+        kind: "no_documents",
+      },
+      answeredAt: new Date(),
+    };
+
+    expect(isDocumentQuestionAnswered(answer)).toBe(true);
+  });
+
+  it("returns true when a document for the question is still uploading", () => {
+    expect(isDocumentQuestionAnswered(undefined, true)).toBe(true);
   });
 });

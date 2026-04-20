@@ -5,8 +5,8 @@ import { QuestionType } from "@/db/payload-types";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import type { InterviewFormType } from "../Interview";
 import {
-  isDocumentQuestionAnswered,
   DocumentQuestion,
+  isDocumentQuestionAnswered,
 } from "./DocumentQuestion";
 import {
   isMultipleChoiceQuestionAnswered,
@@ -100,9 +100,11 @@ export function QuestionBlock({
 export function areQuestionBlockQuestionsAnswered({
   questions,
   answers,
+  questionUuidsWithUploadingDocuments,
 }: {
   questions: Array<z.infer<typeof QuestionSelectSchema>>;
   answers: Array<z.infer<typeof AnswerSelectSchema>>;
+  questionUuidsWithUploadingDocuments: Set<string>;
 }) {
   return questions.every((question) => {
     const answer = answers.find(
@@ -119,7 +121,10 @@ export function areQuestionBlockQuestionsAnswered({
       case QuestionType.multiple_choice:
         return isMultipleChoiceQuestionAnswered(answer);
       case QuestionType.document:
-        return isDocumentQuestionAnswered(answer);
+        return isDocumentQuestionAnswered(
+          answer,
+          questionUuidsWithUploadingDocuments.has(question.uuid),
+        );
       default:
         throw new Error(
           `Question type ${question.questionType} is not supported. Please report this bug.`,
