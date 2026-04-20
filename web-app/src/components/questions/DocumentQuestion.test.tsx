@@ -656,12 +656,24 @@ describe("DocumentQuestion", () => {
     await waitFor(() => {
       expect(toastErrorMock).toHaveBeenCalledTimes(1);
     });
+    expect(
+      createDocumentDownloadUrlMutationFnMock.mock.calls[0]?.[0],
+    ).toEqual({
+      documentUuid: expect.any(String),
+      interviewUuid: "interview-1",
+    });
     expect(windowOpenSpy).not.toHaveBeenCalled();
 
     fireEvent.click(viewButton);
 
     await waitFor(() => {
       expect(createDocumentDownloadUrlMutationFnMock).toHaveBeenCalledTimes(2);
+    });
+    expect(
+      createDocumentDownloadUrlMutationFnMock.mock.calls[1]?.[0],
+    ).toEqual({
+      documentUuid: expect.any(String),
+      interviewUuid: "interview-1",
     });
     await waitFor(() => {
       expect(windowOpenSpy).toHaveBeenCalledWith(

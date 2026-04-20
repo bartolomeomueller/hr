@@ -485,7 +485,6 @@ function File({
 }) {
   const [viewIsClicked, setViewIsClicked] = useState(false);
   const preSignedUrlRef = useRef<Promise<string> | null>(null);
-  // TODO only allow view if you can specify the interviewUuid also for a bit of authentication, otherwise people could maybe get presigned urls chosen uuids
   const { mutateAsync: viewMutateAsync, isPending: viewIsPending } =
     useMutation({
       ...orpc.createPresignedS3DocumentDownloadUrlByUuid.mutationOptions(),
@@ -517,14 +516,20 @@ function File({
     // For the first time get a new presigned url
     const currentPreSignedUrlPromise = preSignedUrlRef.current;
     if (currentPreSignedUrlPromise == null) {
-      await viewMutateAsync({ documentUuid: uploadedDocument.documentUuid });
+      await viewMutateAsync({
+        documentUuid: uploadedDocument.documentUuid,
+        interviewUuid: uploadedDocument.interviewUuid,
+      });
       return preSignedUrlRef.current;
     }
 
     // If we got here after the first time await the promise to the presigned url
     const currentPreSignedUrl = await currentPreSignedUrlPromise;
     if (!isPreSignedURLStillValid(currentPreSignedUrl)) {
-      await viewMutateAsync({ documentUuid: uploadedDocument.documentUuid });
+      await viewMutateAsync({
+        documentUuid: uploadedDocument.documentUuid,
+        interviewUuid: uploadedDocument.interviewUuid,
+      });
       return preSignedUrlRef.current;
     }
 
