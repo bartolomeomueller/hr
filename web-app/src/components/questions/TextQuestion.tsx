@@ -19,6 +19,7 @@ import { SlideInFromTop } from "../ui/animation";
 import { Input } from "../ui/input";
 
 // TODO think about making each question optional possible, if the user does not want to answer a question
+
 export function isTextQuestionAnswered(
   answer: z.infer<typeof AnswerSelectSchema> | undefined,
 ) {
@@ -112,7 +113,10 @@ export function TextQuestion({
       context.client.setQueryData<InterviewRelatedDataQueryData>(
         queryKeyToInvalidateAnswers,
         (oldData) =>
-          removeAnswerFromInterviewRelatedDataCache(oldData, variables.questionUuid),
+          removeAnswerFromInterviewRelatedDataCache(
+            oldData,
+            variables.questionUuid,
+          ),
       );
 
       return {
@@ -162,28 +166,32 @@ export function TextQuestion({
         const isInvalid =
           field.state.meta.isBlurred && !field.state.meta.isValid;
         return (
-          // data-invalid attribute is used in Field to style the field
-          // aria-invalid attribute is used for accessibility, it indicates that the value entered in the field does not conform to the expected format
-          <Field data-invalid={isInvalid}>
-            <FieldLabel htmlFor={field.name}>
-              {questionPayload.question}
-            </FieldLabel>
-            <Input
-              type="text"
-              id={field.name}
-              name={field.name}
-              value={field.state.value as string}
-              // change later to without e
-              onChange={(e) => field.handleChange(e.target.value)}
-              onBlur={field.handleBlur}
-              aria-invalid={isInvalid}
-              placeholder="Deine Antwort"
-              required
-            />
-            <SlideInFromTop isVisible={isInvalid}>
-              <FieldError errors={field.state.meta.errors} />
-            </SlideInFromTop>
-          </Field>
+          <div className="py-2">
+            {/* data-invalid attribute is used in Field to style the field
+                aria-invalid attribute is used for accessibility, it indicates that the value entered in the field does not conform to the expected format */}
+            <Field data-invalid={isInvalid}>
+              <FieldLabel htmlFor={field.name}>
+                {questionPayload.question}
+              </FieldLabel>
+              <div>
+                <Input
+                  type="text"
+                  id={field.name}
+                  name={field.name}
+                  value={field.state.value as string}
+                  // change later to without e
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  aria-invalid={isInvalid}
+                  placeholder="Deine Antwort"
+                  required
+                />
+                <SlideInFromTop isVisible={isInvalid}>
+                  <FieldError errors={field.state.meta.errors} />
+                </SlideInFromTop>
+              </div>
+            </Field>
+          </div>
         );
       }}
     />

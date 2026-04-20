@@ -247,33 +247,15 @@ export function Interview({
 
   return (
     <div className="flex justify-center px-2 sm:px-4 md:px-8">
-      <div className="flex w-full flex-col gap-2 lg:w-9/12">
+      <div className="flex w-full flex-col gap-4 lg:w-9/12">
         <H1>{questionsData.role.roleName}</H1>
-        <div className="flex justify-between">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              if (!previousFlowStep) return;
-              onFlowStepChange(previousFlowStep.position);
-            }}
-            disabled={!previousFlowStep}
-          >
-            Zurück
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              if (!currentFlowStepIsAnswered) return;
-              if (!nextFlowStep) return finalizeInterview();
-              onFlowStepChange(nextFlowStep.position);
-            }}
-            disabled={!currentFlowStepIsAnswered}
-          >
-            {nextFlowStep ? "Weiter" : "Bewerbung abschließen"}
-          </Button>
-        </div>
+        <InterviewNavigation
+          previousFlowStepPosition={previousFlowStep?.position}
+          nextFlowStepPosition={nextFlowStep?.position}
+          currentFlowStepIsAnswered={currentFlowStepIsAnswered}
+          onFlowStepChange={onFlowStepChange}
+          finalizeInterview={finalizeInterview}
+        />
         {currentFlowStepKind === "question_block" && (
           <QuestionBlock
             form={form}
@@ -295,7 +277,58 @@ export function Interview({
             answers={interviewRelatedData.answers}
           />
         )}
+        <InterviewNavigation
+          previousFlowStepPosition={previousFlowStep?.position}
+          nextFlowStepPosition={nextFlowStep?.position}
+          currentFlowStepIsAnswered={currentFlowStepIsAnswered}
+          onFlowStepChange={onFlowStepChange}
+          finalizeInterview={finalizeInterview}
+        />
       </div>
+    </div>
+  );
+}
+
+function InterviewNavigation({
+  previousFlowStepPosition,
+  nextFlowStepPosition,
+  currentFlowStepIsAnswered,
+  onFlowStepChange,
+  finalizeInterview,
+}: {
+  previousFlowStepPosition?: number;
+  nextFlowStepPosition?: number;
+  currentFlowStepIsAnswered: boolean;
+  onFlowStepChange: (step: number) => void;
+  finalizeInterview: () => void;
+}) {
+  return (
+    <div className="flex justify-between">
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => {
+          if (previousFlowStepPosition === undefined) return;
+          onFlowStepChange(previousFlowStepPosition);
+        }}
+        disabled={previousFlowStepPosition === undefined}
+      >
+        Zurück
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => {
+          if (!currentFlowStepIsAnswered) return;
+          if (nextFlowStepPosition === undefined) return finalizeInterview();
+          onFlowStepChange(nextFlowStepPosition);
+        }}
+        disabled={!currentFlowStepIsAnswered}
+      >
+        {nextFlowStepPosition === undefined
+          ? "Bewerbung abschließen"
+          : "Weiter"}
+      </Button>
     </div>
   );
 }

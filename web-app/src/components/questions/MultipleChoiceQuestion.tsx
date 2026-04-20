@@ -15,9 +15,11 @@ import {
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import type { InterviewFormType } from "../Interview";
+import { SlideInFromTop } from "../ui/animation";
 import { Checkbox } from "../ui/checkbox";
 import {
   Field,
+  FieldError,
   FieldGroup,
   FieldLabel,
   FieldLegend,
@@ -178,41 +180,45 @@ export function MultipleChoiceQuestion({
         const isInvalid =
           field.state.meta.isBlurred && !field.state.meta.isValid;
         return (
-          <FieldSet>
-            <FieldLegend variant="label">
-              {questionPayload.question}
-            </FieldLegend>
-            <FieldGroup data-slot="checkbox-group">
-              {questionPayload.options.map((option) => (
-                <Field
-                  key={option}
-                  orientation="horizontal"
-                  data-invalid={isInvalid}
-                >
-                  <Checkbox
-                    id={option}
-                    name={field.name}
-                    aria-invalid={isInvalid}
-                    checked={field.state.value.includes(option)}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        field.pushValue(option);
-                      } else {
-                        const index = field.state.value.indexOf(option);
-                        if (index > -1) {
-                          field.removeValue(index);
-                        }
-                      }
-                    }}
-                  />
-                  <FieldLabel htmlFor={option}>{option}</FieldLabel>
-                </Field>
-              ))}
-            </FieldGroup>
-            {/* <SlideInFromTop isVisible={isInvalid}>
-              <FieldError errors={field.state.meta.errors} />
-            </SlideInFromTop> */}
-          </FieldSet>
+          <div className="py-2">
+            <FieldSet>
+              <FieldLegend variant="label">
+                {questionPayload.question}
+              </FieldLegend>
+              <div>
+                <FieldGroup data-slot="checkbox-group">
+                  {questionPayload.options.map((option) => (
+                    <Field
+                      key={option}
+                      orientation="horizontal"
+                      data-invalid={isInvalid}
+                    >
+                      <Checkbox
+                        id={option}
+                        name={field.name}
+                        aria-invalid={isInvalid}
+                        checked={field.state.value.includes(option)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            field.pushValue(option);
+                          } else {
+                            const index = field.state.value.indexOf(option);
+                            if (index > -1) {
+                              field.removeValue(index);
+                            }
+                          }
+                        }}
+                      />
+                      <FieldLabel htmlFor={option}>{option}</FieldLabel>
+                    </Field>
+                  ))}
+                </FieldGroup>
+                <SlideInFromTop isVisible={isInvalid}>
+                  <FieldError errors={field.state.meta.errors} />
+                </SlideInFromTop>
+              </div>
+            </FieldSet>
+          </div>
         );
       }}
     />

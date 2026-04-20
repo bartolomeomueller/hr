@@ -15,9 +15,11 @@ import {
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import type { InterviewFormType } from "../Interview";
+import { SlideInFromTop } from "../ui/animation";
 import {
   Field,
   FieldContent,
+  FieldError,
   FieldLabel,
   FieldLegend,
   FieldSet,
@@ -181,42 +183,46 @@ export function SingleChoiceQuestion({
         const isInvalid =
           field.state.meta.isBlurred && !field.state.meta.isValid;
         return (
-          <FieldSet>
-            <FieldLegend variant="label">
-              {questionPayload.question}
-            </FieldLegend>
-            {/* <FieldDescription>{questionPayload.question}</FieldDescription> */}
-            <RadioGroup
-              name={field.name}
-              value={field.state.value as string}
-              onValueChange={field.handleChange}
-              onBlur={field.handleBlur}
-            >
-              {questionPayload.options.map((option) => (
-                <FieldLabel
-                  key={option}
-                  htmlFor={option}
-                  // The lint is wrong.
-                  className="[&>*]:data-[slot=field]:p-2"
+          <div className="py-2">
+            <FieldSet>
+              <FieldLegend variant="label">
+                {questionPayload.question}
+              </FieldLegend>
+              <div>
+                {/* <FieldDescription>{questionPayload.question}</FieldDescription> */}
+                <RadioGroup
+                  name={field.name}
+                  value={field.state.value as string}
+                  onValueChange={field.handleChange}
+                  onBlur={field.handleBlur}
                 >
-                  <Field orientation="horizontal" data-invalid={isInvalid}>
-                    <FieldContent>
-                      <FieldTitle>{option}</FieldTitle>
-                      {/* <FieldDescription>{option}</FieldDescription> */}
-                    </FieldContent>
-                    <RadioGroupItem
-                      id={option}
-                      value={option}
-                      aria-invalid={isInvalid}
-                    />
-                  </Field>
-                </FieldLabel>
-              ))}
-            </RadioGroup>
-            {/* <SlideInFromTop isVisible={isInvalid}>
-              <FieldError errors={field.state.meta.errors} />
-            </SlideInFromTop> */}
-          </FieldSet>
+                  {questionPayload.options.map((option) => (
+                    <FieldLabel
+                      key={option}
+                      htmlFor={option}
+                      // The lint is wrong.
+                      className="[&>*]:data-[slot=field]:p-2"
+                    >
+                      <Field orientation="horizontal" data-invalid={isInvalid}>
+                        <FieldContent>
+                          <FieldTitle>{option}</FieldTitle>
+                          {/* <FieldDescription>{option}</FieldDescription> */}
+                        </FieldContent>
+                        <RadioGroupItem
+                          id={option}
+                          value={option}
+                          aria-invalid={isInvalid}
+                        />
+                      </Field>
+                    </FieldLabel>
+                  ))}
+                </RadioGroup>
+                <SlideInFromTop isVisible={isInvalid}>
+                  <FieldError errors={field.state.meta.errors} />
+                </SlideInFromTop>
+              </div>
+            </FieldSet>
+          </div>
         );
       }}
     />
