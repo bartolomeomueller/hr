@@ -25,11 +25,50 @@ import {
   FieldLegend,
   FieldSet,
 } from "../ui/field";
+import type { QuestionBehavior } from "./questionBehavior";
 
-export function isMultipleChoiceQuestionAnswered(
+export const multipleChoiceQuestionBehavior: QuestionBehavior = {
+  getFormDefaultValue: getMultipleChoiceQuestionFormDefaultValue,
+  isAnswered: ({ answer }) => isMultipleChoiceQuestionAnswered(answer),
+  renderQuestionBlockQuestion: ({
+    form,
+    question,
+    interviewUuid,
+    queryKeyToInvalidateAnswers,
+    answer,
+  }) => (
+    <MultipleChoiceQuestion
+      key={question.uuid}
+      form={form}
+      question={question}
+      interviewUuid={interviewUuid}
+      queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+      answer={answer}
+    />
+  ),
+};
+
+function isMultipleChoiceQuestionAnswered(
   answer: z.infer<typeof AnswerSelectSchema> | undefined,
 ) {
   return answer !== undefined;
+}
+
+function getMultipleChoiceQuestionFormDefaultValue(
+  answer: z.infer<typeof AnswerSelectSchema> | undefined,
+) {
+  if (!answer) {
+    return [];
+  }
+
+  const multipleChoiceAnswerPayloadResult =
+    MultipleChoiceAnswerPayloadType.safeParse(answer.answerPayload);
+  if (!multipleChoiceAnswerPayloadResult.success)
+    throw new Error(
+      `Answer payload does not match expected type for multiple choice question. This should never happen, please report it. ${multipleChoiceAnswerPayloadResult.error.message}`,
+    );
+
+  return multipleChoiceAnswerPayloadResult.data.selectedOptions ?? [];
 }
 
 // TODO implement min and max selections logic
@@ -193,18 +232,18 @@ export function MultipleChoiceQuestion({
                       orientation="horizontal"
                       data-invalid={isInvalid}
                     >
-                    <Checkbox
-                      id={option}
-                      name={field.name}
-                      aria-invalid={isInvalid}
-                      checked={selectedOptions.includes(option)}
-                      onBlur={field.handleBlur}
-                      onCheckedChange={(checked) => {
-                        const nextSelectedOptions = checked
-                          ? [...selectedOptions, option]
-                          : selectedOptions.filter(
-                              (selectedOption) => selectedOption !== option,
-                            );
+                      <Checkbox
+                        id={option}
+                        name={field.name}
+                        aria-invalid={isInvalid}
+                        checked={selectedOptions.includes(option)}
+                        onBlur={field.handleBlur}
+                        onCheckedChange={(checked) => {
+                          const nextSelectedOptions = checked
+                            ? [...selectedOptions, option]
+                            : selectedOptions.filter(
+                                (selectedOption) => selectedOption !== option,
+                              );
 
                           field.handleChange(nextSelectedOptions);
                         }}

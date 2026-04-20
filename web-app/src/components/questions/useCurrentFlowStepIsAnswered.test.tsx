@@ -103,6 +103,33 @@ function createVideoQuestion(): z.infer<typeof QuestionSelectSchema> {
   };
 }
 
+function createTextQuestion(): z.infer<typeof QuestionSelectSchema> {
+  return {
+    uuid: uuidv7(),
+    flowStepUuid: uuidv7(),
+    position: 1,
+    questionType: QuestionType.text,
+    questionPayload: {
+      question: "Tell us about yourself",
+    },
+    isCv: false,
+  };
+}
+
+function createSingleChoiceQuestion(): z.infer<typeof QuestionSelectSchema> {
+  return {
+    uuid: uuidv7(),
+    flowStepUuid: uuidv7(),
+    position: 1,
+    questionType: QuestionType.single_choice,
+    questionPayload: {
+      question: "Choose one",
+      options: ["A", "B"],
+    },
+    isCv: false,
+  };
+}
+
 describe("useCurrentFlowStepIsAnswered", () => {
   afterEach(() => {
     cleanup();
@@ -174,5 +201,58 @@ describe("useCurrentFlowStepIsAnswered", () => {
     );
 
     expect(screen.getByText("unanswered")).toBeTruthy();
+  });
+
+  it("treats a mixed question block as answered when each question type is satisfied", () => {
+    const textQuestion = createTextQuestion();
+    const singleChoiceQuestion = createSingleChoiceQuestion();
+    const documentQuestion = createDocumentQuestion();
+
+    useDocumentUploadStore.setState({
+      documentsToUpload: [
+        {
+          localUuid: uuidv7(),
+          questionUuid: documentQuestion.uuid,
+          file: new File(["resume"], "resume.pdf", {
+            type: "application/pdf",
+          }),
+          progress: 20,
+          abortController: new AbortController(),
+        },
+      ],
+    });
+
+    render(
+      <HookProbe
+        currentFlowStepKind="question_block"
+        currentFlowStepQuestions={[
+          textQuestion,
+          singleChoiceQuestion,
+          documentQuestion,
+        ]}
+        answers={[
+          {
+            uuid: uuidv7(),
+            interviewUuid: uuidv7(),
+            questionUuid: textQuestion.uuid,
+            answerPayload: {
+              answer: "Because I care.",
+            },
+            answeredAt: new Date(),
+          },
+          {
+            uuid: uuidv7(),
+            interviewUuid: uuidv7(),
+            questionUuid: singleChoiceQuestion.uuid,
+            answerPayload: {
+              selectedOption: "A",
+            },
+            answeredAt: new Date(),
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("answered")).toBeTruthy();
   });
 });

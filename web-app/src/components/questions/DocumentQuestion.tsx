@@ -1,4 +1,5 @@
 import { type QueryKey, useMutation } from "@tanstack/react-query";
+import { ClientOnly } from "@tanstack/react-router";
 import {
   CircleX,
   Eye,
@@ -31,12 +32,38 @@ import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Label } from "../ui/label";
+import type { QuestionBehavior } from "./questionBehavior";
 
 const PDF_MIME_TYPE = "application/pdf";
 
 // NOTE implement option that you can get a mail later to upload your documents, if you currently do not have them
 
-export function isDocumentQuestionAnswered(
+export const documentQuestionBehavior: QuestionBehavior = {
+  getFormDefaultValue: getDocumentQuestionFormDefaultValue,
+  isAnswered: ({ question, answer, questionUuidsWithUploadingDocuments }) =>
+    isDocumentQuestionAnswered(
+      answer,
+      questionUuidsWithUploadingDocuments.has(question.uuid),
+    ),
+  renderQuestionBlockQuestion: ({
+    question,
+    interviewUuid,
+    queryKeyToInvalidateAnswers,
+    answer,
+  }) => (
+    // TODO check if ClientOnly is still necessary here
+    <ClientOnly key={question.uuid}>
+      <DocumentQuestion
+        question={question}
+        interviewUuid={interviewUuid}
+        queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+        answer={answer}
+      />
+    </ClientOnly>
+  ),
+};
+
+function isDocumentQuestionAnswered(
   answer: z.infer<typeof AnswerSelectSchema> | undefined,
   isUploadingDocumentForQuestion = false,
 ) {
@@ -45,6 +72,11 @@ export function isDocumentQuestionAnswered(
   }
 
   return isUploadingDocumentForQuestion;
+}
+
+// Tanstack Form is not used for this component.
+function getDocumentQuestionFormDefaultValue() {
+  return undefined;
 }
 
 export function DocumentQuestion({
@@ -185,7 +217,10 @@ export function DocumentQuestion({
       context.client.setQueryData<InterviewRelatedDataQueryData>(
         queryKeyToInvalidateAnswers,
         (oldData) =>
-          removeAnswerFromInterviewRelatedDataCache(oldData, variables.questionUuid),
+          removeAnswerFromInterviewRelatedDataCache(
+            oldData,
+            variables.questionUuid,
+          ),
       );
 
       return {
@@ -567,13 +602,16 @@ function File({
           return {
             ...oldData,
             answers: oldData.answers.flatMap((currentAnswer) => {
-              if (currentAnswer.questionUuid !== uploadedDocument.questionUuid) {
+              if (
+                currentAnswer.questionUuid !== uploadedDocument.questionUuid
+              ) {
                 return [currentAnswer];
               }
 
-              const answerPayloadParseResult = DocumentAnswerPayloadType.safeParse(
-                currentAnswer.answerPayload,
-              );
+              const answerPayloadParseResult =
+                DocumentAnswerPayloadType.safeParse(
+                  currentAnswer.answerPayload,
+                );
               if (!answerPayloadParseResult.success) {
                 throw new Error(
                   "Document answer payload should always be valid while deleting a document.",

@@ -15,8 +15,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type z from "zod";
 import type { InterviewFormType } from "@/components/Interview";
 import {
-  isTextQuestionAnswered,
   TextQuestion,
+  textQuestionBehavior,
 } from "@/components/questions/TextQuestion";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 
@@ -156,9 +156,25 @@ describe("TextQuestion", () => {
   });
 });
 
-describe("isTextQuestionAnswered", () => {
+describe("textQuestionBehavior", () => {
   it("returns false when no answer exists", () => {
-    expect(isTextQuestionAnswered(undefined)).toBe(false);
+    expect(
+      textQuestionBehavior.isAnswered({
+        question: {
+          uuid: uuidv7(),
+          flowStepUuid: uuidv7(),
+          position: 1,
+          questionType: "text",
+          questionPayload: {
+            question: "Question",
+          },
+          isCv: false,
+        },
+        answer: undefined,
+        questionUuidsWithUploadingDocuments: new Set(),
+        questionUuidsWithUploadingRecordings: new Set(),
+      }),
+    ).toBe(false);
   });
 
   it("returns true when an answer exists", () => {
@@ -172,6 +188,22 @@ describe("isTextQuestionAnswered", () => {
       answeredAt: new Date(),
     };
 
-    expect(isTextQuestionAnswered(answer)).toBe(true);
+    expect(
+      textQuestionBehavior.isAnswered({
+        question: {
+          uuid: answer.questionUuid,
+          flowStepUuid: uuidv7(),
+          position: 1,
+          questionType: "text",
+          questionPayload: {
+            question: "Question",
+          },
+          isCv: false,
+        },
+        answer,
+        questionUuidsWithUploadingDocuments: new Set(),
+        questionUuidsWithUploadingRecordings: new Set(),
+      }),
+    ).toBe(true);
   });
 });

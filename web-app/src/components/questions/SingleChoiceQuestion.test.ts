@@ -15,8 +15,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type z from "zod";
 import type { InterviewFormType } from "@/components/Interview";
 import {
-  isSingleChoiceQuestionAnswered,
   SingleChoiceQuestion,
+  singleChoiceQuestionBehavior,
 } from "@/components/questions/SingleChoiceQuestion";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 
@@ -194,9 +194,26 @@ describe("SingleChoiceQuestion", () => {
   });
 });
 
-describe("isSingleChoiceQuestionAnswered", () => {
+describe("singleChoiceQuestionBehavior", () => {
   it("returns false when no answer exists", () => {
-    expect(isSingleChoiceQuestionAnswered(undefined)).toBe(false);
+    expect(
+      singleChoiceQuestionBehavior.isAnswered({
+        question: {
+          uuid: uuidv7(),
+          flowStepUuid: uuidv7(),
+          position: 1,
+          questionType: "single_choice",
+          questionPayload: {
+            question: "Question",
+            options: ["Option A"],
+          },
+          isCv: false,
+        },
+        answer: undefined,
+        questionUuidsWithUploadingDocuments: new Set(),
+        questionUuidsWithUploadingRecordings: new Set(),
+      }),
+    ).toBe(false);
   });
 
   it("returns true when an answer exists", () => {
@@ -210,6 +227,23 @@ describe("isSingleChoiceQuestionAnswered", () => {
       answeredAt: new Date(),
     };
 
-    expect(isSingleChoiceQuestionAnswered(answer)).toBe(true);
+    expect(
+      singleChoiceQuestionBehavior.isAnswered({
+        question: {
+          uuid: answer.questionUuid,
+          flowStepUuid: uuidv7(),
+          position: 1,
+          questionType: "single_choice",
+          questionPayload: {
+            question: "Question",
+            options: ["Option A"],
+          },
+          isCv: false,
+        },
+        answer,
+        questionUuidsWithUploadingDocuments: new Set(),
+        questionUuidsWithUploadingRecordings: new Set(),
+      }),
+    ).toBe(true);
   });
 });

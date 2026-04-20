@@ -15,8 +15,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type z from "zod";
 import type { InterviewFormType } from "@/components/Interview";
 import {
-  isMultipleChoiceQuestionAnswered,
   MultipleChoiceQuestion,
+  multipleChoiceQuestionBehavior,
 } from "@/components/questions/MultipleChoiceQuestion";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 
@@ -177,9 +177,26 @@ describe("MultipleChoiceQuestion", () => {
   });
 });
 
-describe("isMultipleChoiceQuestionAnswered", () => {
+describe("multipleChoiceQuestionBehavior", () => {
   it("returns false when no answer exists", () => {
-    expect(isMultipleChoiceQuestionAnswered(undefined)).toBe(false);
+    expect(
+      multipleChoiceQuestionBehavior.isAnswered({
+        question: {
+          uuid: uuidv7(),
+          flowStepUuid: uuidv7(),
+          position: 1,
+          questionType: "multiple_choice",
+          questionPayload: {
+            question: "Question",
+            options: ["Option A"],
+          },
+          isCv: false,
+        },
+        answer: undefined,
+        questionUuidsWithUploadingDocuments: new Set(),
+        questionUuidsWithUploadingRecordings: new Set(),
+      }),
+    ).toBe(false);
   });
 
   it("returns true when an answer exists", () => {
@@ -193,6 +210,23 @@ describe("isMultipleChoiceQuestionAnswered", () => {
       answeredAt: new Date(),
     };
 
-    expect(isMultipleChoiceQuestionAnswered(answer)).toBe(true);
+    expect(
+      multipleChoiceQuestionBehavior.isAnswered({
+        question: {
+          uuid: answer.questionUuid,
+          flowStepUuid: uuidv7(),
+          position: 1,
+          questionType: "multiple_choice",
+          questionPayload: {
+            question: "Question",
+            options: ["Option A"],
+          },
+          isCv: false,
+        },
+        answer,
+        questionUuidsWithUploadingDocuments: new Set(),
+        questionUuidsWithUploadingRecordings: new Set(),
+      }),
+    ).toBe(true);
   });
 });

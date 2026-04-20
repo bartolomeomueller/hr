@@ -17,13 +17,53 @@ import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import type { InterviewFormType } from "../Interview";
 import { SlideInFromTop } from "../ui/animation";
 import { Input } from "../ui/input";
+import type { QuestionBehavior } from "./questionBehavior";
 
 // TODO think about making each question optional possible, if the user does not want to answer a question
 
-export function isTextQuestionAnswered(
+export const textQuestionBehavior: QuestionBehavior = {
+  getFormDefaultValue: getTextQuestionFormDefaultValue,
+  isAnswered: ({ answer }) => isTextQuestionAnswered(answer),
+  renderQuestionBlockQuestion: ({
+    form,
+    question,
+    interviewUuid,
+    queryKeyToInvalidateAnswers,
+    answer,
+  }) => (
+    <TextQuestion
+      key={question.uuid}
+      form={form}
+      question={question}
+      interviewUuid={interviewUuid}
+      queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+      answer={answer}
+    />
+  ),
+};
+
+function isTextQuestionAnswered(
   answer: z.infer<typeof AnswerSelectSchema> | undefined,
 ) {
   return answer !== undefined;
+}
+
+function getTextQuestionFormDefaultValue(
+  answer: z.infer<typeof AnswerSelectSchema> | undefined,
+) {
+  if (!answer) {
+    return "";
+  }
+
+  const textAnswerPayloadResult = TextAnswerPayloadType.safeParse(
+    answer.answerPayload,
+  );
+  if (!textAnswerPayloadResult.success)
+    throw new Error(
+      `Answer payload does not match expected type for text question. This should never happen, please report it. ${textAnswerPayloadResult.error.message}`,
+    );
+
+  return textAnswerPayloadResult.data.answer;
 }
 
 export function TextQuestion({

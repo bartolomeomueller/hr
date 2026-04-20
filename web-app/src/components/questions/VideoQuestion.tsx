@@ -9,9 +9,22 @@ import {
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { recordingUploadService } from "@/services/RecordingUploadService.client";
 import { Large } from "../ui/typography";
+import type { QuestionBehavior } from "./questionBehavior";
 import { VideoRecorder } from "./VideoRecorder";
 
-export function isVideoQuestionAnswered(
+export const videoQuestionBehavior: QuestionBehavior = {
+  getFormDefaultValue: getVideoQuestionFormDefaultValue,
+  isAnswered: ({ question, answer, questionUuidsWithUploadingRecordings }) =>
+    isVideoQuestionAnswered(
+      answer,
+      questionUuidsWithUploadingRecordings.has(question.uuid),
+    ),
+  renderQuestionBlockQuestion: () => {
+    throw new Error("Video questions are not supported in question blocks.");
+  },
+};
+
+function isVideoQuestionAnswered(
   answer: z.infer<typeof AnswerSelectSchema> | undefined,
   hasUploadingRecordingForQuestion = false,
 ) {
@@ -20,6 +33,11 @@ export function isVideoQuestionAnswered(
   }
 
   return hasUploadingRecordingForQuestion;
+}
+
+// Tanstack Form is not used for this component.
+function getVideoQuestionFormDefaultValue() {
+  return undefined;
 }
 
 export function VideoQuestion({

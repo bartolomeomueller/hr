@@ -26,13 +26,52 @@ import {
   FieldTitle,
 } from "../ui/field";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
+import type { QuestionBehavior } from "./questionBehavior";
 
 // TODO add support for skipping each question, if the admins allow it, make each question optional on admin request
 
-export function isSingleChoiceQuestionAnswered(
+export const singleChoiceQuestionBehavior: QuestionBehavior = {
+  getFormDefaultValue: getSingleChoiceQuestionFormDefaultValue,
+  isAnswered: ({ answer }) => isSingleChoiceQuestionAnswered(answer),
+  renderQuestionBlockQuestion: ({
+    form,
+    question,
+    interviewUuid,
+    queryKeyToInvalidateAnswers,
+    answer,
+  }) => (
+    <SingleChoiceQuestion
+      key={question.uuid}
+      form={form}
+      question={question}
+      interviewUuid={interviewUuid}
+      queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+      answer={answer}
+    />
+  ),
+};
+
+function isSingleChoiceQuestionAnswered(
   answer: z.infer<typeof AnswerSelectSchema> | undefined,
 ) {
   return answer !== undefined;
+}
+
+function getSingleChoiceQuestionFormDefaultValue(
+  answer: z.infer<typeof AnswerSelectSchema> | undefined,
+) {
+  if (!answer) {
+    return "";
+  }
+
+  const singleChoiceAnswerPayloadResult =
+    SingleChoiceAnswerPayloadType.safeParse(answer.answerPayload);
+  if (!singleChoiceAnswerPayloadResult.success)
+    throw new Error(
+      `Answer payload does not match expected type for single choice question. This should never happen, please report it. ${singleChoiceAnswerPayloadResult.error.message}`,
+    );
+
+  return singleChoiceAnswerPayloadResult.data.selectedOption;
 }
 
 // TODO With fewer than 10 options, radio buttons are used, with more a dropdown

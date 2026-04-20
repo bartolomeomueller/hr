@@ -1,14 +1,9 @@
 import type z from "zod";
 import { useShallow } from "zustand/shallow";
-import { QuestionType } from "@/db/payload-types";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 import { useRecordingUploadStore } from "@/stores/recordingUploadStore";
-import { isDocumentQuestionAnswered } from "./DocumentQuestion";
-import { isMultipleChoiceQuestionAnswered } from "./MultipleChoiceQuestion";
-import { isSingleChoiceQuestionAnswered } from "./SingleChoiceQuestion";
-import { isTextQuestionAnswered } from "./TextQuestion";
-import { isVideoQuestionAnswered } from "./VideoQuestion";
+import { isInterviewQuestionAnswered } from "./questionTypeHelpers";
 
 export function useCurrentFlowStepIsAnswered({
   currentFlowStepKind,
@@ -46,25 +41,12 @@ export function useCurrentFlowStepIsAnswered({
         (currentAnswer) => currentAnswer.questionUuid === question.uuid,
       );
 
-      switch (question.questionType) {
-        case QuestionType.video:
-          throw new Error("This is a bug, please report it");
-        case QuestionType.text:
-          return isTextQuestionAnswered(answer);
-        case QuestionType.single_choice:
-          return isSingleChoiceQuestionAnswered(answer);
-        case QuestionType.multiple_choice:
-          return isMultipleChoiceQuestionAnswered(answer);
-        case QuestionType.document:
-          return isDocumentQuestionAnswered(
-            answer,
-            questionUuidsWithUploadingDocuments.has(question.uuid),
-          );
-        default:
-          throw new Error(
-            `Question type ${question.questionType} is not supported. Please report this bug.`,
-          );
-      }
+      return isInterviewQuestionAnswered({
+        question,
+        answer,
+        questionUuidsWithUploadingDocuments,
+        questionUuidsWithUploadingRecordings,
+      });
     });
   }
 
@@ -75,8 +57,12 @@ export function useCurrentFlowStepIsAnswered({
     );
   }
 
-  return isVideoQuestionAnswered(
-    answers.find((answer) => answer.questionUuid === currentVideoQuestion.uuid),
-    questionUuidsWithUploadingRecordings.has(currentVideoQuestion.uuid),
-  );
+  return isInterviewQuestionAnswered({
+    question: currentVideoQuestion,
+    answer: answers.find(
+      (answer) => answer.questionUuid === currentVideoQuestion.uuid,
+    ),
+    questionUuidsWithUploadingDocuments,
+    questionUuidsWithUploadingRecordings,
+  });
 }

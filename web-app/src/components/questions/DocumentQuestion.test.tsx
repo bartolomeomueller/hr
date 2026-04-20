@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type z from "zod";
 import {
   DocumentQuestion,
-  isDocumentQuestionAnswered,
+  documentQuestionBehavior,
 } from "@/components/questions/DocumentQuestion";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
@@ -775,9 +775,27 @@ describe("DocumentQuestion", () => {
   });
 });
 
-describe("isDocumentQuestionAnswered", () => {
+describe("documentQuestionBehavior", () => {
   it("returns false when no answer exists", () => {
-    expect(isDocumentQuestionAnswered(undefined)).toBe(false);
+    expect(
+      documentQuestionBehavior.isAnswered({
+        question: {
+          uuid: "question-1",
+          flowStepUuid: "flow-step-1",
+          position: 1,
+          questionType: "document",
+          questionPayload: {
+            prompt: "Upload your supporting documents",
+            minUploads: 0,
+            maxUploads: 3,
+          },
+          isCv: false,
+        },
+        answer: undefined,
+        questionUuidsWithUploadingDocuments: new Set(),
+        questionUuidsWithUploadingRecordings: new Set(),
+      }),
+    ).toBe(false);
   });
 
   it("returns true when an answer exists", () => {
@@ -791,10 +809,46 @@ describe("isDocumentQuestionAnswered", () => {
       answeredAt: new Date(),
     };
 
-    expect(isDocumentQuestionAnswered(answer)).toBe(true);
+    expect(
+      documentQuestionBehavior.isAnswered({
+        question: {
+          uuid: answer.questionUuid,
+          flowStepUuid: "flow-step-1",
+          position: 1,
+          questionType: "document",
+          questionPayload: {
+            prompt: "Upload your supporting documents",
+            minUploads: 0,
+            maxUploads: 3,
+          },
+          isCv: false,
+        },
+        answer,
+        questionUuidsWithUploadingDocuments: new Set(),
+        questionUuidsWithUploadingRecordings: new Set(),
+      }),
+    ).toBe(true);
   });
 
   it("returns true when a document for the question is still uploading", () => {
-    expect(isDocumentQuestionAnswered(undefined, true)).toBe(true);
+    expect(
+      documentQuestionBehavior.isAnswered({
+        question: {
+          uuid: "question-1",
+          flowStepUuid: "flow-step-1",
+          position: 1,
+          questionType: "document",
+          questionPayload: {
+            prompt: "Upload your supporting documents",
+            minUploads: 0,
+            maxUploads: 3,
+          },
+          isCv: false,
+        },
+        answer: undefined,
+        questionUuidsWithUploadingDocuments: new Set(["question-1"]),
+        questionUuidsWithUploadingRecordings: new Set(),
+      }),
+    ).toBe(true);
   });
 });

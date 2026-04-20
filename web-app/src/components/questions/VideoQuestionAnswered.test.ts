@@ -8,7 +8,7 @@ vi.mock("@/services/RecordingUploadService.client", () => ({
   },
 }));
 
-import { isVideoQuestionAnswered } from "@/components/questions/VideoQuestion";
+import { videoQuestionBehavior } from "@/components/questions/VideoQuestion";
 import { QuestionType } from "@/db/payload-types";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 
@@ -27,9 +27,18 @@ function createVideoQuestion(): z.infer<typeof QuestionSelectSchema> {
   };
 }
 
-describe("isVideoQuestionAnswered", () => {
+describe("videoQuestionBehavior", () => {
   it("returns false when no answer exists and no upload is in progress", () => {
-    expect(isVideoQuestionAnswered(undefined)).toBe(false);
+    const question = createVideoQuestion();
+
+    expect(
+      videoQuestionBehavior.isAnswered({
+        question,
+        answer: undefined,
+        questionUuidsWithUploadingDocuments: new Set(),
+        questionUuidsWithUploadingRecordings: new Set(),
+      }),
+    ).toBe(false);
   });
 
   it("returns true when an answer exists", () => {
@@ -45,14 +54,39 @@ describe("isVideoQuestionAnswered", () => {
       answeredAt: new Date(),
     };
 
-    expect(isVideoQuestionAnswered(answer)).toBe(true);
+    expect(
+      videoQuestionBehavior.isAnswered({
+        question,
+        answer,
+        questionUuidsWithUploadingDocuments: new Set(),
+        questionUuidsWithUploadingRecordings: new Set(),
+      }),
+    ).toBe(true);
   });
 
   it("returns false when no final upload is in progress", () => {
-    expect(isVideoQuestionAnswered(undefined, false)).toBe(false);
+    const question = createVideoQuestion();
+
+    expect(
+      videoQuestionBehavior.isAnswered({
+        question,
+        answer: undefined,
+        questionUuidsWithUploadingDocuments: new Set(),
+        questionUuidsWithUploadingRecordings: new Set(),
+      }),
+    ).toBe(false);
   });
 
   it("returns true when the final upload is in progress", () => {
-    expect(isVideoQuestionAnswered(undefined, true)).toBe(true);
+    const question = createVideoQuestion();
+
+    expect(
+      videoQuestionBehavior.isAnswered({
+        question,
+        answer: undefined,
+        questionUuidsWithUploadingDocuments: new Set(),
+        questionUuidsWithUploadingRecordings: new Set([question.uuid]),
+      }),
+    ).toBe(true);
   });
 });
