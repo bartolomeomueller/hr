@@ -51,15 +51,12 @@ export const documentQuestionBehavior: QuestionBehavior = {
     queryKeyToInvalidateAnswers,
     answer,
   }) => (
-    // TODO check if ClientOnly is still necessary here
-    <ClientOnly key={question.uuid}>
-      <DocumentQuestion
-        question={question}
-        interviewUuid={interviewUuid}
-        queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
-        answer={answer}
-      />
-    </ClientOnly>
+    <DocumentQuestion
+      question={question}
+      interviewUuid={interviewUuid}
+      queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+      answer={answer}
+    />
   ),
 };
 
@@ -302,7 +299,7 @@ export function DocumentQuestion({
       }
     } else {
       // For multiple file upload, if there is already a document with the same name, we want to keep it.
-      filesToAddToUpload = nextFiles.filter((file) => {
+      filesToAddToUpload = pdfFiles.filter((file) => {
         if (
           documents.some((document) => document.fileName === file.name) ||
           documentsToUpload.some((doc) => doc.file.name === file.name)

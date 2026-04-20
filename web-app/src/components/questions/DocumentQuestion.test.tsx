@@ -202,6 +202,44 @@ describe("DocumentQuestion", () => {
     expect(addToUploadPipelineMock).not.toHaveBeenCalled();
   });
 
+  it("shows only the wrong-type info toast and queues only pdf files for mixed multi uploads", () => {
+    const { container } = renderDocumentQuestion({
+      questionPayload: {
+        prompt: "Upload your supporting documents",
+        minUploads: 0,
+        maxUploads: 3,
+      },
+    });
+
+    const fileInput = container.querySelector('input[type="file"]');
+    if (!fileInput) {
+      throw new Error("Expected document question to render a file input.");
+    }
+
+    const validPdf = new File(["pdf"], "resume.pdf", {
+      type: "application/pdf",
+    });
+    const invalidDocx = new File(["docx"], "cover-letter.docx", {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+
+    fireEvent.change(fileInput, {
+      target: {
+        files: [validPdf, invalidDocx],
+      },
+    });
+
+    expect(toastInfoMock).toHaveBeenCalledTimes(1);
+    expect(addToUploadPipelineMock).toHaveBeenCalledTimes(1);
+    expect(addToUploadPipelineMock).toHaveBeenCalledWith({
+      file: validPdf,
+      interviewUuid: "interview-1",
+      questionUuid: "question-1",
+      queryKeyToInvalidateAnswers: ["answers", "interview-1"],
+      isSingleFileUpload: false,
+    });
+  });
+
   it("reflects an existing 'no_documents' answer as checked", () => {
     renderDocumentQuestion({
       questionPayload: {
