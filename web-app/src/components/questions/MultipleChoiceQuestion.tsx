@@ -152,7 +152,6 @@ export function MultipleChoiceQuestion({
   return (
     <form.Field
       name={question.uuid}
-      mode="array"
       validators={{
         onChange: answerValidator,
       }}
@@ -179,6 +178,7 @@ export function MultipleChoiceQuestion({
       children={(field) => {
         const isInvalid =
           field.state.meta.isBlurred && !field.state.meta.isValid;
+        const selectedOptions = field.state.value as string[];
         return (
           <div className="py-2">
             <FieldSet>
@@ -193,20 +193,20 @@ export function MultipleChoiceQuestion({
                       orientation="horizontal"
                       data-invalid={isInvalid}
                     >
-                      <Checkbox
-                        id={option}
-                        name={field.name}
-                        aria-invalid={isInvalid}
-                        checked={field.state.value.includes(option)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            field.pushValue(option);
-                          } else {
-                            const index = field.state.value.indexOf(option);
-                            if (index > -1) {
-                              field.removeValue(index);
-                            }
-                          }
+                    <Checkbox
+                      id={option}
+                      name={field.name}
+                      aria-invalid={isInvalid}
+                      checked={selectedOptions.includes(option)}
+                      onBlur={field.handleBlur}
+                      onCheckedChange={(checked) => {
+                        const nextSelectedOptions = checked
+                          ? [...selectedOptions, option]
+                          : selectedOptions.filter(
+                              (selectedOption) => selectedOption !== option,
+                            );
+
+                          field.handleChange(nextSelectedOptions);
                         }}
                       />
                       <FieldLabel htmlFor={option}>{option}</FieldLabel>

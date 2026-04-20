@@ -34,6 +34,7 @@ export function SlideInFromTop({
         "grid transition-all duration-300 ease-in-out",
         isVisible ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
         className,
+        "py-1",
       )}
       aria-hidden={!isVisible}
       {...props}
