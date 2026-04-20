@@ -52,6 +52,7 @@ export const documentQuestionBehavior: QuestionBehavior = {
     answer,
   }) => (
     <DocumentQuestion
+      key={question.uuid}
       question={question}
       interviewUuid={interviewUuid}
       queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
