@@ -146,6 +146,7 @@ function renderDocumentQuestion({
 
 describe("DocumentQuestion", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     cleanup();
     saveAnswerMutationFnMock.mockClear();
     deleteAnswerMutationFnMock.mockClear();
@@ -489,10 +490,9 @@ describe("DocumentQuestion", () => {
     });
 
     expect(
-      queryClient.getQueryData<{ answers: Array<z.infer<typeof AnswerSelectSchema>> }>([
-        "answers",
-        "interview-1",
-      ]),
+      queryClient.getQueryData<{
+        answers: Array<z.infer<typeof AnswerSelectSchema>>;
+      }>(["answers", "interview-1"]),
     ).toMatchObject({
       answers: [
         {
@@ -611,10 +611,9 @@ describe("DocumentQuestion", () => {
     });
 
     expect(
-      queryClient.getQueryData<{ answers: Array<z.infer<typeof AnswerSelectSchema>> }>([
-        "answers",
-        "interview-1",
-      ]),
+      queryClient.getQueryData<{
+        answers: Array<z.infer<typeof AnswerSelectSchema>>;
+      }>(["answers", "interview-1"]),
     ).toMatchObject({
       answers: [],
     });
@@ -623,6 +622,7 @@ describe("DocumentQuestion", () => {
   });
 
   it("shows an error and allows retrying when opening a document fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     const windowOpenSpy = vi
       .spyOn(window, "open")
       .mockImplementation(() => null);
@@ -656,9 +656,7 @@ describe("DocumentQuestion", () => {
     await waitFor(() => {
       expect(toastErrorMock).toHaveBeenCalledTimes(1);
     });
-    expect(
-      createDocumentDownloadUrlMutationFnMock.mock.calls[0]?.[0],
-    ).toEqual({
+    expect(createDocumentDownloadUrlMutationFnMock.mock.calls[0]?.[0]).toEqual({
       documentUuid: expect.any(String),
       interviewUuid: "interview-1",
     });
@@ -669,9 +667,7 @@ describe("DocumentQuestion", () => {
     await waitFor(() => {
       expect(createDocumentDownloadUrlMutationFnMock).toHaveBeenCalledTimes(2);
     });
-    expect(
-      createDocumentDownloadUrlMutationFnMock.mock.calls[1]?.[0],
-    ).toEqual({
+    expect(createDocumentDownloadUrlMutationFnMock.mock.calls[1]?.[0]).toEqual({
       documentUuid: expect.any(String),
       interviewUuid: "interview-1",
     });
@@ -686,6 +682,7 @@ describe("DocumentQuestion", () => {
   });
 
   it("shows an error toast when deleting a document fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     deleteDocumentMutationFnMock.mockRejectedValueOnce(
       new Error("deletion failed"),
     );
@@ -759,10 +756,9 @@ describe("DocumentQuestion", () => {
     });
 
     expect(
-      queryClient.getQueryData<{ answers: Array<z.infer<typeof AnswerSelectSchema>> }>([
-        "answers",
-        "interview-1",
-      ]),
+      queryClient.getQueryData<{
+        answers: Array<z.infer<typeof AnswerSelectSchema>>;
+      }>(["answers", "interview-1"]),
     ).toMatchObject({
       answers: [
         {

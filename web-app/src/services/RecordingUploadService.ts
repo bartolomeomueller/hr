@@ -620,9 +620,6 @@ export class RecordingUploadService {
           this.dependencies.recordingUploadStore
             .getState()
             .updateRecordingProgress(fileIndex, progress);
-          console.log(
-            `Upload progress for file index ${fileIndex}: ${progress}%`,
-          );
         }
       };
 

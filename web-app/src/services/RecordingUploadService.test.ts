@@ -223,11 +223,13 @@ function createService({
 describe("RecordingUploadService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
     useRecordingUploadStore.setState({ recordings: [] });
     useUploadedRecordingPartsStore.setState({ uploadedParts: {} });
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     useRecordingUploadStore.setState({ recordings: [] });
     useUploadedRecordingPartsStore.setState({ uploadedParts: {} });
   });

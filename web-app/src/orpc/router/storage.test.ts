@@ -23,6 +23,19 @@ vi.mock("@/lib/s3.server", () => ({
   initiateMultipartUploadForVideo: vi.fn(),
 }));
 
+vi.mock("@/lib/bullmq.server", () => ({
+  enqueueVideoProcessingJob: vi.fn(),
+  cancelVideoProcessingJob: vi.fn(),
+}));
+
+vi.mock("@/lib/auth.server", () => ({
+  auth: {
+    api: {
+      getSession: vi.fn(),
+    },
+  },
+}));
+
 const client = createRouterClient(router, {
   context: () => ({
     headers: new Headers(),
