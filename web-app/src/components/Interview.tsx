@@ -24,6 +24,11 @@ import { H1 } from "./ui/typography";
 
 // TODO think about what to do with the questions that have not been answered by a applicant, should they get an empty answer or no answer
 
+// TODO think about how to lock down an interview
+// a finished interview should not be accessible anymore
+// a unfinished interview should promt a email, if the candidate would like to continue his interview, or if should be deleted
+// unfinished interviews should be deleted after a certain time
+
 export function Interview({
   uuid,
   currentFlowStep,
@@ -162,7 +167,6 @@ export function Interview({
     };
   }, [hideForm]);
 
-  // TODO maybe hook the buttons of next and previous to the form state, only let next button enabled if all required questions have an answer
   const form = useForm({
     defaultValues: getFormDefaultValues({
       questions: questionsQuery.data?.questions,
@@ -194,7 +198,47 @@ export function Interview({
     return null;
   }
 
-  const flowSteps = questionsData.flowSteps;
+  return (
+    <InterviewStepContent
+      currentFlowStep={currentFlowStep}
+      flowSteps={questionsData.flowSteps}
+      questions={questionsData.questions}
+      roleName={questionsData.role.roleName}
+      interviewUuid={interviewRelatedData.interview.uuid}
+      answers={interviewRelatedData.answers}
+      queryKeyToInvalidateAnswers={interviewRelatedDataQueryOptions.queryKey}
+      form={form}
+      onFlowStepChange={onFlowStepChange}
+      finalizeInterview={finalizeInterview}
+    />
+  );
+}
+
+function InterviewStepContent({
+  currentFlowStep,
+  flowSteps,
+  questions,
+  roleName,
+  interviewUuid,
+  answers,
+  queryKeyToInvalidateAnswers,
+  form,
+  onFlowStepChange,
+  finalizeInterview,
+}: {
+  currentFlowStep?: number;
+  flowSteps: Array<{ uuid: string; position: number; kind: string | null }>;
+  questions: Array<z.infer<typeof QuestionSelectSchema>>;
+  roleName: string;
+  interviewUuid: string;
+  answers: Array<z.infer<typeof AnswerSelectSchema>>;
+  queryKeyToInvalidateAnswers: ReturnType<
+    typeof orpc.getInterviewRelatedDataByInterviewUuid.queryOptions
+  >["queryKey"];
+  form: InterviewFormType;
+  onFlowStepChange: (step: number) => void;
+  finalizeInterview: () => void;
+}) {
   const activeFlowStepPosition = currentFlowStep ?? flowSteps[0].position; // if search param is not yet defined
   const activeFlowStepIndex = flowSteps.findIndex(
     (step) => step.position === activeFlowStepPosition,
@@ -212,7 +256,7 @@ export function Interview({
     throw new Error(
       "Current flow step does not exist in the provided flow steps. This should never happen, please report it.",
     );
-  const currentFlowStepQuestions = questionsData.questions.filter(
+  const currentFlowStepQuestions = questions.filter(
     (question) => question.flowStepUuid === currentFlowStepData.uuid,
   );
   const previousFlowStep =
@@ -221,13 +265,13 @@ export function Interview({
   const currentFlowStepIsAnswered = useCurrentFlowStepIsAnswered({
     currentFlowStepKind,
     currentFlowStepQuestions,
-    answers: interviewRelatedData.answers,
+    answers,
   });
 
   return (
     <div className="flex justify-center px-2 sm:px-4 md:px-8">
       <div className="flex w-full flex-col gap-4 lg:w-9/12">
-        <H1>{questionsData.role.roleName}</H1>
+        <H1>{roleName}</H1>
         <InterviewNavigation
           previousFlowStepPosition={previousFlowStep?.position}
           nextFlowStepPosition={nextFlowStep?.position}
@@ -239,21 +283,17 @@ export function Interview({
           <QuestionBlock
             form={form}
             questions={currentFlowStepQuestions}
-            interviewUuid={interviewRelatedData.interview.uuid}
-            queryKeyToInvalidateAnswers={
-              interviewRelatedDataQueryOptions.queryKey
-            }
-            answers={interviewRelatedData.answers}
+            interviewUuid={interviewUuid}
+            queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+            answers={answers}
           />
         )}
         {currentFlowStepKind === "video" && (
           <VideoQuestion
             questions={currentFlowStepQuestions}
-            interviewUuid={interviewRelatedData.interview.uuid}
-            queryKeyToInvalidateAnswers={
-              interviewRelatedDataQueryOptions.queryKey
-            }
-            answers={interviewRelatedData.answers}
+            interviewUuid={interviewUuid}
+            queryKeyToInvalidateAnswers={queryKeyToInvalidateAnswers}
+            answers={answers}
           />
         )}
         <InterviewNavigation
