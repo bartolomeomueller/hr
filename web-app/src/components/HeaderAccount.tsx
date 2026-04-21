@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 
 export default function HeaderAccount() {
   const redirectTo = useRouterState({
-    select: (state) => state.location.href,
+    select: (state) => getRedirectTarget(state.location.href),
   });
 
   return (
@@ -46,4 +46,11 @@ export default function HeaderAccount() {
       </SignedIn>
     </div>
   );
+}
+
+// Uses the current redirectTo or current href e.g. /admin to redirect the user back to the same page after signing in or signing up.
+function getRedirectTarget(currentHref: string) {
+  const currentUrl = new URL(currentHref, "https://example.com");
+
+  return currentUrl.searchParams.get("redirectTo") ?? currentHref;
 }
