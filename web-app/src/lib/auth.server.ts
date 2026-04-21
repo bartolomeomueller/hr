@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { organization } from "better-auth/plugins";
+import { magicLink, organization } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -15,6 +15,7 @@ import {
   User,
   Verification,
 } from "@/db/auth-schema";
+import { sendEmail } from "@/lib/email.server";
 
 // The databaseHooks and related functions are AI generated and not really comprehended.
 
@@ -83,8 +84,36 @@ export const auth = betterAuth({
       },
     },
   },
+  emailVerification: {
+    sendOnSignUp: true,
+    async sendVerificationEmail({ user, url }) {
+      void sendEmail({
+        to: user.email,
+        subject: "Verify your email address",
+        text: `Click the link to verify your email address: ${url}`,
+        html: renderEmailHtml({
+          intro:
+            "Please verify your email address to finish setting up your account.",
+          ctaLabel: "Verify email address",
+          url,
+        }),
+      });
+    },
+  },
   emailAndPassword: {
     enabled: true,
+    async sendResetPassword({ user, url }) {
+      void sendEmail({
+        to: user.email,
+        subject: "Reset your password",
+        text: `Click the link to reset your password: ${url}`,
+        html: renderEmailHtml({
+          intro: "A password reset was requested for your account.",
+          ctaLabel: "Reset password",
+          url,
+        }),
+      });
+    },
   },
   socialProviders: {
     google: {
@@ -92,9 +121,23 @@ export const auth = betterAuth({
       clientSecret: process.env.GOOGLE_AUTH_CLIENT_SECRET as string,
     },
   },
-  // TODO add magic link, email otp (maybe), passkey, generic oauth (maybe), one tap (maybe)
+  // TODO add email otp (maybe), passkey, generic oauth (maybe), one tap (maybe)
   // TODO add admin,
   plugins: [
+    magicLink({
+      async sendMagicLink({ email, url }) {
+        void sendEmail({
+          to: email,
+          subject: "Your sign-in link",
+          text: `Click the link to sign in: ${url}`,
+          html: renderEmailHtml({
+            intro: "Use this secure link to sign in to your account.",
+            ctaLabel: "Sign in",
+            url,
+          }),
+        });
+      },
+    }),
     organization({
       teams: {
         enabled: true,
@@ -103,6 +146,29 @@ export const auth = betterAuth({
     tanstackStartCookies(),
   ],
 });
+
+function renderEmailHtml({
+  intro,
+  ctaLabel,
+  url,
+}: {
+  intro: string;
+  ctaLabel: string;
+  url: string;
+}) {
+  return `
+    <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111827;">
+      <p>${intro}</p>
+      <p>
+        <a href="${url}" style="display: inline-block; padding: 12px 18px; background: #111827; color: #ffffff; text-decoration: none; border-radius: 6px;">
+          ${ctaLabel}
+        </a>
+      </p>
+      <p>If the button does not work, copy and paste this link into your browser:</p>
+      <p><a href="${url}">${url}</a></p>
+    </div>
+  `;
+}
 
 async function ensurePersonalOrganizationForUser(user: {
   id: string;

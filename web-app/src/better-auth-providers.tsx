@@ -27,6 +27,7 @@ export function BetterAuthProviders({ children }: { children: ReactNode }) {
           await router.invalidate(); // Invalidate all routes to ensure they re-run their loaders and fetch fresh data based on the new session.
         }}
         persistClient={false}
+        magicLink
         organization={{
           pathMode: "slug",
           basePath: "/organization",
