@@ -1,6 +1,14 @@
+import { Camera, ChevronDown, Mic, Square, Video } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "../ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 
 export function VideoRecorder({
   maxDurationSec,
@@ -35,40 +43,150 @@ export function VideoRecorder({
   const [isRecording, setIsRecording] = useState(false);
   const [timeFromLimitSec, setTimeFromLimitSec] = useState(maxDurationSec);
   const [error, setError] = useState<string | null>(null);
+  // List of all available audio and video input devices.
+  const [devices, setDevices] = useState<{
+    audioinput: MediaDeviceInfo[];
+    videoinput: MediaDeviceInfo[];
+  }>({
+    audioinput: [],
+    videoinput: [],
+  });
+  // Currently selected audio and video deviceIds.
+  const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState("");
+  const [selectedVideoDeviceId, setSelectedVideoDeviceId] = useState("");
+
+  const syncDevices = useCallback(
+    async ({
+      preferredAudioDeviceId,
+      preferredVideoDeviceId,
+    }: {
+      preferredAudioDeviceId: string;
+      preferredVideoDeviceId: string;
+    }) => {
+      const availableDevices = await readInputDevices();
+
+      const nextAudioDeviceId = getPreferredDeviceId(
+        availableDevices.audioinput,
+        preferredAudioDeviceId,
+      );
+      const nextVideoDeviceId = getPreferredDeviceId(
+        availableDevices.videoinput,
+        preferredVideoDeviceId,
+      );
+      const nextResolvedAudioDeviceKey = getResolvedDeviceKey(
+        availableDevices.audioinput,
+        nextAudioDeviceId,
+      );
+      const nextResolvedVideoDeviceKey = getResolvedDeviceKey(
+        availableDevices.videoinput,
+        nextVideoDeviceId,
+      );
+
+      setDevices(availableDevices);
+      setSelectedAudioDeviceId(nextAudioDeviceId);
+      setSelectedVideoDeviceId(nextVideoDeviceId);
+
+      return {
+        nextAudioDeviceId,
+        nextVideoDeviceId,
+        nextResolvedAudioDeviceKey,
+        nextResolvedVideoDeviceKey,
+      };
+    },
+    [],
+  );
+
+  const refreshPreviewStream = useCallback(
+    async ({
+      audioDeviceId,
+      videoDeviceId,
+      replaceAudio,
+      replaceVideo,
+    }: {
+      audioDeviceId: string;
+      videoDeviceId: string;
+      replaceAudio: boolean;
+      replaceVideo: boolean;
+    }) => {
+      try {
+        if (!streamRef.current || (replaceAudio && replaceVideo)) {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: getDeviceConstraint(videoDeviceId, {
+              height: { ideal: 1080 },
+            }),
+            audio: getDeviceConstraint(audioDeviceId, true),
+          });
+
+          if (streamRef.current) {
+            stopMediaStream(streamRef.current);
+          }
+          streamRef.current = stream;
+          setVideoElementStream(videoRef.current, stream);
+        } else {
+          if (replaceAudio) {
+            const audioStream = await navigator.mediaDevices.getUserMedia({
+              audio: getDeviceConstraint(audioDeviceId, true),
+              video: false,
+            });
+            replaceTrack(
+              streamRef.current,
+              audioStream.getAudioTracks()[0] ?? null,
+              "audio",
+            );
+          }
+
+          if (replaceVideo) {
+            const videoStream = await navigator.mediaDevices.getUserMedia({
+              video: getDeviceConstraint(videoDeviceId, {
+                height: { ideal: 1080 },
+              }),
+              audio: false,
+            });
+            replaceTrack(
+              streamRef.current,
+              videoStream.getVideoTracks()[0] ?? null,
+              "video",
+            );
+          }
+        }
+
+        setSelectedAudioDeviceId(audioDeviceId);
+        setSelectedVideoDeviceId(videoDeviceId);
+        setError(null);
+
+        await syncDevices({
+          preferredAudioDeviceId: audioDeviceId,
+          preferredVideoDeviceId: videoDeviceId,
+        });
+        return streamRef.current;
+      } catch (error) {
+        setError(
+          "Could not access camera/microphone. Please allow permissions and try again. If you do not find the permissions settings, just reload and you will be asked again.",
+        );
+        console.log("Error accessing media devices:", error);
+        return null;
+      }
+    },
+    [syncDevices],
+  );
 
   const ensurePreviewStream = useCallback(async () => {
     if (streamRef.current) {
       return streamRef.current;
     }
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { height: { ideal: 1080 } },
-        audio: true,
-      });
-
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.muted = true;
-        videoRef.current.play().catch(() => {
-          // Autoplay blocked by browser; preview will appear once user interacts
-        });
-      }
-
-      return stream;
-    } catch (error) {
-      setError(
-        "Could not access camera/microphone. Please allow permissions and try again. If you do not find the permissions settings, just reload and you will be asked again.",
-      );
-      console.log("Error accessing media devices:", error);
-      return null;
-    }
-  }, []);
+    return refreshPreviewStream({
+      audioDeviceId: selectedAudioDeviceId,
+      videoDeviceId: selectedVideoDeviceId,
+      replaceAudio: true,
+      replaceVideo: true,
+    });
+  }, [refreshPreviewStream, selectedAudioDeviceId, selectedVideoDeviceId]);
 
   useEffect(() => {
-    void ensurePreviewStream();
+    void (async () => {
+      await ensurePreviewStream();
+    })();
   }, [ensurePreviewStream]);
 
   const stopRecording = useCallback(() => {
@@ -88,20 +206,109 @@ export function VideoRecorder({
     setIsRecording(false);
   }, []);
 
+  // Audio and video hardware can change while this page is open, so resync the
+  // selected devices and preview stream whenever the browser reports a device change.
+  useEffect(() => {
+    const mediaDevices = navigator.mediaDevices;
+    if (!mediaDevices?.addEventListener) {
+      return;
+    }
+
+    const handleDeviceChange = () => {
+      void (async () => {
+        if (
+          devices.audioinput.length === 0 ||
+          devices.videoinput.length === 0 ||
+          !selectedAudioDeviceId ||
+          !selectedVideoDeviceId
+        ) {
+          return;
+        }
+
+        const currentResolvedAudioDeviceKey = getResolvedDeviceKey(
+          devices.audioinput,
+          selectedAudioDeviceId,
+        );
+        const currentResolvedVideoDeviceKey = getResolvedDeviceKey(
+          devices.videoinput,
+          selectedVideoDeviceId,
+        );
+        const {
+          nextAudioDeviceId,
+          nextVideoDeviceId,
+          nextResolvedAudioDeviceKey,
+          nextResolvedVideoDeviceKey,
+        } = await syncDevices({
+          preferredAudioDeviceId: selectedAudioDeviceId,
+          preferredVideoDeviceId: selectedVideoDeviceId,
+        });
+        if (
+          isRecording ||
+          (currentResolvedAudioDeviceKey === nextResolvedAudioDeviceKey &&
+            currentResolvedVideoDeviceKey === nextResolvedVideoDeviceKey)
+        ) {
+          return;
+        }
+
+        await refreshPreviewStream({
+          audioDeviceId: nextAudioDeviceId,
+          videoDeviceId: nextVideoDeviceId,
+          replaceAudio: true,
+          replaceVideo: true,
+        });
+      })();
+    };
+
+    mediaDevices.addEventListener("devicechange", handleDeviceChange);
+
+    return () => {
+      mediaDevices.removeEventListener("devicechange", handleDeviceChange);
+    };
+  }, [
+    devices.audioinput,
+    devices.videoinput,
+    isRecording,
+    refreshPreviewStream,
+    selectedAudioDeviceId,
+    selectedVideoDeviceId,
+    syncDevices,
+  ]);
+
   // Stop recording and release camera/mic tracks on unmount.
   // Lower cleanup functions will run before upper ones.
   useEffect(() => {
     return () => {
       stopRecording();
-
       if (streamRef.current) {
-        for (const track of streamRef.current.getTracks()) {
-          track.stop();
-        }
+        stopMediaStream(streamRef.current);
         streamRef.current = null;
       }
     };
   }, [stopRecording]);
+
+  const selectAudioDevice = useCallback(
+    async (deviceId: string) => {
+      await refreshPreviewStream({
+        audioDeviceId: deviceId,
+        videoDeviceId: selectedVideoDeviceId,
+        replaceAudio: true,
+        replaceVideo: false,
+      });
+    },
+    [refreshPreviewStream, selectedVideoDeviceId],
+  );
+
+  const selectVideoDevice = useCallback(
+    async (deviceId: string) => {
+      await refreshPreviewStream({
+        audioDeviceId: selectedAudioDeviceId,
+        videoDeviceId: deviceId,
+        replaceAudio: false,
+        replaceVideo: true,
+      });
+    },
+    [refreshPreviewStream, selectedAudioDeviceId],
+  );
 
   const startRecording = useCallback(async () => {
     setError(null);
@@ -227,7 +434,7 @@ export function VideoRecorder({
         </p>
       )}
 
-      <div className="w-full overflow-hidden rounded-xl shadow-lg">
+      <div className="relative w-full overflow-hidden rounded-xl bg-muted shadow-lg">
         <video
           ref={videoRef}
           className="aspect-video w-full object-cover"
@@ -237,6 +444,54 @@ export function VideoRecorder({
         >
           <track kind="captions" />
         </video>
+
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
+          <div className="flex items-center gap-3 rounded-full bg-background/20 px-3 py-2 shadow-lg backdrop-blur-sm">
+            <DeviceSelectorButton
+              icon={Mic}
+              label="Microphone"
+              disabled={isRecording || devices.audioinput.length === 0}
+              value={selectedAudioDeviceId}
+              devices={devices.audioinput}
+              onValueChange={selectAudioDevice}
+            />
+
+            <DeviceSelectorButton
+              icon={Camera}
+              label="Camera"
+              disabled={isRecording || devices.videoinput.length === 0}
+              value={selectedVideoDeviceId}
+              devices={devices.videoinput}
+              onValueChange={selectVideoDevice}
+            />
+
+            <div className="h-8 w-px bg-border" />
+
+            {!isRecording ? (
+              <Button
+                type="button"
+                onClick={startRecording}
+                variant="default"
+                className="rounded-full px-4"
+                size="lg"
+              >
+                <Video className="size-6 fill-current" />
+                Record
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={stopRecording}
+                variant="destructive"
+                className="rounded-full px-4"
+                size="lg"
+              >
+                <Square className="size-6 fill-current" />
+                Stop
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
       {isRecording && (
@@ -253,16 +508,254 @@ export function VideoRecorder({
           </span>
         </div>
       )}
-
-      {!isRecording ? (
-        <Button type="button" onClick={startRecording}>
-          Start Recording
-        </Button>
-      ) : (
-        <Button type="button" onClick={stopRecording} variant="destructive">
-          Stop Recording
-        </Button>
-      )}
     </div>
   );
+}
+
+function DeviceSelectorButton({
+  icon: Icon,
+  label,
+  disabled,
+  value,
+  devices,
+  onValueChange,
+}: {
+  icon: typeof Mic;
+  label: string;
+  disabled: boolean;
+  value: string;
+  devices: MediaDeviceInfo[];
+  onValueChange: (value: string) => void | Promise<void>;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild disabled={disabled}>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-lg"
+          className="rounded-full"
+          aria-label={
+            devices.length === 0
+              ? label
+              : `${label}: ${getSelectedDeviceLabel(devices, value)}`
+          }
+        >
+          <span className="relative">
+            <Icon className="size-5" />
+            <ChevronDown className="absolute -right-3 -bottom-1 size-3 rounded-full bg-background text-muted-foreground" />
+          </span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        className="w-max max-w-[calc(100vw-2rem)] min-w-60"
+        align="center"
+      >
+        {devices.length > 0 ? (
+          <DropdownMenuRadioGroup value={value} onValueChange={onValueChange}>
+            {devices.map((device) => (
+              <DropdownMenuRadioItem
+                key={device.deviceId}
+                value={device.deviceId}
+                className="items-start"
+              >
+                <span className="truncate">{getDeviceLabel(device)}</span>
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        ) : (
+          <p className="px-2 py-1.5 text-sm text-muted-foreground">
+            No entry found
+          </p>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// Releases all resources (camera/mic) used by the given stream by stopping all its tracks.
+function stopMediaStream(stream: MediaStream) {
+  for (const track of stream.getTracks()) {
+    track.stop();
+  }
+}
+
+function setVideoElementStream(
+  videoElement: HTMLVideoElement | null,
+  stream: MediaStream,
+) {
+  if (!videoElement) {
+    throw new Error(
+      "This is a bug, please report it. Missing video element for preview stream.",
+    );
+  }
+
+  videoElement.srcObject = stream;
+  videoElement.muted = true;
+  videoElement.play().catch(() => {
+    // Autoplay blocked by browser; preview will appear once user interacts
+  });
+}
+
+function replaceTrack(
+  stream: MediaStream,
+  nextTrack: MediaStreamTrack | null,
+  kind: "audio" | "video",
+) {
+  const currentTrack = stream.getTracks().find((track) => track.kind === kind);
+  if (currentTrack) {
+    stream.removeTrack(currentTrack);
+    currentTrack.stop();
+  }
+  if (nextTrack) {
+    stream.addTrack(nextTrack);
+  }
+}
+
+// Reads the available media input devices, deduplicates them and returns them grouped by kind.
+async function readInputDevices() {
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    throw new Error(
+      "This browser does not support enumerating media devices for the recorder.",
+    );
+  }
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  return {
+    audioinput: dedupeDevices(
+      devices.filter((device) => device.kind === "audioinput"),
+    ),
+    videoinput: dedupeDevices(
+      devices.filter((device) => device.kind === "videoinput"),
+    ),
+  };
+}
+
+// Deduplicates devices that represent the same physical device.
+// If a default device is available, it is kept as the first entry.
+function dedupeDevices(devices: MediaDeviceInfo[]) {
+  const defaultDevice = devices.find((device) => device.deviceId === "default");
+  const dedupedDevices = new Map<string, MediaDeviceInfo>();
+
+  for (const device of devices) {
+    if (device.deviceId === "default") {
+      continue;
+    }
+
+    const dedupeKey = getCanonicalDeviceKey(device);
+    if (!dedupedDevices.has(dedupeKey)) {
+      dedupedDevices.set(dedupeKey, device);
+    }
+  }
+
+  return defaultDevice
+    ? [defaultDevice, ...dedupedDevices.values()]
+    : [...dedupedDevices.values()];
+}
+
+// Returns the previous selected deviceId if it is still available.
+// Otherwise falls back to the "default" device if available, or the first available device, or an empty string if no devices are available.
+function getPreferredDeviceId(
+  devices: MediaDeviceInfo[],
+  selectedDeviceId: string,
+) {
+  // This can be untrue if the previous selected device gets disconnected.
+  if (devices.some((device) => device.deviceId === selectedDeviceId)) {
+    return selectedDeviceId;
+  }
+
+  return (
+    devices.find((device) => device.deviceId === "default")?.deviceId ??
+    devices[0]?.deviceId ??
+    ""
+  );
+}
+
+function getDeviceConstraint(
+  deviceId: string,
+  fallbackValue: boolean | MediaTrackConstraints,
+) {
+  if (!deviceId || deviceId === "default") {
+    return fallbackValue;
+  }
+
+  if (typeof fallbackValue === "boolean") {
+    return { deviceId: { exact: deviceId } };
+  }
+
+  return {
+    ...fallbackValue,
+    deviceId: { exact: deviceId },
+  };
+}
+
+// The device label can contain a technical suffix, which is removed by this function.
+function getDeviceLabel(device: MediaDeviceInfo) {
+  // Suffix can be something like " (2ca3:4011)"
+  const removeSuffixRegex = /\s*\([0-9a-f]+:[0-9a-f]+\)$/i;
+  return device.label.replace(removeSuffixRegex, "");
+}
+
+// Returns the label of the currently selected device, or "Unknown device" if it cannot be found (e.g. because it got unplugged).
+function getSelectedDeviceLabel(
+  devices: MediaDeviceInfo[],
+  selectedDeviceId: string,
+) {
+  const selectedDevice = devices.find(
+    (device) => device.deviceId === selectedDeviceId,
+  );
+  if (!selectedDevice) {
+    throw new Error(
+      "This is a bug, please report it. Selected device is missing from the current device list.",
+    );
+  }
+
+  return getDeviceLabel(selectedDevice);
+}
+
+// Resolve the currently selected device to the concrete underlying device key.
+// When "default" is selected, this returns the representative real device behind it.
+function getResolvedDeviceKey(
+  devices: MediaDeviceInfo[],
+  selectedDeviceId: string,
+) {
+  const selectedDevice = devices.find(
+    (device) => device.deviceId === selectedDeviceId,
+  );
+  if (!selectedDevice) {
+    throw new Error(
+      "This is a bug, please report it. Selected device is missing from the current device list.",
+    );
+  }
+
+  if (selectedDevice.deviceId === "default") {
+    const representativeDevice = getDefaultRepresentativeDevice(devices);
+    return representativeDevice
+      ? getCanonicalDeviceKey(representativeDevice)
+      : selectedDevice.deviceId;
+  }
+
+  return getCanonicalDeviceKey(selectedDevice);
+}
+
+function getDefaultRepresentativeDevice(devices: MediaDeviceInfo[]) {
+  const defaultDevice = devices.find((device) => device.deviceId === "default");
+  if (!defaultDevice) {
+    throw new Error(
+      "This is a bug, please report it. A browser default device needs a default entry to represent it.",
+    );
+  }
+
+  return devices.find(
+    (device) =>
+      device.deviceId !== "default" &&
+      defaultDevice.groupId &&
+      device.groupId === defaultDevice.groupId,
+  );
+}
+
+// The groupId is the same for devices that are part of the same physical device.
+// That should be set (maybe safari might cause issues), if not fall back to the deviceId.
+function getCanonicalDeviceKey(device: MediaDeviceInfo) {
+  return device.groupId || device.deviceId;
 }
