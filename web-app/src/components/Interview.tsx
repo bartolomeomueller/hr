@@ -173,25 +173,6 @@ export function Interview({
     );
   }
 
-  const currentFlowStepData = questionsData.flowSteps.find(
-    (step) => step.position === (currentFlowStep ?? initialFlowStep.position),
-  );
-  if (!currentFlowStepData) {
-    throw new Error(
-      `Current flow step ${String(currentFlowStep ?? initialFlowStep.position)} does not exist in the provided flow steps. Possible values are ${questionsData.flowSteps
-        .map((step) => step.position)
-        .join(", ")}.`,
-    );
-  }
-
-  const form = useForm({
-    defaultValues: getCurrentFlowStepFormDefaultValues({
-      questions: questionsData.questions,
-      answers: interviewRelatedData.answers,
-      currentFlowStepUuid: currentFlowStepData.uuid,
-    }),
-  });
-
   if (
     interviewRelatedData.interview.flowVersionUuid !==
     questionsData.flowVersion.uuid
@@ -214,7 +195,6 @@ export function Interview({
       interviewUuid={interviewRelatedData.interview.uuid}
       answers={interviewRelatedData.answers}
       queryKeyToInvalidateAnswers={interviewRelatedDataQueryOptions.queryKey}
-      form={form}
       onFlowStepChange={onFlowStepChange}
       finalizeInterview={finalizeInterview}
     />
@@ -229,7 +209,6 @@ function InterviewStepContent({
   interviewUuid,
   answers,
   queryKeyToInvalidateAnswers,
-  form,
   onFlowStepChange,
   finalizeInterview,
 }: {
@@ -242,7 +221,6 @@ function InterviewStepContent({
   queryKeyToInvalidateAnswers: ReturnType<
     typeof orpc.getInterviewRelatedDataByInterviewUuid.queryOptions
   >["queryKey"];
-  form: InterviewFormType;
   onFlowStepChange: (step: number) => void;
   finalizeInterview: () => void;
 }) {
@@ -266,6 +244,14 @@ function InterviewStepContent({
   const currentFlowStepQuestions = questions.filter(
     (question) => question.flowStepUuid === currentFlowStepData.uuid,
   );
+  const form = useForm({
+    formId: currentFlowStepData.uuid,
+    defaultValues: getCurrentFlowStepFormDefaultValues({
+      questions,
+      answers,
+      currentFlowStepUuid: currentFlowStepData.uuid,
+    }),
+  });
   const previousFlowStep =
     activeFlowStepIndex > 0 ? flowSteps.at(activeFlowStepIndex - 1) : null;
   const nextFlowStep = flowSteps.at(activeFlowStepIndex + 1) ?? null;
