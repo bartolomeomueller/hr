@@ -1,13 +1,21 @@
-import type { QueryKey } from "@tanstack/react-query";
+import { type QueryKey, useMutation } from "@tanstack/react-query";
 import { ClientOnly } from "@tanstack/react-router";
 import { useState } from "react";
+import { toast } from "sonner";
 import type z from "zod";
 import {
   VideoAnswerPayloadType,
   VideoQuestionPayloadType,
 } from "@/db/payload-types";
+import {
+  type InterviewRelatedDataQueryData,
+  removeAnswerFromInterviewRelatedDataCache,
+} from "@/lib/interview-related-data-cache";
+import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { recordingUploadService } from "@/services/RecordingUploadService.client";
+import { useRecordingUploadStore } from "@/stores/recordingUploadStore";
+import { Button } from "../ui/button";
 import { Large } from "../ui/typography";
 import type { QuestionBehavior } from "./questionBehavior";
 import { VideoRecorder } from "./VideoRecorder";
@@ -75,31 +83,93 @@ export function VideoQuestion({
       ? answerPayloadParseResult.data.videoUuid
       : "",
   );
+  const hasUploadingRecordingWithLastPart = useRecordingUploadStore((state) =>
+    state.recordings.some(
+      (recording) =>
+        recording.questionUuid === question.uuid && recording.isLastPart,
+    ),
+  );
+  const hasAnswerOrUploadingRecordingWithLastPart =
+    !!answer || hasUploadingRecordingWithLastPart;
 
-  // TODO implement recording of new video with warning, that the old recording will be deleted
+  const { mutate: deleteRecording, isPending: isDeletingRecording } =
+    useMutation({
+      ...orpc.deleteAnswer.mutationOptions(),
+      onMutate: async (variables, context) => {
+        await context.client.cancelQueries({
+          queryKey: queryKeyToInvalidateAnswers,
+        });
+
+        const previousData =
+          context.client.getQueryData<InterviewRelatedDataQueryData>(
+            queryKeyToInvalidateAnswers,
+          );
+
+        context.client.setQueryData<InterviewRelatedDataQueryData>(
+          queryKeyToInvalidateAnswers,
+          (oldData) =>
+            removeAnswerFromInterviewRelatedDataCache(
+              oldData,
+              variables.questionUuid,
+            ),
+        );
+
+        return {
+          previousData,
+        };
+      },
+      onError: (_error, _variables, onMutateResult, context) => {
+        context.client.setQueryData(
+          queryKeyToInvalidateAnswers,
+          onMutateResult?.previousData,
+        );
+        toast.error(
+          "Löschen der vorherigen Aufnahme fehlgeschlagen. Bitte versuche es erneut.",
+        );
+      },
+      onSettled: (_data, _error, _variables, _onMutateResult, context) =>
+        context.client.invalidateQueries({
+          queryKey: queryKeyToInvalidateAnswers,
+        }),
+      retry: 1,
+    });
 
   return (
     <div className="flex flex-col gap-4">
       <Large>{questionPayload.question}</Large>
-      <ClientOnly>
-        <VideoRecorder
-          maxDurationSec={questionPayload.maxDurationSeconds}
-          maxOvertimeSec={questionPayload.maxOvertimeSeconds}
-          transferNewChunk={async (chunk) => {
-            const file = new File([chunk.chunk], "namedoesnotmatter", {
-              type: chunk.chunk.type,
-            });
-            void recordingUploadService.addToUploadPipeline({
-              file,
-              interviewUuid,
-              questionUuid: question.uuid,
-              queryKeyToInvalidateAnswers,
-              partNumber: chunk.partNumber,
-              isLastPart: chunk.isLastChunk,
-            });
+      {!hasAnswerOrUploadingRecordingWithLastPart && (
+        <ClientOnly>
+          <VideoRecorder
+            maxDurationSec={questionPayload.maxDurationSeconds}
+            maxOvertimeSec={questionPayload.maxOvertimeSeconds}
+            transferNewChunk={async (chunk) => {
+              const file = new File([chunk.chunk], "namedoesnotmatter", {
+                type: chunk.chunk.type,
+              });
+              void recordingUploadService.addToUploadPipeline({
+                file,
+                interviewUuid,
+                questionUuid: question.uuid,
+                queryKeyToInvalidateAnswers,
+                partNumber: chunk.partNumber,
+                isLastPart: chunk.isLastChunk,
+              });
+            }}
+          />
+        </ClientOnly>
+      )}
+      {hasAnswerOrUploadingRecordingWithLastPart && (
+        <Button
+          disabled={isDeletingRecording}
+          variant="destructive"
+          onClick={() => {
+            deleteRecording({ interviewUuid, questionUuid: question.uuid });
           }}
-        />
-      </ClientOnly>
+        >
+          Du hast bereits eine Anwort aufgenommen. Wenn du diese ersetzen
+          willst, dann drücke hier.
+        </Button>
+      )}
     </div>
   );
 }
