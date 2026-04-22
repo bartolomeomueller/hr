@@ -14,7 +14,9 @@ const enumerateDevicesMock = vi.fn();
 const getUserMediaMock = vi.fn();
 const mediaDevicesAddEventListenerMock = vi.fn();
 const mediaDevicesRemoveEventListenerMock = vi.fn();
+const audioContextCreateMediaStreamSourceMock = vi.fn();
 let latestMediaRecorder: FakeMediaRecorder | null = null;
+let shouldThrowNextCreateMediaStreamSource = false;
 
 class FakeMediaRecorder {
   static isTypeSupported(type: string) {
@@ -46,12 +48,59 @@ class FakeMediaRecorder {
   }
 }
 
+class FakeAudioContext {
+  state: "running" | "suspended" | "closed" = "running";
+  destination = {} as AudioDestinationNode;
+
+  createMediaStreamSource(_stream: MediaStream) {
+    if (shouldThrowNextCreateMediaStreamSource) {
+      shouldThrowNextCreateMediaStreamSource = false;
+      throw new Error("Audio monitor source creation failed.");
+    }
+    audioContextCreateMediaStreamSourceMock();
+    return {
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    } as unknown as MediaStreamAudioSourceNode;
+  }
+
+  createDelay(_maxDelayTime?: number) {
+    return {
+      delayTime: { value: 0 },
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    } as unknown as DelayNode;
+  }
+
+  createGain() {
+    return {
+      gain: { value: 1 },
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    } as unknown as GainNode;
+  }
+
+  resume = vi.fn(async () => {
+    this.state = "running";
+  });
+
+  close = vi.fn(async () => {
+    this.state = "closed";
+  });
+}
+
 beforeEach(() => {
   latestMediaRecorder = null;
+  shouldThrowNextCreateMediaStreamSource = false;
   vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+  vi.stubGlobal("AudioContext", FakeAudioContext);
   Object.defineProperty(HTMLMediaElement.prototype, "play", {
     configurable: true,
     value: vi.fn().mockResolvedValue(undefined),
+  });
+  Object.defineProperty(HTMLMediaElement.prototype, "pause", {
+    configurable: true,
+    value: vi.fn(),
   });
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
@@ -110,6 +159,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  audioContextCreateMediaStreamSourceMock.mockReset();
   enumerateDevicesMock.mockReset();
   getUserMediaMock.mockReset();
   mediaDevicesAddEventListenerMock.mockReset();
@@ -452,7 +502,7 @@ describe("VideoRecorder", () => {
     });
   });
 
-  it("disables microphone and camera selectors while recording", async () => {
+  it("hides microphone and camera controls while recording", async () => {
     renderVideoRecorder();
 
     fireEvent.click(await screen.findByRole("button", { name: /Record/i }));
@@ -462,13 +512,151 @@ describe("VideoRecorder", () => {
     });
 
     expect(
+      screen.queryByRole("button", {
+        name: /Microphone: MacBook Pro Microphone/i,
+      }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Camera: FaceTime HD Camera/i }),
+    ).toBeNull();
+  });
+
+  it("turns the mic test back off when recording starts", async () => {
+    renderVideoRecorder();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Enable audio monitor/i }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Disable audio monitor/i }),
+      ).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Record/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Stop/i })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Stop/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Enable audio monitor/i }),
+      ).toBeTruthy();
+    });
+  });
+
+  it("rebuilds the audio monitor only once when the preview stream is fully replaced", async () => {
+    renderVideoRecorder();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Enable audio monitor/i }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Disable audio monitor/i }),
+      ).toBeTruthy();
+    });
+
+    expect(audioContextCreateMediaStreamSourceMock).toHaveBeenCalledTimes(1);
+
+    enumerateDevicesMock.mockResolvedValue([
+      createDevice({
+        deviceId: "default",
+        groupId: "audio-new-default",
+        kind: "audioinput",
+        label: "Shure MV7",
+      }),
+      createDevice({
+        deviceId: "audio-shure",
+        groupId: "audio-new-default",
+        kind: "audioinput",
+        label: "Shure MV7",
+      }),
+      createDevice({
+        deviceId: "audio-external",
+        groupId: "audio-external",
+        kind: "audioinput",
+        label: "DJI Mic Mini",
+      }),
+      createDevice({
+        deviceId: "default",
+        groupId: "video-default",
+        kind: "videoinput",
+        label: "FaceTime HD Camera",
+      }),
+      createDevice({
+        deviceId: "video-built-in",
+        groupId: "video-default",
+        kind: "videoinput",
+        label: "FaceTime HD Camera",
+      }),
+      createDevice({
+        deviceId: "video-external",
+        groupId: "video-external",
+        kind: "videoinput",
+        label: "Logitech Brio",
+      }),
+    ]);
+
+    const deviceChangeRegistrations =
+      mediaDevicesAddEventListenerMock.mock.calls.filter(
+        ([eventName]) => eventName === "devicechange",
+      );
+    const handleDeviceChange = deviceChangeRegistrations.at(-1)?.[1] as
+      | (() => void)
+      | undefined;
+
+    expect(handleDeviceChange).toBeTruthy();
+    handleDeviceChange?.();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Microphone: Shure MV7/i }),
+      ).toBeTruthy();
+    });
+
+    expect(audioContextCreateMediaStreamSourceMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows an audio-monitor-specific error when monitor setup fails during device refresh", async () => {
+    renderVideoRecorder();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Enable audio monitor/i }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Disable audio monitor/i }),
+      ).toBeTruthy();
+    });
+
+    shouldThrowNextCreateMediaStreamSource = true;
+
+    openDropdown(
       screen.getByRole("button", {
         name: /Microphone: MacBook Pro Microphone/i,
       }),
-    ).toHaveProperty("disabled", true);
+    );
+
+    fireEvent.click(
+      await screen.findByRole("menuitemradio", { name: "DJI Mic Mini" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Could not start mic test\. You can still record video\./i),
+      ).toBeTruthy();
+    });
+
     expect(
-      screen.getByRole("button", { name: /Camera: FaceTime HD Camera/i }),
-    ).toHaveProperty("disabled", true);
+      screen.queryByText(/Could not access camera\/microphone\./i),
+    ).toBeNull();
   });
 
   it("automatically stops recording after the maximum duration is reached", async () => {

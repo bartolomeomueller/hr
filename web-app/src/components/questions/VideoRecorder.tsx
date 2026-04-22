@@ -1,5 +1,19 @@
-import { Camera, ChevronDown, Mic, Square, Video } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Camera,
+  ChevronDown,
+  Mic,
+  Square,
+  Video,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "../ui/button";
 import {
@@ -9,6 +23,12 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../ui/tooltip";
 
 export function VideoRecorder({
   maxDurationSec,
@@ -40,9 +60,15 @@ export function VideoRecorder({
   const recordingBufferRef = useRef<Blob[]>([]); // Buffer to hold the recorded chunks before they are transferred.
   const currentPartNumberRef = useRef<number>(1); // The current part number for multipart upload, starting at 1.
 
+  const audioMonitorContextRef = useRef<AudioContext | null>(null); // The Web Audio context used for the optional delayed mic monitor.
+  const audioMonitorSourceRef = useRef<MediaStreamAudioSourceNode | null>(null); // The node that feeds the current microphone stream into the audio monitor graph.
+  const audioMonitorDelayRef = useRef<DelayNode | null>(null); // The node that delays the mic signal so the user hears it back with a short offset.
+  const audioMonitorGainRef = useRef<GainNode | null>(null); // The node controlling the monitor output volume before it reaches the speakers.
+
   const [isRecording, setIsRecording] = useState(false);
   const [timeFromLimitSec, setTimeFromLimitSec] = useState(maxDurationSec);
   const [error, setError] = useState<string | null>(null);
+  const [isAudioMonitorEnabled, setIsAudioMonitorEnabled] = useState(false);
   // List of all available audio and video input devices.
   const [devices, setDevices] = useState<{
     audioinput: MediaDeviceInfo[];
@@ -55,6 +81,7 @@ export function VideoRecorder({
   const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState("");
   const [selectedVideoDeviceId, setSelectedVideoDeviceId] = useState("");
 
+  // Reads the current media devices, keeps the preferred selections when possible, and updates local device state.
   const syncDevices = useCallback(
     async ({
       preferredAudioDeviceId,
@@ -96,6 +123,7 @@ export function VideoRecorder({
     [],
   );
 
+  // Refreshes the preview stream and selectively swaps audio/video tracks when only one device changed.
   const refreshPreviewStream = useCallback(
     async ({
       audioDeviceId,
@@ -153,6 +181,18 @@ export function VideoRecorder({
         setSelectedAudioDeviceId(audioDeviceId);
         setSelectedVideoDeviceId(videoDeviceId);
         setError(null);
+        if (streamRef.current) {
+          await syncAudioMonitorWithErrorHandling({
+            stream: streamRef.current,
+            isAudioMonitorEnabled,
+            audioMonitorContextRef,
+            audioMonitorSourceRef,
+            audioMonitorDelayRef,
+            audioMonitorGainRef,
+            setError,
+            setIsAudioMonitorEnabled,
+          });
+        }
 
         await syncDevices({
           preferredAudioDeviceId: audioDeviceId,
@@ -167,9 +207,10 @@ export function VideoRecorder({
         return null;
       }
     },
-    [syncDevices],
+    [syncDevices, isAudioMonitorEnabled],
   );
 
+  // Reuses the existing preview stream or creates it on demand before the user records or tests audio.
   const ensurePreviewStream = useCallback(async () => {
     if (streamRef.current) {
       return streamRef.current;
@@ -189,6 +230,7 @@ export function VideoRecorder({
     })();
   }, [ensurePreviewStream]);
 
+  // Stops the active recording session and clears the timer that updates the remaining time display.
   const stopRecording = useCallback(() => {
     if (tickRef.current) {
       clearInterval(tickRef.current);
@@ -283,9 +325,16 @@ export function VideoRecorder({
         stopMediaStream(streamRef.current);
         streamRef.current = null;
       }
+      stopAudioMonitor({
+        audioMonitorContextRef,
+        audioMonitorSourceRef,
+        audioMonitorDelayRef,
+        audioMonitorGainRef,
+      });
     };
   }, [stopRecording]);
 
+  // Switches the preview to another microphone while keeping the selected camera.
   const selectAudioDevice = useCallback(
     async (deviceId: string) => {
       await refreshPreviewStream({
@@ -298,6 +347,7 @@ export function VideoRecorder({
     [refreshPreviewStream, selectedVideoDeviceId],
   );
 
+  // Switches the preview to another camera while keeping the selected microphone.
   const selectVideoDevice = useCallback(
     async (deviceId: string) => {
       await refreshPreviewStream({
@@ -310,6 +360,41 @@ export function VideoRecorder({
     [refreshPreviewStream, selectedAudioDeviceId],
   );
 
+  // Toggles the delayed mic monitor used to let the user test their microphone before recording.
+  const toggleAudioMonitor = useCallback(async () => {
+    const nextIsAudioMonitorEnabled = !isAudioMonitorEnabled;
+    setIsAudioMonitorEnabled(nextIsAudioMonitorEnabled);
+
+    const stream = await ensurePreviewStream();
+    if (!stream) {
+      setIsAudioMonitorEnabled(false);
+      return;
+    }
+
+    await syncAudioMonitorWithErrorHandling({
+      stream,
+      isAudioMonitorEnabled: nextIsAudioMonitorEnabled,
+      audioMonitorContextRef,
+      audioMonitorSourceRef,
+      audioMonitorDelayRef,
+      audioMonitorGainRef,
+      setError,
+      setIsAudioMonitorEnabled,
+    });
+  }, [ensurePreviewStream, isAudioMonitorEnabled]);
+
+  // Turns the mic monitor off and tears down its audio graph.
+  const disableAudioMonitor = useCallback(() => {
+    setIsAudioMonitorEnabled(false);
+    stopAudioMonitor({
+      audioMonitorContextRef,
+      audioMonitorSourceRef,
+      audioMonitorDelayRef,
+      audioMonitorGainRef,
+    });
+  }, []);
+
+  // Starts a new recording, uploads buffered chunks incrementally, and stops automatically at the hard time limit.
   const startRecording = useCallback(async () => {
     setError(null);
     setTimeFromLimitSec(maxDurationSec);
@@ -320,6 +405,8 @@ export function VideoRecorder({
     if (!stream) {
       return;
     }
+
+    disableAudioMonitor();
 
     const av1 = "video/webm;codecs=av1,opus";
     const vp9 = "video/webm;codecs=vp9,opus";
@@ -410,6 +497,7 @@ export function VideoRecorder({
     syncTimeLeftFromStart();
     tickRef.current = setInterval(syncTimeLeftFromStart, 250);
   }, [
+    disableAudioMonitor,
     ensurePreviewStream,
     stopRecording,
     maxDurationSec,
@@ -447,25 +535,60 @@ export function VideoRecorder({
 
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
           <div className="flex items-center gap-3 rounded-full bg-background/20 px-3 py-2 shadow-lg backdrop-blur-sm">
-            <DeviceSelectorButton
-              icon={Mic}
-              label="Microphone"
-              disabled={isRecording || devices.audioinput.length === 0}
-              value={selectedAudioDeviceId}
-              devices={devices.audioinput}
-              onValueChange={selectAudioDevice}
-            />
+            {!isRecording && (
+              <>
+                <DeviceSelectorButton
+                  icon={Mic}
+                  label="Microphone"
+                  disabled={devices.audioinput.length === 0}
+                  value={selectedAudioDeviceId}
+                  devices={devices.audioinput}
+                  onValueChange={selectAudioDevice}
+                />
 
-            <DeviceSelectorButton
-              icon={Camera}
-              label="Camera"
-              disabled={isRecording || devices.videoinput.length === 0}
-              value={selectedVideoDeviceId}
-              devices={devices.videoinput}
-              onValueChange={selectVideoDevice}
-            />
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant={
+                          isAudioMonitorEnabled ? "secondary" : "outline"
+                        }
+                        size="icon-lg"
+                        className="rounded-full"
+                        disabled={devices.audioinput.length === 0}
+                        onClick={toggleAudioMonitor}
+                        aria-label={
+                          isAudioMonitorEnabled
+                            ? "Disable audio monitor"
+                            : "Enable audio monitor"
+                        }
+                      >
+                        {isAudioMonitorEnabled ? (
+                          <Volume2 className="size-5" />
+                        ) : (
+                          <VolumeX className="size-5" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent sideOffset={8}>
+                      Test your mic with a 1s delay
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
 
-            <div className="h-8 w-px bg-border" />
+                <DeviceSelectorButton
+                  icon={Camera}
+                  label="Camera"
+                  disabled={devices.videoinput.length === 0}
+                  value={selectedVideoDeviceId}
+                  devices={devices.videoinput}
+                  onValueChange={selectVideoDevice}
+                />
+
+                <div className="h-8 w-px bg-border" />
+              </>
+            )}
 
             {!isRecording ? (
               <Button
@@ -479,16 +602,23 @@ export function VideoRecorder({
                 Record
               </Button>
             ) : (
-              <Button
-                type="button"
-                onClick={stopRecording}
-                variant="destructive"
-                className="rounded-full px-4"
-                size="lg"
-              >
-                <Square className="size-6 fill-current" />
-                Stop
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      onClick={stopRecording}
+                      variant="destructive"
+                      className="rounded-full px-4"
+                      size="lg"
+                    >
+                      <Square className="size-6 fill-current" />
+                      Stop
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent sideOffset={8}>Stop recording</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
           </div>
         </div>
@@ -528,48 +658,57 @@ function DeviceSelectorButton({
   onValueChange: (value: string) => void | Promise<void>;
 }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild disabled={disabled}>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon-lg"
-          className="rounded-full"
-          aria-label={
-            devices.length === 0
-              ? label
-              : `${label}: ${getSelectedDeviceLabel(devices, value)}`
-          }
-        >
-          <span className="relative">
-            <Icon className="size-5" />
-            <ChevronDown className="absolute -right-3 -bottom-1 size-3 rounded-full bg-background text-muted-foreground" />
-          </span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        className="w-max max-w-[calc(100vw-2rem)] min-w-60"
-        align="center"
-      >
-        {devices.length > 0 ? (
-          <DropdownMenuRadioGroup value={value} onValueChange={onValueChange}>
-            {devices.map((device) => (
-              <DropdownMenuRadioItem
-                key={device.deviceId}
-                value={device.deviceId}
-                className="items-start"
+    <TooltipProvider>
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild disabled={disabled}>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-lg"
+                className="rounded-full"
+                aria-label={
+                  devices.length === 0
+                    ? label
+                    : `${label}: ${getSelectedDeviceLabel(devices, value)}`
+                }
               >
-                <span className="truncate">{getDeviceLabel(device)}</span>
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        ) : (
-          <p className="px-2 py-1.5 text-sm text-muted-foreground">
-            No entry found
-          </p>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+                <span className="relative">
+                  <Icon className="size-5" />
+                  <ChevronDown className="absolute -right-3 -bottom-1 size-3 rounded-full bg-background text-muted-foreground" />
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent sideOffset={8}>
+            {label === "Microphone" ? "Select microphone" : "Select camera"}
+          </TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent
+          className="w-max max-w-[calc(100vw-2rem)] min-w-60"
+          align="center"
+        >
+          {devices.length > 0 ? (
+            <DropdownMenuRadioGroup value={value} onValueChange={onValueChange}>
+              {devices.map((device) => (
+                <DropdownMenuRadioItem
+                  key={device.deviceId}
+                  value={device.deviceId}
+                  className="items-start"
+                >
+                  <span className="truncate">{getDeviceLabel(device)}</span>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          ) : (
+            <p className="px-2 py-1.5 text-sm text-muted-foreground">
+              No entry found
+            </p>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </TooltipProvider>
   );
 }
 
@@ -580,6 +719,7 @@ function stopMediaStream(stream: MediaStream) {
   }
 }
 
+// Connects the given media stream to the preview video element and starts inline playback.
 function setVideoElementStream(
   videoElement: HTMLVideoElement | null,
   stream: MediaStream,
@@ -671,6 +811,7 @@ function getPreferredDeviceId(
   );
 }
 
+// Builds a media track constraint that targets a specific device when one is explicitly selected.
 function getDeviceConstraint(
   deviceId: string,
   fallbackValue: boolean | MediaTrackConstraints,
@@ -738,6 +879,7 @@ function getResolvedDeviceKey(
   return getCanonicalDeviceKey(selectedDevice);
 }
 
+// Finds the concrete device entry that currently backs the browser's synthetic "default" device.
 function getDefaultRepresentativeDevice(devices: MediaDeviceInfo[]) {
   const defaultDevice = devices.find((device) => device.deviceId === "default");
   if (!defaultDevice) {
@@ -758,4 +900,139 @@ function getDefaultRepresentativeDevice(devices: MediaDeviceInfo[]) {
 // That should be set (maybe safari might cause issues), if not fall back to the deviceId.
 function getCanonicalDeviceKey(device: MediaDeviceInfo) {
   return device.groupId || device.deviceId;
+}
+
+// Synchronizes the mic monitor and converts setup failures into recorder-friendly UI state.
+async function syncAudioMonitorWithErrorHandling({
+  stream,
+  isAudioMonitorEnabled,
+  audioMonitorContextRef,
+  audioMonitorSourceRef,
+  audioMonitorDelayRef,
+  audioMonitorGainRef,
+  setError,
+  setIsAudioMonitorEnabled,
+}: {
+  stream: MediaStream;
+  isAudioMonitorEnabled: boolean;
+  audioMonitorContextRef: RefObject<AudioContext | null>;
+  audioMonitorSourceRef: RefObject<MediaStreamAudioSourceNode | null>;
+  audioMonitorDelayRef: RefObject<DelayNode | null>;
+  audioMonitorGainRef: RefObject<GainNode | null>;
+  setError: (value: string | null) => void;
+  setIsAudioMonitorEnabled: (value: boolean) => void;
+}) {
+  try {
+    await syncAudioMonitor({
+      stream,
+      isAudioMonitorEnabled,
+      audioMonitorContextRef,
+      audioMonitorSourceRef,
+      audioMonitorDelayRef,
+      audioMonitorGainRef,
+    });
+  } catch (error) {
+    setIsAudioMonitorEnabled(false);
+    stopAudioMonitor({
+      audioMonitorContextRef,
+      audioMonitorSourceRef,
+      audioMonitorDelayRef,
+      audioMonitorGainRef,
+    });
+    setError("Could not start mic test. You can still record video.");
+    console.log("Error starting audio monitor:", error);
+  }
+}
+
+// Rebuilds the delayed mic monitor graph for the current stream when monitoring is enabled.
+async function syncAudioMonitor({
+  stream,
+  isAudioMonitorEnabled,
+  audioMonitorContextRef,
+  audioMonitorSourceRef,
+  audioMonitorDelayRef,
+  audioMonitorGainRef,
+}: {
+  stream: MediaStream;
+  isAudioMonitorEnabled: boolean;
+  audioMonitorContextRef: RefObject<AudioContext | null>;
+  audioMonitorSourceRef: RefObject<MediaStreamAudioSourceNode | null>;
+  audioMonitorDelayRef: RefObject<DelayNode | null>;
+  audioMonitorGainRef: RefObject<GainNode | null>;
+}) {
+  stopAudioMonitor({
+    audioMonitorContextRef,
+    audioMonitorSourceRef,
+    audioMonitorDelayRef,
+    audioMonitorGainRef,
+    shouldCloseContext: false,
+  });
+
+  if (!isAudioMonitorEnabled || stream.getAudioTracks().length === 0) {
+    return;
+  }
+
+  const AudioContextConstructor =
+    window.AudioContext ||
+    (
+      window as Window &
+        typeof globalThis & { webkitAudioContext?: typeof AudioContext }
+    ).webkitAudioContext;
+  if (!AudioContextConstructor) {
+    throw new Error(
+      "This is a bug, please report it. Missing AudioContext support for audio monitor.",
+    );
+  }
+
+  if (!audioMonitorContextRef.current) {
+    audioMonitorContextRef.current = new AudioContextConstructor();
+  }
+  if (audioMonitorContextRef.current.state === "suspended") {
+    await audioMonitorContextRef.current.resume();
+  }
+
+  const source = audioMonitorContextRef.current.createMediaStreamSource(stream);
+  const delay = audioMonitorContextRef.current.createDelay(3.1);
+  delay.delayTime.value = 1;
+
+  const gain = audioMonitorContextRef.current.createGain();
+  gain.gain.value = 1;
+
+  source.connect(delay);
+  delay.connect(gain);
+  gain.connect(audioMonitorContextRef.current.destination);
+
+  audioMonitorSourceRef.current = source;
+  audioMonitorDelayRef.current = delay;
+  audioMonitorGainRef.current = gain;
+}
+
+// Disconnects the delayed mic monitor nodes and optionally closes the underlying audio context.
+function stopAudioMonitor({
+  audioMonitorContextRef,
+  audioMonitorSourceRef,
+  audioMonitorDelayRef,
+  audioMonitorGainRef,
+  shouldCloseContext = true,
+}: {
+  audioMonitorContextRef: RefObject<AudioContext | null>;
+  audioMonitorSourceRef: RefObject<MediaStreamAudioSourceNode | null>;
+  audioMonitorDelayRef: RefObject<DelayNode | null>;
+  audioMonitorGainRef: RefObject<GainNode | null>;
+  shouldCloseContext?: boolean;
+}) {
+  audioMonitorSourceRef.current?.disconnect();
+  audioMonitorDelayRef.current?.disconnect();
+  audioMonitorGainRef.current?.disconnect();
+
+  audioMonitorSourceRef.current = null;
+  audioMonitorDelayRef.current = null;
+  audioMonitorGainRef.current = null;
+
+  if (!shouldCloseContext || !audioMonitorContextRef.current) {
+    return;
+  }
+
+  void audioMonitorContextRef.current.close();
+  audioMonitorContextRef.current = null;
 }
