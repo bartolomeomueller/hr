@@ -838,7 +838,7 @@ function getDeviceLabel(device: MediaDeviceInfo) {
 }
 
 // Returns the label of the currently selected device, or "Unknown device" if it cannot be found (e.g. because it got unplugged).
-function getSelectedDeviceLabel(
+export function getSelectedDeviceLabel(
   devices: MediaDeviceInfo[],
   selectedDeviceId: string,
 ) {
@@ -846,9 +846,7 @@ function getSelectedDeviceLabel(
     (device) => device.deviceId === selectedDeviceId,
   );
   if (!selectedDevice) {
-    throw new Error(
-      "This is a bug, please report it. Selected device is missing from the current device list.",
-    );
+    return "Unknown device";
   }
 
   return getDeviceLabel(selectedDevice);

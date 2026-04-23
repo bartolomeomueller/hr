@@ -8,7 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { VideoRecorder } from "./VideoRecorder";
+import { getSelectedDeviceLabel, VideoRecorder } from "./VideoRecorder";
 
 const enumerateDevicesMock = vi.fn();
 const getUserMediaMock = vi.fn();
@@ -771,6 +771,22 @@ describe("VideoRecorder", () => {
         partNumber: 3,
       }),
     );
+  });
+
+  it('returns "Unknown device" when the selected microphone is missing from the current device list', () => {
+    expect(
+      getSelectedDeviceLabel(
+        [
+          createDevice({
+            deviceId: "default",
+            groupId: "audio-default",
+            kind: "audioinput",
+            label: "MacBook Pro Microphone",
+          }),
+        ],
+        "missing-audio-device",
+      ),
+    ).toBe("Unknown device");
   });
 });
 
