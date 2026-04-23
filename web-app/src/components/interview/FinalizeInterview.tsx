@@ -1,9 +1,9 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { FileVideo } from "lucide-react";
+import { Large } from "@/components/ui/typography";
 import { VideoQuestionPayloadType } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
 import { useRecordingUploadStore } from "@/stores/recordingUploadStore";
-import { Large, Lead } from "./ui/typography";
 
 // This is now mostly AI generated, if you wanna change it, just do it anew.
 

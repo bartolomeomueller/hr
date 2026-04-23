@@ -26,7 +26,7 @@ vi.mock("@tanstack/react-form", () => ({
   useForm: useFormMock,
 }));
 
-vi.mock("@/components/CandidateFlowFormContext", () => ({
+vi.mock("@/components/interview/CandidateFlowFormContext", () => ({
   useCandidateFlowForm: () => ({
     hideForm: hideFormMock,
     showForm: showFormMock,
@@ -93,7 +93,7 @@ vi.mock("./questions/VideoQuestion", () => ({
   },
 }));
 
-import { Interview } from "@/components/Interview";
+import { Interview } from "@/components/interview/Interview";
 
 describe("Interview invariants", () => {
   beforeEach(() => {

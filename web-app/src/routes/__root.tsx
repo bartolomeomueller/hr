@@ -8,11 +8,11 @@ import {
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import type { ReactNode } from "react";
+import { BetterAuthProviders } from "@/better-auth-providers";
+import Header from "@/components/layout/Header";
 import { Toaster } from "@/components/ui/sonner";
-import { BetterAuthProviders } from "../better-auth-providers";
-import Header from "../components/Header";
-import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
-import appCss from "../styles.css?url";
+import TanStackQueryDevtools from "@/integrations/tanstack-query/devtools";
+import appCss from "@/styles.css?url";
 
 interface MyRouterContext {
   queryClient: QueryClient;

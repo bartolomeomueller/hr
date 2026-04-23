@@ -28,10 +28,10 @@ import { client, orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { documentUploadService } from "@/services/DocumentUploadService";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
-import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
-import { Label } from "../ui/label";
-import type { QuestionBehavior } from "./QuestionBlock";
+import type { QuestionBehavior } from "@/components/interview/questions/QuestionBlock";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 const PDF_MIME_TYPE = "application/pdf";
 

@@ -1,6 +1,6 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { Suspense } from "react";
-import { GenericLoader } from "@/components/GenericLoader";
+import { GenericLoader } from "@/components/layout/GenericLoader";
 import { Role } from "@/components/Role";
 import { orpc } from "@/orpc/client";
 

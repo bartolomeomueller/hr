@@ -13,11 +13,11 @@ import React from "react";
 import { v7 as uuidv7 } from "uuid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type z from "zod";
-import type { InterviewFormType } from "@/components/Interview";
+import type { InterviewFormType } from "@/components/interview/Interview";
 import {
   MultipleChoiceQuestion,
   multipleChoiceQuestionBehavior,
-} from "@/components/questions/MultipleChoiceQuestion";
+} from "@/components/interview/questions/MultipleChoiceQuestion";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 
 const { deleteAnswerMutationFnMock, saveAnswerMutationFnMock } = vi.hoisted(

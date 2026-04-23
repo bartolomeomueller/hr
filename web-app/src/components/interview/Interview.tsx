@@ -7,15 +7,17 @@ import {
 import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import type z from "zod";
-import { useCandidateFlowForm } from "@/components/CandidateFlowFormContext";
+import { useCandidateFlowForm } from "@/components/interview/CandidateFlowFormContext";
+import {
+  getCurrentFlowStepFormDefaultValues,
+  QuestionBlock,
+} from "@/components/interview/questions/QuestionBlock";
+import { useCurrentFlowStepIsAnswered } from "@/components/interview/questions/useCurrentFlowStepIsAnswered";
+import { VideoQuestion } from "@/components/interview/questions/VideoQuestion";
+import { Button } from "@/components/ui/button";
+import { H1 } from "@/components/ui/typography";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
-import { QuestionBlock } from "./questions/QuestionBlock";
-import { getCurrentFlowStepFormDefaultValues } from "./questions/QuestionBlock";
-import { useCurrentFlowStepIsAnswered } from "./questions/useCurrentFlowStepIsAnswered";
-import { VideoQuestion } from "./questions/VideoQuestion";
-import { Button } from "./ui/button";
-import { H1 } from "./ui/typography";
 
 // TODO think about what to do with the questions that have not been answered by a applicant, should they get an empty answer or no answer
 

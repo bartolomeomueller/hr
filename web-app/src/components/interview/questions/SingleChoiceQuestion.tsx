@@ -1,9 +1,9 @@
 import { type QueryKey, useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
 import type z from "zod";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import {
-  TextAnswerPayloadType,
-  TextQuestionPayloadType,
+  SingleChoiceAnswerPayloadType,
+  SingleChoiceQuestionPayloadType,
 } from "@/db/payload-types";
 import type { InterviewRelatedDataQueryData } from "@/lib/interview-related-data-cache";
 import {
@@ -14,16 +14,25 @@ import {
 } from "@/lib/interview-related-data-cache";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
-import type { InterviewFormType } from "../Interview";
-import { SlideInFromTop } from "../ui/animation";
-import { Input } from "../ui/input";
-import type { QuestionBehavior } from "./QuestionBlock";
+import type { InterviewFormType } from "@/components/interview/Interview";
+import type { QuestionBehavior } from "@/components/interview/questions/QuestionBlock";
+import { SlideInFromTop } from "@/components/ui/animation";
+import {
+  Field,
+  FieldContent,
+  FieldError,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+  FieldTitle,
+} from "@/components/ui/field";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
-// TODO think about making each question optional possible, if the user does not want to answer a question
+// TODO add support for skipping each question, if the admins allow it, make each question optional on admin request
 
-export const textQuestionBehavior: QuestionBehavior = {
-  getFormDefaultValue: getTextQuestionFormDefaultValue,
-  isAnswered: ({ answer }) => isTextQuestionAnswered(answer),
+export const singleChoiceQuestionBehavior: QuestionBehavior = {
+  getFormDefaultValue: getSingleChoiceQuestionFormDefaultValue,
+  isAnswered: ({ answer }) => isSingleChoiceQuestionAnswered(answer),
   renderQuestionBlockQuestion: ({
     form,
     question,
@@ -31,7 +40,7 @@ export const textQuestionBehavior: QuestionBehavior = {
     queryKeyToInvalidateAnswers,
     answer,
   }) => (
-    <TextQuestion
+    <SingleChoiceQuestion
       key={question.uuid}
       form={form}
       question={question}
@@ -42,31 +51,31 @@ export const textQuestionBehavior: QuestionBehavior = {
   ),
 };
 
-function isTextQuestionAnswered(
+function isSingleChoiceQuestionAnswered(
   answer: z.infer<typeof AnswerSelectSchema> | undefined,
 ) {
   return answer !== undefined;
 }
 
-function getTextQuestionFormDefaultValue(
+function getSingleChoiceQuestionFormDefaultValue(
   answer: z.infer<typeof AnswerSelectSchema> | undefined,
 ) {
   if (!answer) {
     return "";
   }
 
-  const textAnswerPayloadResult = TextAnswerPayloadType.safeParse(
-    answer.answerPayload,
-  );
-  if (!textAnswerPayloadResult.success)
+  const singleChoiceAnswerPayloadResult =
+    SingleChoiceAnswerPayloadType.safeParse(answer.answerPayload);
+  if (!singleChoiceAnswerPayloadResult.success)
     throw new Error(
-      `Answer payload does not match expected type for text question. This should never happen, please report it. ${textAnswerPayloadResult.error.message}`,
+      `Answer payload does not match expected type for single choice question. This should never happen, please report it. ${singleChoiceAnswerPayloadResult.error.message}`,
     );
 
-  return textAnswerPayloadResult.data.answer;
+  return singleChoiceAnswerPayloadResult.data.selectedOption;
 }
 
-export function TextQuestion({
+// TODO With fewer than 10 options, radio buttons are used, with more a dropdown
+export function SingleChoiceQuestion({
   form,
   question,
   interviewUuid,
@@ -79,15 +88,15 @@ export function TextQuestion({
   queryKeyToInvalidateAnswers: QueryKey;
   answer: z.infer<typeof AnswerSelectSchema> | undefined;
 }) {
-  const questionPayloadResult = TextQuestionPayloadType.safeParse(
+  const questionPayloadResult = SingleChoiceQuestionPayloadType.safeParse(
     question.questionPayload,
   );
   if (!questionPayloadResult.success)
     throw new Error(
-      `Question payload does not match expected type for text question. This should never happen, please report it. ${questionPayloadResult.error.message}`,
+      `Question payload does not match expected type for single choice question. This should never happen, please report it. ${questionPayloadResult.error.message}`,
     );
   const questionPayload = questionPayloadResult.data;
-  const answerValidator = TextAnswerPayloadType.shape.answer;
+  const answerValidator = SingleChoiceAnswerPayloadType.shape.selectedOption;
 
   const { mutate } = useMutation({
     ...orpc.saveAnswer.mutationOptions(),
@@ -110,7 +119,7 @@ export function TextQuestion({
               interviewUuid: variables.interviewUuid,
               questionUuid: variables.questionUuid,
               answerPayload: variables.answerPayload as z.infer<
-                typeof TextAnswerPayloadType
+                typeof SingleChoiceAnswerPayloadType
               >,
               previousAnswer:
                 findAnswerInInterviewRelatedDataCache(
@@ -125,10 +134,13 @@ export function TextQuestion({
         previousData,
       };
     },
-    onError: (_error, _variables, onMutateResult, context) => {
+    onError(_error, _variables, onMutateResult, context) {
       context.client.setQueryData(
         queryKeyToInvalidateAnswers,
         onMutateResult?.previousData,
+      );
+      toast.error(
+        "Deine Antwort konnte nicht gespeichert werden. Bitte versuche es erneut.",
       );
     },
     // isPending is false as soon as the new (previously invalidated) query data arrives, since we are returning the promise
@@ -168,6 +180,9 @@ export function TextQuestion({
         queryKeyToInvalidateAnswers,
         onMutateResult?.previousData,
       );
+      toast.error(
+        "Deine Antwort konnte nicht gelöscht werden. Bitte versuche es erneut.",
+      );
     },
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
@@ -182,8 +197,9 @@ export function TextQuestion({
       validators={{
         onChange: answerValidator,
       }}
+      // Listeners will be run even if the component unmounts
       listeners={{
-        onChangeDebounceMs: 500,
+        // onChangeDebounceMs: 500,
         onChange: ({ value }) => {
           if (!answerValidator.safeParse(value).success) {
             deleteAnswer({
@@ -197,7 +213,7 @@ export function TextQuestion({
             interviewUuid,
             questionUuid: question.uuid,
             answerPayload: {
-              answer: value,
+              selectedOption: value,
             },
           });
         },
@@ -207,30 +223,45 @@ export function TextQuestion({
           field.state.meta.isBlurred && !field.state.meta.isValid;
         return (
           <div className="py-2">
-            {/* data-invalid attribute is used in Field to style the field
-                aria-invalid attribute is used for accessibility, it indicates that the value entered in the field does not conform to the expected format */}
-            <Field data-invalid={isInvalid}>
-              <FieldLabel htmlFor={field.name}>
+            <FieldSet>
+              <FieldLegend variant="label">
                 {questionPayload.question}
-              </FieldLabel>
+              </FieldLegend>
               <div>
-                <Input
-                  type="text"
-                  id={field.name}
+                {/* <FieldDescription>{questionPayload.question}</FieldDescription> */}
+                <RadioGroup
                   name={field.name}
                   value={field.state.value as string}
-                  // change later to without e
-                  onChange={(e) => field.handleChange(e.target.value)}
+                  onValueChange={field.handleChange}
                   onBlur={field.handleBlur}
-                  aria-invalid={isInvalid}
-                  placeholder="Deine Antwort"
-                  required
-                />
+                >
+                  {questionPayload.options.map((option) => (
+                    <FieldLabel
+                      key={option}
+                      htmlFor={option}
+                      // The lint is wrong.
+                      className="[&>*]:data-[slot=field]:p-2"
+                    >
+                      <Field orientation="horizontal" data-invalid={isInvalid}>
+                        <FieldContent>
+                          <FieldTitle>{option}</FieldTitle>
+                          {/* <FieldDescription>{option}</FieldDescription> */}
+                        </FieldContent>
+                        <RadioGroupItem
+                          id={option}
+                          value={option}
+                          aria-invalid={isInvalid}
+                        />
+                      </Field>
+                    </FieldLabel>
+                  ))}
+                </RadioGroup>
+                {/* This SlideInFromTop component currently will never show an error message, since the RadioGroup doesn't support deselection. */}
                 <SlideInFromTop isVisible={isInvalid}>
                   <FieldError errors={field.state.meta.errors} />
                 </SlideInFromTop>
               </div>
-            </Field>
+            </FieldSet>
           </div>
         );
       }}

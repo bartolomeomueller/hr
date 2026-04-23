@@ -14,7 +14,7 @@ import type z from "zod";
 import {
   DocumentQuestion,
   documentQuestionBehavior,
-} from "@/components/questions/DocumentQuestion";
+} from "@/components/interview/questions/DocumentQuestion";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 

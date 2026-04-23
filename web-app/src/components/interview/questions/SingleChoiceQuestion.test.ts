@@ -13,11 +13,11 @@ import React from "react";
 import { v7 as uuidv7 } from "uuid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type z from "zod";
-import type { InterviewFormType } from "@/components/Interview";
+import type { InterviewFormType } from "@/components/interview/Interview";
 import {
-  TextQuestion,
-  textQuestionBehavior,
-} from "@/components/questions/TextQuestion";
+  SingleChoiceQuestion,
+  singleChoiceQuestionBehavior,
+} from "@/components/interview/questions/SingleChoiceQuestion";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 
 const { deleteAnswerMutationFnMock, saveAnswerMutationFnMock } = vi.hoisted(
@@ -42,7 +42,61 @@ vi.mock("@/orpc/client", () => ({
   },
 }));
 
-function renderTextQuestion() {
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+  },
+}));
+
+vi.mock("@/components/ui/radio-group", async () => {
+  const React = await import("react");
+  const radioGroupContext = React.createContext<(value: string) => void>(
+    () => {},
+  );
+
+  return {
+    RadioGroup({
+      children,
+      onValueChange,
+    }: {
+      children: React.ReactNode;
+      onValueChange?: (value: string) => void;
+    }) {
+      return React.createElement(
+        radioGroupContext.Provider,
+        { value: onValueChange ?? (() => {}) },
+        React.createElement(
+          "div",
+          null,
+          children,
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              onClick: () => onValueChange?.(""),
+            },
+            "Clear selection",
+          ),
+        ),
+      );
+    },
+    RadioGroupItem({ id, value }: { id?: string; value: string }) {
+      const onValueChange = React.useContext(radioGroupContext);
+      return React.createElement(
+        "button",
+        {
+          type: "button",
+          "data-testid": id,
+          onClick: () => onValueChange(value),
+        },
+        value,
+      );
+    },
+  };
+});
+
+function renderSingleChoiceQuestion() {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -53,9 +107,10 @@ function renderTextQuestion() {
     uuid: "question-1",
     flowStepUuid: "flow-step-1",
     position: 1,
-    questionType: "text",
+    questionType: "single_choice",
     questionPayload: {
-      question: "Why do you want this role?",
+      question: "Choose one option",
+      options: ["Option A", "Option B"],
     },
     isCv: false,
   };
@@ -68,7 +123,7 @@ function renderTextQuestion() {
       defaultValues,
     }) as InterviewFormType;
 
-    return React.createElement(TextQuestion, {
+    return React.createElement(SingleChoiceQuestion, {
       form,
       question,
       interviewUuid: "interview-1",
@@ -86,19 +141,17 @@ function renderTextQuestion() {
   );
 }
 
-describe("TextQuestion", () => {
+describe("SingleChoiceQuestion", () => {
   afterEach(() => {
     cleanup();
     deleteAnswerMutationFnMock.mockClear();
     saveAnswerMutationFnMock.mockClear();
   });
 
-  it("saves the answer when text is entered", async () => {
-    renderTextQuestion();
+  it("saves the answer when an option is selected", async () => {
+    renderSingleChoiceQuestion();
 
-    fireEvent.change(screen.getByPlaceholderText("Deine Antwort"), {
-      target: { value: "I like the team." },
-    });
+    fireEvent.click(screen.getByTestId("Option A"));
 
     await waitFor(
       () => {
@@ -107,7 +160,7 @@ describe("TextQuestion", () => {
             interviewUuid: "interview-1",
             questionUuid: "question-1",
             answerPayload: {
-              answer: "I like the team.",
+              selectedOption: "Option A",
             },
           },
           expect.anything(),
@@ -119,25 +172,10 @@ describe("TextQuestion", () => {
     expect(deleteAnswerMutationFnMock).not.toHaveBeenCalled();
   });
 
-  it("deletes the answer when the text becomes invalid", async () => {
-    renderTextQuestion();
+  it("deletes the answer when the selection becomes invalid", async () => {
+    renderSingleChoiceQuestion();
 
-    fireEvent.change(screen.getByPlaceholderText("Deine Antwort"), {
-      target: { value: "Temporary answer" },
-    });
-
-    await waitFor(
-      () => {
-        expect(saveAnswerMutationFnMock).toHaveBeenCalledTimes(1);
-      },
-      { timeout: 1500 },
-    );
-
-    saveAnswerMutationFnMock.mockClear();
-
-    fireEvent.change(screen.getByPlaceholderText("Deine Antwort"), {
-      target: { value: "" },
-    });
+    fireEvent.click(screen.getByText("Clear selection"));
 
     await waitFor(
       () => {
@@ -156,17 +194,18 @@ describe("TextQuestion", () => {
   });
 });
 
-describe("textQuestionBehavior", () => {
+describe("singleChoiceQuestionBehavior", () => {
   it("returns false when no answer exists", () => {
     expect(
-      textQuestionBehavior.isAnswered({
+      singleChoiceQuestionBehavior.isAnswered({
         question: {
           uuid: uuidv7(),
           flowStepUuid: uuidv7(),
           position: 1,
-          questionType: "text",
+          questionType: "single_choice",
           questionPayload: {
             question: "Question",
+            options: ["Option A"],
           },
           isCv: false,
         },
@@ -183,20 +222,21 @@ describe("textQuestionBehavior", () => {
       interviewUuid: uuidv7(),
       questionUuid: uuidv7(),
       answerPayload: {
-        answer: "My answer",
+        selectedOption: "Option A",
       },
       answeredAt: new Date(),
     };
 
     expect(
-      textQuestionBehavior.isAnswered({
+      singleChoiceQuestionBehavior.isAnswered({
         question: {
           uuid: answer.questionUuid,
           flowStepUuid: uuidv7(),
           position: 1,
-          questionType: "text",
+          questionType: "single_choice",
           questionPayload: {
             question: "Question",
+            options: ["Option A"],
           },
           isCv: false,
         },

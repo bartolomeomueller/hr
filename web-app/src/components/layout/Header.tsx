@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Home } from "lucide-react";
-import HeaderAccount from "@/components/HeaderAccount";
+import HeaderAccount from "@/components/layout/HeaderAccount";
 
 export default function Header() {
   return (

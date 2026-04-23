@@ -13,11 +13,11 @@ import React from "react";
 import { v7 as uuidv7 } from "uuid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type z from "zod";
-import type { InterviewFormType } from "@/components/Interview";
+import type { InterviewFormType } from "@/components/interview/Interview";
 import {
-  SingleChoiceQuestion,
-  singleChoiceQuestionBehavior,
-} from "@/components/questions/SingleChoiceQuestion";
+  TextQuestion,
+  textQuestionBehavior,
+} from "@/components/interview/questions/TextQuestion";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 
 const { deleteAnswerMutationFnMock, saveAnswerMutationFnMock } = vi.hoisted(
@@ -42,61 +42,7 @@ vi.mock("@/orpc/client", () => ({
   },
 }));
 
-vi.mock("sonner", () => ({
-  toast: {
-    error: vi.fn(),
-    success: vi.fn(),
-  },
-}));
-
-vi.mock("@/components/ui/radio-group", async () => {
-  const React = await import("react");
-  const radioGroupContext = React.createContext<(value: string) => void>(
-    () => {},
-  );
-
-  return {
-    RadioGroup({
-      children,
-      onValueChange,
-    }: {
-      children: React.ReactNode;
-      onValueChange?: (value: string) => void;
-    }) {
-      return React.createElement(
-        radioGroupContext.Provider,
-        { value: onValueChange ?? (() => {}) },
-        React.createElement(
-          "div",
-          null,
-          children,
-          React.createElement(
-            "button",
-            {
-              type: "button",
-              onClick: () => onValueChange?.(""),
-            },
-            "Clear selection",
-          ),
-        ),
-      );
-    },
-    RadioGroupItem({ id, value }: { id?: string; value: string }) {
-      const onValueChange = React.useContext(radioGroupContext);
-      return React.createElement(
-        "button",
-        {
-          type: "button",
-          "data-testid": id,
-          onClick: () => onValueChange(value),
-        },
-        value,
-      );
-    },
-  };
-});
-
-function renderSingleChoiceQuestion() {
+function renderTextQuestion() {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -107,10 +53,9 @@ function renderSingleChoiceQuestion() {
     uuid: "question-1",
     flowStepUuid: "flow-step-1",
     position: 1,
-    questionType: "single_choice",
+    questionType: "text",
     questionPayload: {
-      question: "Choose one option",
-      options: ["Option A", "Option B"],
+      question: "Why do you want this role?",
     },
     isCv: false,
   };
@@ -123,7 +68,7 @@ function renderSingleChoiceQuestion() {
       defaultValues,
     }) as InterviewFormType;
 
-    return React.createElement(SingleChoiceQuestion, {
+    return React.createElement(TextQuestion, {
       form,
       question,
       interviewUuid: "interview-1",
@@ -141,17 +86,19 @@ function renderSingleChoiceQuestion() {
   );
 }
 
-describe("SingleChoiceQuestion", () => {
+describe("TextQuestion", () => {
   afterEach(() => {
     cleanup();
     deleteAnswerMutationFnMock.mockClear();
     saveAnswerMutationFnMock.mockClear();
   });
 
-  it("saves the answer when an option is selected", async () => {
-    renderSingleChoiceQuestion();
+  it("saves the answer when text is entered", async () => {
+    renderTextQuestion();
 
-    fireEvent.click(screen.getByTestId("Option A"));
+    fireEvent.change(screen.getByPlaceholderText("Deine Antwort"), {
+      target: { value: "I like the team." },
+    });
 
     await waitFor(
       () => {
@@ -160,7 +107,7 @@ describe("SingleChoiceQuestion", () => {
             interviewUuid: "interview-1",
             questionUuid: "question-1",
             answerPayload: {
-              selectedOption: "Option A",
+              answer: "I like the team.",
             },
           },
           expect.anything(),
@@ -172,10 +119,25 @@ describe("SingleChoiceQuestion", () => {
     expect(deleteAnswerMutationFnMock).not.toHaveBeenCalled();
   });
 
-  it("deletes the answer when the selection becomes invalid", async () => {
-    renderSingleChoiceQuestion();
+  it("deletes the answer when the text becomes invalid", async () => {
+    renderTextQuestion();
 
-    fireEvent.click(screen.getByText("Clear selection"));
+    fireEvent.change(screen.getByPlaceholderText("Deine Antwort"), {
+      target: { value: "Temporary answer" },
+    });
+
+    await waitFor(
+      () => {
+        expect(saveAnswerMutationFnMock).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 1500 },
+    );
+
+    saveAnswerMutationFnMock.mockClear();
+
+    fireEvent.change(screen.getByPlaceholderText("Deine Antwort"), {
+      target: { value: "" },
+    });
 
     await waitFor(
       () => {
@@ -194,18 +156,17 @@ describe("SingleChoiceQuestion", () => {
   });
 });
 
-describe("singleChoiceQuestionBehavior", () => {
+describe("textQuestionBehavior", () => {
   it("returns false when no answer exists", () => {
     expect(
-      singleChoiceQuestionBehavior.isAnswered({
+      textQuestionBehavior.isAnswered({
         question: {
           uuid: uuidv7(),
           flowStepUuid: uuidv7(),
           position: 1,
-          questionType: "single_choice",
+          questionType: "text",
           questionPayload: {
             question: "Question",
-            options: ["Option A"],
           },
           isCv: false,
         },
@@ -222,21 +183,20 @@ describe("singleChoiceQuestionBehavior", () => {
       interviewUuid: uuidv7(),
       questionUuid: uuidv7(),
       answerPayload: {
-        selectedOption: "Option A",
+        answer: "My answer",
       },
       answeredAt: new Date(),
     };
 
     expect(
-      singleChoiceQuestionBehavior.isAnswered({
+      textQuestionBehavior.isAnswered({
         question: {
           uuid: answer.questionUuid,
           flowStepUuid: uuidv7(),
           position: 1,
-          questionType: "single_choice",
+          questionType: "text",
           questionPayload: {
             question: "Question",
-            options: ["Option A"],
           },
           isCv: false,
         },

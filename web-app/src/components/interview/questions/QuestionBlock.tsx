@@ -1,14 +1,14 @@
 import type { QueryKey } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import type z from "zod";
+import type { InterviewFormType } from "@/components/interview/Interview";
+import { documentQuestionBehavior } from "@/components/interview/questions/DocumentQuestion";
+import { multipleChoiceQuestionBehavior } from "@/components/interview/questions/MultipleChoiceQuestion";
+import { singleChoiceQuestionBehavior } from "@/components/interview/questions/SingleChoiceQuestion";
+import { textQuestionBehavior } from "@/components/interview/questions/TextQuestion";
+import { videoQuestionBehavior } from "@/components/interview/questions/VideoQuestion";
 import { QuestionType } from "@/db/payload-types";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
-import type { InterviewFormType } from "../Interview";
-import { documentQuestionBehavior } from "./DocumentQuestion";
-import { multipleChoiceQuestionBehavior } from "./MultipleChoiceQuestion";
-import { singleChoiceQuestionBehavior } from "./SingleChoiceQuestion";
-import { textQuestionBehavior } from "./TextQuestion";
-import { videoQuestionBehavior } from "./VideoQuestion";
 
 export interface QuestionBehavior {
   getFormDefaultValue: (

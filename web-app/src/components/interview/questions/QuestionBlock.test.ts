@@ -4,7 +4,7 @@ import {
   getCurrentFlowStepFormDefaultValues,
   getQuestionTypeHelper,
   renderQuestionBlockQuestion,
-} from "@/components/questions/QuestionBlock";
+} from "@/components/interview/questions/QuestionBlock";
 import { QuestionType } from "@/db/payload-types";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 

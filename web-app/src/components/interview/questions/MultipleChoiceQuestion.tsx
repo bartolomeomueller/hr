@@ -2,8 +2,8 @@ import { type QueryKey, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type z from "zod";
 import {
-  SingleChoiceAnswerPayloadType,
-  SingleChoiceQuestionPayloadType,
+  MultipleChoiceAnswerPayloadType,
+  MultipleChoiceQuestionPayloadType,
 } from "@/db/payload-types";
 import type { InterviewRelatedDataQueryData } from "@/lib/interview-related-data-cache";
 import {
@@ -14,25 +14,22 @@ import {
 } from "@/lib/interview-related-data-cache";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
-import type { InterviewFormType } from "../Interview";
-import { SlideInFromTop } from "../ui/animation";
+import type { InterviewFormType } from "@/components/interview/Interview";
+import type { QuestionBehavior } from "@/components/interview/questions/QuestionBlock";
+import { SlideInFromTop } from "@/components/ui/animation";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
-  FieldContent,
   FieldError,
+  FieldGroup,
   FieldLabel,
   FieldLegend,
   FieldSet,
-  FieldTitle,
-} from "../ui/field";
-import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
-import type { QuestionBehavior } from "./QuestionBlock";
+} from "@/components/ui/field";
 
-// TODO add support for skipping each question, if the admins allow it, make each question optional on admin request
-
-export const singleChoiceQuestionBehavior: QuestionBehavior = {
-  getFormDefaultValue: getSingleChoiceQuestionFormDefaultValue,
-  isAnswered: ({ answer }) => isSingleChoiceQuestionAnswered(answer),
+export const multipleChoiceQuestionBehavior: QuestionBehavior = {
+  getFormDefaultValue: getMultipleChoiceQuestionFormDefaultValue,
+  isAnswered: ({ answer }) => isMultipleChoiceQuestionAnswered(answer),
   renderQuestionBlockQuestion: ({
     form,
     question,
@@ -40,7 +37,7 @@ export const singleChoiceQuestionBehavior: QuestionBehavior = {
     queryKeyToInvalidateAnswers,
     answer,
   }) => (
-    <SingleChoiceQuestion
+    <MultipleChoiceQuestion
       key={question.uuid}
       form={form}
       question={question}
@@ -51,31 +48,31 @@ export const singleChoiceQuestionBehavior: QuestionBehavior = {
   ),
 };
 
-function isSingleChoiceQuestionAnswered(
+function isMultipleChoiceQuestionAnswered(
   answer: z.infer<typeof AnswerSelectSchema> | undefined,
 ) {
   return answer !== undefined;
 }
 
-function getSingleChoiceQuestionFormDefaultValue(
+function getMultipleChoiceQuestionFormDefaultValue(
   answer: z.infer<typeof AnswerSelectSchema> | undefined,
 ) {
   if (!answer) {
-    return "";
+    return [];
   }
 
-  const singleChoiceAnswerPayloadResult =
-    SingleChoiceAnswerPayloadType.safeParse(answer.answerPayload);
-  if (!singleChoiceAnswerPayloadResult.success)
+  const multipleChoiceAnswerPayloadResult =
+    MultipleChoiceAnswerPayloadType.safeParse(answer.answerPayload);
+  if (!multipleChoiceAnswerPayloadResult.success)
     throw new Error(
-      `Answer payload does not match expected type for single choice question. This should never happen, please report it. ${singleChoiceAnswerPayloadResult.error.message}`,
+      `Answer payload does not match expected type for multiple choice question. This should never happen, please report it. ${multipleChoiceAnswerPayloadResult.error.message}`,
     );
 
-  return singleChoiceAnswerPayloadResult.data.selectedOption;
+  return multipleChoiceAnswerPayloadResult.data.selectedOptions ?? [];
 }
 
-// TODO With fewer than 10 options, radio buttons are used, with more a dropdown
-export function SingleChoiceQuestion({
+// TODO implement min and max selections logic
+export function MultipleChoiceQuestion({
   form,
   question,
   interviewUuid,
@@ -88,15 +85,15 @@ export function SingleChoiceQuestion({
   queryKeyToInvalidateAnswers: QueryKey;
   answer: z.infer<typeof AnswerSelectSchema> | undefined;
 }) {
-  const questionPayloadResult = SingleChoiceQuestionPayloadType.safeParse(
+  const questionPayloadResult = MultipleChoiceQuestionPayloadType.safeParse(
     question.questionPayload,
   );
   if (!questionPayloadResult.success)
     throw new Error(
-      `Question payload does not match expected type for single choice question. This should never happen, please report it. ${questionPayloadResult.error.message}`,
+      `Question payload does not match expected type for multiple choice question. This should never happen, please report it. ${questionPayloadResult.error.message}`,
     );
   const questionPayload = questionPayloadResult.data;
-  const answerValidator = SingleChoiceAnswerPayloadType.shape.selectedOption;
+  const answerValidator = MultipleChoiceAnswerPayloadType.shape.selectedOptions;
 
   const { mutate } = useMutation({
     ...orpc.saveAnswer.mutationOptions(),
@@ -119,7 +116,7 @@ export function SingleChoiceQuestion({
               interviewUuid: variables.interviewUuid,
               questionUuid: variables.questionUuid,
               answerPayload: variables.answerPayload as z.infer<
-                typeof SingleChoiceAnswerPayloadType
+                typeof MultipleChoiceAnswerPayloadType
               >,
               previousAnswer:
                 findAnswerInInterviewRelatedDataCache(
@@ -134,7 +131,7 @@ export function SingleChoiceQuestion({
         previousData,
       };
     },
-    onError(_error, _variables, onMutateResult, context) {
+    onError: (_error, _variables, onMutateResult, context) => {
       context.client.setQueryData(
         queryKeyToInvalidateAnswers,
         onMutateResult?.previousData,
@@ -197,7 +194,6 @@ export function SingleChoiceQuestion({
       validators={{
         onChange: answerValidator,
       }}
-      // Listeners will be run even if the component unmounts
       listeners={{
         // onChangeDebounceMs: 500,
         onChange: ({ value }) => {
@@ -213,7 +209,7 @@ export function SingleChoiceQuestion({
             interviewUuid,
             questionUuid: question.uuid,
             answerPayload: {
-              selectedOption: value,
+              selectedOptions: value,
             },
           });
         },
@@ -221,6 +217,7 @@ export function SingleChoiceQuestion({
       children={(field) => {
         const isInvalid =
           field.state.meta.isBlurred && !field.state.meta.isValid;
+        const selectedOptions = field.state.value as string[];
         return (
           <div className="py-2">
             <FieldSet>
@@ -228,35 +225,33 @@ export function SingleChoiceQuestion({
                 {questionPayload.question}
               </FieldLegend>
               <div>
-                {/* <FieldDescription>{questionPayload.question}</FieldDescription> */}
-                <RadioGroup
-                  name={field.name}
-                  value={field.state.value as string}
-                  onValueChange={field.handleChange}
-                  onBlur={field.handleBlur}
-                >
+                <FieldGroup data-slot="checkbox-group">
                   {questionPayload.options.map((option) => (
-                    <FieldLabel
+                    <Field
                       key={option}
-                      htmlFor={option}
-                      // The lint is wrong.
-                      className="[&>*]:data-[slot=field]:p-2"
+                      orientation="horizontal"
+                      data-invalid={isInvalid}
                     >
-                      <Field orientation="horizontal" data-invalid={isInvalid}>
-                        <FieldContent>
-                          <FieldTitle>{option}</FieldTitle>
-                          {/* <FieldDescription>{option}</FieldDescription> */}
-                        </FieldContent>
-                        <RadioGroupItem
-                          id={option}
-                          value={option}
-                          aria-invalid={isInvalid}
-                        />
-                      </Field>
-                    </FieldLabel>
+                      <Checkbox
+                        id={option}
+                        name={field.name}
+                        aria-invalid={isInvalid}
+                        checked={selectedOptions.includes(option)}
+                        onBlur={field.handleBlur}
+                        onCheckedChange={(checked) => {
+                          const nextSelectedOptions = checked
+                            ? [...selectedOptions, option]
+                            : selectedOptions.filter(
+                                (selectedOption) => selectedOption !== option,
+                              );
+
+                          field.handleChange(nextSelectedOptions);
+                        }}
+                      />
+                      <FieldLabel htmlFor={option}>{option}</FieldLabel>
+                    </Field>
                   ))}
-                </RadioGroup>
-                {/* This SlideInFromTop component currently will never show an error message, since the RadioGroup doesn't support deselection. */}
+                </FieldGroup>
                 <SlideInFromTop isVisible={isInvalid}>
                   <FieldError errors={field.state.meta.errors} />
                 </SlideInFromTop>

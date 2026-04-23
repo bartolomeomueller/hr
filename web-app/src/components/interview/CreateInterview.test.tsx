@@ -28,7 +28,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("@/components/CandidateFlowFormContext", () => ({
+vi.mock("@/components/interview/CandidateFlowFormContext", () => ({
   candidateFlowNoopSubmit: async () => {},
   useCandidateFlowForm: () => ({
     showForm: showFormMock,

@@ -9,8 +9,8 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { SlideInFromTop } from "./ui/animation";
-import { Large } from "./ui/typography";
+import { SlideInFromTop } from "@/components/ui/animation";
+import { Large } from "@/components/ui/typography";
 
 export function CandidateGreetingForm({
   canSubmit,

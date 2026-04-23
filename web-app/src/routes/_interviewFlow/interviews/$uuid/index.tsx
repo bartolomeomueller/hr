@@ -1,9 +1,9 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { Suspense } from "react";
 import z from "zod";
-import { FinalizeInterview } from "@/components/FinalizeInterview";
-import { GenericLoader } from "@/components/GenericLoader";
-import { Interview } from "@/components/Interview";
+import { FinalizeInterview } from "@/components/interview/FinalizeInterview";
+import { Interview } from "@/components/interview/Interview";
+import { GenericLoader } from "@/components/layout/GenericLoader";
 import { orpc } from "@/orpc/client";
 import { FlowStepSelectSchema } from "@/orpc/schema";
 

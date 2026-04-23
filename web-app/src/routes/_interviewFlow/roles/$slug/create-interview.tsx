@@ -1,5 +1,5 @@
 import { createFileRoute, notFound, useNavigate } from "@tanstack/react-router";
-import { CreateInterview } from "@/components/CreateInterview";
+import { CreateInterview } from "@/components/interview/CreateInterview";
 import { orpc } from "@/orpc/client";
 
 export const Route = createFileRoute(

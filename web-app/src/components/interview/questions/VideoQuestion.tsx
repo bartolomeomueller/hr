@@ -3,6 +3,10 @@ import { ClientOnly } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import type z from "zod";
+import type { QuestionBehavior } from "@/components/interview/questions/QuestionBlock";
+import { VideoRecorder } from "@/components/interview/questions/VideoRecorder";
+import { Button } from "@/components/ui/button";
+import { Large } from "@/components/ui/typography";
 import {
   VideoAnswerPayloadType,
   VideoQuestionPayloadType,
@@ -15,10 +19,6 @@ import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { recordingUploadService } from "@/services/RecordingUploadService.client";
 import { useRecordingUploadStore } from "@/stores/recordingUploadStore";
-import { Button } from "../ui/button";
-import { Large } from "../ui/typography";
-import type { QuestionBehavior } from "./QuestionBlock";
-import { VideoRecorder } from "./VideoRecorder";
 
 export const videoQuestionBehavior: QuestionBehavior = {
   getFormDefaultValue: getVideoQuestionFormDefaultValue,

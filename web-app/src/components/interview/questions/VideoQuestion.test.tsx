@@ -14,7 +14,7 @@ import type z from "zod";
 import {
   VideoQuestion,
   videoQuestionBehavior,
-} from "@/components/questions/VideoQuestion";
+} from "@/components/interview/questions/VideoQuestion";
 import { QuestionType } from "@/db/payload-types";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { useRecordingUploadStore } from "@/stores/recordingUploadStore";

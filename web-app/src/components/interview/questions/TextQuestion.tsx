@@ -1,9 +1,9 @@
 import { type QueryKey, useMutation } from "@tanstack/react-query";
-import { toast } from "sonner";
 import type z from "zod";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import {
-  MultipleChoiceAnswerPayloadType,
-  MultipleChoiceQuestionPayloadType,
+  TextAnswerPayloadType,
+  TextQuestionPayloadType,
 } from "@/db/payload-types";
 import type { InterviewRelatedDataQueryData } from "@/lib/interview-related-data-cache";
 import {
@@ -14,22 +14,16 @@ import {
 } from "@/lib/interview-related-data-cache";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
-import type { InterviewFormType } from "../Interview";
-import { SlideInFromTop } from "../ui/animation";
-import { Checkbox } from "../ui/checkbox";
-import {
-  Field,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-  FieldLegend,
-  FieldSet,
-} from "../ui/field";
-import type { QuestionBehavior } from "./QuestionBlock";
+import type { InterviewFormType } from "@/components/interview/Interview";
+import type { QuestionBehavior } from "@/components/interview/questions/QuestionBlock";
+import { SlideInFromTop } from "@/components/ui/animation";
+import { Input } from "@/components/ui/input";
 
-export const multipleChoiceQuestionBehavior: QuestionBehavior = {
-  getFormDefaultValue: getMultipleChoiceQuestionFormDefaultValue,
-  isAnswered: ({ answer }) => isMultipleChoiceQuestionAnswered(answer),
+// TODO think about making each question optional possible, if the user does not want to answer a question
+
+export const textQuestionBehavior: QuestionBehavior = {
+  getFormDefaultValue: getTextQuestionFormDefaultValue,
+  isAnswered: ({ answer }) => isTextQuestionAnswered(answer),
   renderQuestionBlockQuestion: ({
     form,
     question,
@@ -37,7 +31,7 @@ export const multipleChoiceQuestionBehavior: QuestionBehavior = {
     queryKeyToInvalidateAnswers,
     answer,
   }) => (
-    <MultipleChoiceQuestion
+    <TextQuestion
       key={question.uuid}
       form={form}
       question={question}
@@ -48,31 +42,31 @@ export const multipleChoiceQuestionBehavior: QuestionBehavior = {
   ),
 };
 
-function isMultipleChoiceQuestionAnswered(
+function isTextQuestionAnswered(
   answer: z.infer<typeof AnswerSelectSchema> | undefined,
 ) {
   return answer !== undefined;
 }
 
-function getMultipleChoiceQuestionFormDefaultValue(
+function getTextQuestionFormDefaultValue(
   answer: z.infer<typeof AnswerSelectSchema> | undefined,
 ) {
   if (!answer) {
-    return [];
+    return "";
   }
 
-  const multipleChoiceAnswerPayloadResult =
-    MultipleChoiceAnswerPayloadType.safeParse(answer.answerPayload);
-  if (!multipleChoiceAnswerPayloadResult.success)
+  const textAnswerPayloadResult = TextAnswerPayloadType.safeParse(
+    answer.answerPayload,
+  );
+  if (!textAnswerPayloadResult.success)
     throw new Error(
-      `Answer payload does not match expected type for multiple choice question. This should never happen, please report it. ${multipleChoiceAnswerPayloadResult.error.message}`,
+      `Answer payload does not match expected type for text question. This should never happen, please report it. ${textAnswerPayloadResult.error.message}`,
     );
 
-  return multipleChoiceAnswerPayloadResult.data.selectedOptions ?? [];
+  return textAnswerPayloadResult.data.answer;
 }
 
-// TODO implement min and max selections logic
-export function MultipleChoiceQuestion({
+export function TextQuestion({
   form,
   question,
   interviewUuid,
@@ -85,15 +79,15 @@ export function MultipleChoiceQuestion({
   queryKeyToInvalidateAnswers: QueryKey;
   answer: z.infer<typeof AnswerSelectSchema> | undefined;
 }) {
-  const questionPayloadResult = MultipleChoiceQuestionPayloadType.safeParse(
+  const questionPayloadResult = TextQuestionPayloadType.safeParse(
     question.questionPayload,
   );
   if (!questionPayloadResult.success)
     throw new Error(
-      `Question payload does not match expected type for multiple choice question. This should never happen, please report it. ${questionPayloadResult.error.message}`,
+      `Question payload does not match expected type for text question. This should never happen, please report it. ${questionPayloadResult.error.message}`,
     );
   const questionPayload = questionPayloadResult.data;
-  const answerValidator = MultipleChoiceAnswerPayloadType.shape.selectedOptions;
+  const answerValidator = TextAnswerPayloadType.shape.answer;
 
   const { mutate } = useMutation({
     ...orpc.saveAnswer.mutationOptions(),
@@ -116,7 +110,7 @@ export function MultipleChoiceQuestion({
               interviewUuid: variables.interviewUuid,
               questionUuid: variables.questionUuid,
               answerPayload: variables.answerPayload as z.infer<
-                typeof MultipleChoiceAnswerPayloadType
+                typeof TextAnswerPayloadType
               >,
               previousAnswer:
                 findAnswerInInterviewRelatedDataCache(
@@ -135,9 +129,6 @@ export function MultipleChoiceQuestion({
       context.client.setQueryData(
         queryKeyToInvalidateAnswers,
         onMutateResult?.previousData,
-      );
-      toast.error(
-        "Deine Antwort konnte nicht gespeichert werden. Bitte versuche es erneut.",
       );
     },
     // isPending is false as soon as the new (previously invalidated) query data arrives, since we are returning the promise
@@ -177,9 +168,6 @@ export function MultipleChoiceQuestion({
         queryKeyToInvalidateAnswers,
         onMutateResult?.previousData,
       );
-      toast.error(
-        "Deine Antwort konnte nicht gelöscht werden. Bitte versuche es erneut.",
-      );
     },
     onSettled: (_data, _error, _variables, _onMutateResult, context) =>
       context.client.invalidateQueries({
@@ -195,7 +183,7 @@ export function MultipleChoiceQuestion({
         onChange: answerValidator,
       }}
       listeners={{
-        // onChangeDebounceMs: 500,
+        onChangeDebounceMs: 500,
         onChange: ({ value }) => {
           if (!answerValidator.safeParse(value).success) {
             deleteAnswer({
@@ -209,7 +197,7 @@ export function MultipleChoiceQuestion({
             interviewUuid,
             questionUuid: question.uuid,
             answerPayload: {
-              selectedOptions: value,
+              answer: value,
             },
           });
         },
@@ -217,46 +205,32 @@ export function MultipleChoiceQuestion({
       children={(field) => {
         const isInvalid =
           field.state.meta.isBlurred && !field.state.meta.isValid;
-        const selectedOptions = field.state.value as string[];
         return (
           <div className="py-2">
-            <FieldSet>
-              <FieldLegend variant="label">
+            {/* data-invalid attribute is used in Field to style the field
+                aria-invalid attribute is used for accessibility, it indicates that the value entered in the field does not conform to the expected format */}
+            <Field data-invalid={isInvalid}>
+              <FieldLabel htmlFor={field.name}>
                 {questionPayload.question}
-              </FieldLegend>
+              </FieldLabel>
               <div>
-                <FieldGroup data-slot="checkbox-group">
-                  {questionPayload.options.map((option) => (
-                    <Field
-                      key={option}
-                      orientation="horizontal"
-                      data-invalid={isInvalid}
-                    >
-                      <Checkbox
-                        id={option}
-                        name={field.name}
-                        aria-invalid={isInvalid}
-                        checked={selectedOptions.includes(option)}
-                        onBlur={field.handleBlur}
-                        onCheckedChange={(checked) => {
-                          const nextSelectedOptions = checked
-                            ? [...selectedOptions, option]
-                            : selectedOptions.filter(
-                                (selectedOption) => selectedOption !== option,
-                              );
-
-                          field.handleChange(nextSelectedOptions);
-                        }}
-                      />
-                      <FieldLabel htmlFor={option}>{option}</FieldLabel>
-                    </Field>
-                  ))}
-                </FieldGroup>
+                <Input
+                  type="text"
+                  id={field.name}
+                  name={field.name}
+                  value={field.state.value as string}
+                  // change later to without e
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  aria-invalid={isInvalid}
+                  placeholder="Deine Antwort"
+                  required
+                />
                 <SlideInFromTop isVisible={isInvalid}>
                   <FieldError errors={field.state.meta.errors} />
                 </SlideInFromTop>
               </div>
-            </FieldSet>
+            </Field>
           </div>
         );
       }}
