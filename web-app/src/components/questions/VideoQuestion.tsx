@@ -17,7 +17,7 @@ import { recordingUploadService } from "@/services/RecordingUploadService.client
 import { useRecordingUploadStore } from "@/stores/recordingUploadStore";
 import { Button } from "../ui/button";
 import { Large } from "../ui/typography";
-import type { QuestionBehavior } from "./questionBehavior";
+import type { QuestionBehavior } from "./QuestionBlock";
 import { VideoRecorder } from "./VideoRecorder";
 
 export const videoQuestionBehavior: QuestionBehavior = {

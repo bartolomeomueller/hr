@@ -26,7 +26,7 @@ import {
   FieldTitle,
 } from "../ui/field";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
-import type { QuestionBehavior } from "./questionBehavior";
+import type { QuestionBehavior } from "./QuestionBlock";
 
 // TODO add support for skipping each question, if the admins allow it, make each question optional on admin request
 

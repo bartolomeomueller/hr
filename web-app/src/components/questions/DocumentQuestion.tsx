@@ -31,7 +31,7 @@ import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Label } from "../ui/label";
-import type { QuestionBehavior } from "./questionBehavior";
+import type { QuestionBehavior } from "./QuestionBlock";
 
 const PDF_MIME_TYPE = "application/pdf";
 

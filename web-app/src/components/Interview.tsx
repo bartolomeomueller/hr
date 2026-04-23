@@ -11,7 +11,7 @@ import { useCandidateFlowForm } from "@/components/CandidateFlowFormContext";
 import { orpc } from "@/orpc/client";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { QuestionBlock } from "./questions/QuestionBlock";
-import { getCurrentFlowStepFormDefaultValues } from "./questions/questionTypeHelpers";
+import { getCurrentFlowStepFormDefaultValues } from "./questions/QuestionBlock";
 import { useCurrentFlowStepIsAnswered } from "./questions/useCurrentFlowStepIsAnswered";
 import { VideoQuestion } from "./questions/VideoQuestion";
 import { Button } from "./ui/button";

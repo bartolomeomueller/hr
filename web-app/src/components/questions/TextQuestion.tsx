@@ -17,7 +17,7 @@ import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import type { InterviewFormType } from "../Interview";
 import { SlideInFromTop } from "../ui/animation";
 import { Input } from "../ui/input";
-import type { QuestionBehavior } from "./questionBehavior";
+import type { QuestionBehavior } from "./QuestionBlock";
 
 // TODO think about making each question optional possible, if the user does not want to answer a question
 

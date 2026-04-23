@@ -25,7 +25,7 @@ import {
   FieldLegend,
   FieldSet,
 } from "../ui/field";
-import type { QuestionBehavior } from "./questionBehavior";
+import type { QuestionBehavior } from "./QuestionBlock";
 
 export const multipleChoiceQuestionBehavior: QuestionBehavior = {
   getFormDefaultValue: getMultipleChoiceQuestionFormDefaultValue,

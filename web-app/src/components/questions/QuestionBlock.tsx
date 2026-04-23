@@ -1,11 +1,33 @@
 import type { QueryKey } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import type z from "zod";
+import { QuestionType } from "@/db/payload-types";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import type { InterviewFormType } from "../Interview";
-import {
-  isInterviewQuestionAnswered,
-  renderQuestionBlockQuestion,
-} from "./questionTypeHelpers";
+import { documentQuestionBehavior } from "./DocumentQuestion";
+import { multipleChoiceQuestionBehavior } from "./MultipleChoiceQuestion";
+import { singleChoiceQuestionBehavior } from "./SingleChoiceQuestion";
+import { textQuestionBehavior } from "./TextQuestion";
+import { videoQuestionBehavior } from "./VideoQuestion";
+
+export interface QuestionBehavior {
+  getFormDefaultValue: (
+    answer: z.infer<typeof AnswerSelectSchema> | undefined,
+  ) => string | string[] | undefined;
+  isAnswered: (args: {
+    question: z.infer<typeof QuestionSelectSchema>;
+    answer: z.infer<typeof AnswerSelectSchema> | undefined;
+    questionUuidsWithUploadingDocuments: Set<string>;
+    questionUuidsWithUploadingRecordings: Set<string>;
+  }) => boolean;
+  renderQuestionBlockQuestion: (args: {
+    form: InterviewFormType;
+    question: z.infer<typeof QuestionSelectSchema>;
+    interviewUuid: string;
+    queryKeyToInvalidateAnswers: QueryKey;
+    answer: z.infer<typeof AnswerSelectSchema> | undefined;
+  }) => ReactNode;
+}
 
 export function QuestionBlock({
   form,
@@ -37,25 +59,92 @@ export function QuestionBlock({
   );
 }
 
-export function areQuestionBlockQuestionsAnswered({
+export function getCurrentFlowStepFormDefaultValues({
   questions,
   answers,
-  questionUuidsWithUploadingDocuments,
+  currentFlowStepUuid,
 }: {
   questions: Array<z.infer<typeof QuestionSelectSchema>>;
   answers: Array<z.infer<typeof AnswerSelectSchema>>;
-  questionUuidsWithUploadingDocuments: Set<string>;
+  currentFlowStepUuid: string;
 }) {
-  return questions.every((question) => {
-    const answer = answers.find(
-      (currentAnswer) => currentAnswer.questionUuid === question.uuid,
-    );
+  return questions
+    .filter((question) => question.flowStepUuid === currentFlowStepUuid)
+    .reduce<Record<string, string | string[]>>((defaultValues, question) => {
+      const answer = answers.find(
+        (currentAnswer) => currentAnswer.questionUuid === question.uuid,
+      );
+      const defaultValue = getQuestionTypeHelper(
+        question.questionType,
+      ).getFormDefaultValue(answer);
 
-    return isInterviewQuestionAnswered({
-      question,
-      answer,
-      questionUuidsWithUploadingDocuments,
-      questionUuidsWithUploadingRecordings: new Set(),
-    });
+      if (defaultValue === undefined) {
+        return defaultValues;
+      }
+
+      defaultValues[question.uuid] = defaultValue;
+      return defaultValues;
+    }, {});
+}
+
+export function renderQuestionBlockQuestion({
+  form,
+  question,
+  interviewUuid,
+  queryKeyToInvalidateAnswers,
+  answer,
+}: {
+  form: InterviewFormType;
+  question: z.infer<typeof QuestionSelectSchema>;
+  interviewUuid: string;
+  queryKeyToInvalidateAnswers: QueryKey;
+  answer: z.infer<typeof AnswerSelectSchema> | undefined;
+}) {
+  return getQuestionTypeHelper(
+    question.questionType,
+  ).renderQuestionBlockQuestion({
+    form,
+    question,
+    interviewUuid,
+    queryKeyToInvalidateAnswers,
+    answer,
   });
 }
+
+export function isInterviewQuestionAnswered({
+  question,
+  answer,
+  questionUuidsWithUploadingDocuments,
+  questionUuidsWithUploadingRecordings,
+}: {
+  question: z.infer<typeof QuestionSelectSchema>;
+  answer: z.infer<typeof AnswerSelectSchema> | undefined;
+  questionUuidsWithUploadingDocuments: Set<string>;
+  questionUuidsWithUploadingRecordings: Set<string>;
+}) {
+  return getQuestionTypeHelper(question.questionType).isAnswered({
+    question,
+    answer,
+    questionUuidsWithUploadingDocuments,
+    questionUuidsWithUploadingRecordings,
+  });
+}
+
+export function getQuestionTypeHelper(questionType: string): QuestionBehavior {
+  const helper = questionTypeHelpers[questionType as QuestionType];
+  if (helper) {
+    return helper;
+  }
+
+  throw new Error(
+    `Question type ${questionType} is not supported. Please report this bug.`,
+  );
+}
+
+const questionTypeHelpers: Record<QuestionType, QuestionBehavior> = {
+  [QuestionType.text]: textQuestionBehavior,
+  [QuestionType.single_choice]: singleChoiceQuestionBehavior,
+  [QuestionType.multiple_choice]: multipleChoiceQuestionBehavior,
+  [QuestionType.document]: documentQuestionBehavior,
+  [QuestionType.video]: videoQuestionBehavior,
+};

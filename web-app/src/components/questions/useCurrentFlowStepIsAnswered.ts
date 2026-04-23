@@ -3,7 +3,7 @@ import { useShallow } from "zustand/shallow";
 import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 import { useDocumentUploadStore } from "@/stores/documentUploadStore";
 import { useRecordingUploadStore } from "@/stores/recordingUploadStore";
-import { isInterviewQuestionAnswered } from "./questionTypeHelpers";
+import { isInterviewQuestionAnswered } from "./QuestionBlock";
 
 export function useCurrentFlowStepIsAnswered({
   currentFlowStepKind,
