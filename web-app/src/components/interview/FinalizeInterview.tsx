@@ -1,5 +1,7 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
 import { FileVideo } from "lucide-react";
+import { useEffect } from "react";
+import { toast } from "sonner";
 import { Large } from "@/components/ui/typography";
 import { VideoQuestionPayloadType } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
@@ -16,18 +18,77 @@ export function FinalizeInterview({
 }) {
   const uploadStore = useRecordingUploadStore((state) => state.recordings);
 
+  const interviewRelatedDataQueryOptions =
+    orpc.getInterviewRelatedDataByInterviewUuid.queryOptions({
+      input: { uuid },
+    });
+  const interviewRelatedDataQuery = useSuspenseQuery(
+    interviewRelatedDataQueryOptions,
+  );
   const questionsQuery = useSuspenseQuery(
     orpc.getQuestionsByInterviewUuid.queryOptions({ input: { uuid } }),
   );
 
+  const finishInterviewMutation = useMutation({
+    ...orpc.finishInterview.mutationOptions(),
+    onError(error, _variables, _onMutateResult, _context) {
+      console.error("Error finishing interview:", error);
+      toast.error(
+        "Deine Bewerbung konnte gerade nicht abgeschlossen werden. Bitte lade diese Seite neu, um es erneut zu versuchen.",
+      );
+    },
+    onSuccess: (_data, _variables, _onMutateResult, context) => {
+      context.client.setQueryData(
+        interviewRelatedDataQueryOptions.queryKey,
+        (oldData) => {
+          if (!oldData) return oldData;
+
+          return {
+            ...oldData,
+            interview: {
+              ...oldData.interview,
+              isFinished: true,
+            },
+          };
+        },
+      );
+      context.client.invalidateQueries({
+        queryKey: interviewRelatedDataQueryOptions.queryKey,
+      });
+    },
+  });
+
   const questionsData = questionsQuery.data;
   if (!questionsData) {
+    return onResourceNotFound();
+  }
+  const interviewRelatedData = interviewRelatedDataQuery.data;
+  if (!interviewRelatedData) {
     return onResourceNotFound();
   }
 
   const allRecordingsUploaded = uploadStore.length === 0;
   const questionLabelsByUuid = getQuestionLabelsByUuid(questionsData.questions);
   const recordingGroups = getRecordingGroups(uploadStore, questionLabelsByUuid);
+  const interviewIsFinished =
+    interviewRelatedData.interview.isFinished ||
+    finishInterviewMutation.isSuccess;
+
+  useEffect(() => {
+    if (!allRecordingsUploaded) return;
+    if (interviewRelatedData.interview.isFinished) return;
+    if (finishInterviewMutation.isPending) return;
+    if (finishInterviewMutation.isError) return;
+
+    finishInterviewMutation.mutate({ uuid });
+  }, [
+    allRecordingsUploaded,
+    finishInterviewMutation.mutate,
+    finishInterviewMutation.isError,
+    finishInterviewMutation.isPending,
+    interviewRelatedData.interview.isFinished,
+    uuid,
+  ]);
 
   if (!allRecordingsUploaded) {
     return (
@@ -58,6 +119,22 @@ export function FinalizeInterview({
                 </div>
               </section>
             ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!interviewIsFinished) {
+    return (
+      <div className="flex justify-center px-2 sm:px-4 md:px-8">
+        <div className="flex w-full flex-col gap-4 lg:w-9/12">
+          <div className="rounded-lg border bg-card p-6 shadow-xs">
+            <Large>
+              {finishInterviewMutation.isError
+                ? "Deine Bewerbung konnte leider nicht abgeschlossen werden. Bitte lade die Seite neu, um es erneut zu versuchen."
+                : "Deine Daten werden gerade gespeichert. Bitte schließ dieses Fenster noch nicht."}
+            </Large>
           </div>
         </div>
       </div>

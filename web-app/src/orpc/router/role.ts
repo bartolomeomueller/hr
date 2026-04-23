@@ -67,7 +67,8 @@ export const getAllFinishedInterviewsForRoleByRoleSlug = base
       z.object({
         interview: InterviewSelectSchema,
         candidate: CandidateSelectSchema,
-        cvDocument: DocumentAnswerPayloadType.options[0].shape.documents.element,
+        cvDocument:
+          DocumentAnswerPayloadType.options[0].shape.documents.element,
         evaluations: z.array(EvaluationSelectSchema),
       }),
     ),
@@ -96,17 +97,19 @@ export const getAllFinishedInterviewsForRoleByRoleSlug = base
             candidate: true,
             evaluations: true,
             answers: {
-              where: exists(
-                db
-                  .select({ uuid: Question.uuid })
-                  .from(Question)
-                  .where(
-                    and(
-                      eq(Question.uuid, Answer.questionUuid),
-                      eq(Question.isCv, true),
+              where: (answer, { and, eq }) =>
+                exists(
+                  db
+                    .select({ uuid: Question.uuid })
+                    .from(Question)
+                    .where(
+                      and(
+                        eq(Question.uuid, answer.questionUuid),
+                        eq(Question.isCv, true),
+                      ),
                     ),
-                  ),
-              ),
+                ),
+              limit: 1,
             },
           },
         },

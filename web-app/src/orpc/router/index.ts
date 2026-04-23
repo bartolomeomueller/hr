@@ -7,6 +7,7 @@ import {
 import {
   addParticipantToInterview,
   createInterviewForRoleUuid,
+  finishInterview,
   getInterviewRelatedDataByInterviewUuid,
   getQuestionsByInterviewUuid,
 } from "./interview";
@@ -33,6 +34,7 @@ export default {
   deleteAnswer,
   addNewDocumentToAnswer,
   deleteDocumentFromObjectStorageAndFromAnswer,
+  finishInterview,
 
   // Storage utilities
   createPresignedS3DocumentDownloadUrlByUuid,

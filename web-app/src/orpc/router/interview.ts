@@ -174,3 +174,28 @@ export const addParticipantToInterview = base
       return updatedInterview;
     });
   });
+
+export const finishInterview = base
+  .use(debugMiddleware)
+  .input(InterviewSelectSchema.pick({ uuid: true }))
+  .output(InterviewSelectSchema.pick({ uuid: true, isFinished: true }))
+  .handler(async ({ input }) => {
+    const [updatedInterview] = await db
+      .update(Interview)
+      .set({
+        isFinished: true,
+      })
+      .where(eq(Interview.uuid, input.uuid))
+      .returning({
+        uuid: Interview.uuid,
+        isFinished: Interview.isFinished,
+      });
+
+    if (!updatedInterview) {
+      throw new Error(
+        `Interview ${input.uuid} was not found while marking it as finished.`,
+      );
+    }
+
+    return updatedInterview;
+  });
