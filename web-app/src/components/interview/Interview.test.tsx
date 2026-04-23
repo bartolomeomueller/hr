@@ -135,11 +135,11 @@ describe("Interview invariants", () => {
       render(
         <Interview
           uuid="interview-1"
-          onFlowStepChange={vi.fn()}
+          navigateToStep={vi.fn()}
           onResourceNotFound={() => {
             throw new Error("resource not found");
           }}
-          finalizeInterview={vi.fn()}
+          navigateToFinalize={vi.fn()}
         />,
       ),
     ).toThrowError(/at least one flow step is required/i);
@@ -182,11 +182,11 @@ describe("Interview invariants", () => {
         <Interview
           uuid="interview-1"
           currentFlowStep={99}
-          onFlowStepChange={vi.fn()}
+          navigateToStep={vi.fn()}
           onResourceNotFound={() => {
             throw new Error("resource not found");
           }}
-          finalizeInterview={vi.fn()}
+          navigateToFinalize={vi.fn()}
         />,
       ),
     ).toThrowError(/current flow step 99 does not exist/i);
@@ -228,11 +228,11 @@ describe("Interview invariants", () => {
       render(
         <Interview
           uuid="interview-1"
-          onFlowStepChange={vi.fn()}
+          navigateToStep={vi.fn()}
           onResourceNotFound={() => {
             throw new Error("resource not found");
           }}
-          finalizeInterview={vi.fn()}
+          navigateToFinalize={vi.fn()}
         />,
       ),
     ).toThrowError(/mismatched flow version data/i);

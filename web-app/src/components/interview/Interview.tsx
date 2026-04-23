@@ -29,15 +29,15 @@ import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 export function Interview({
   uuid,
   currentFlowStep,
-  onFlowStepChange,
+  navigateToStep,
   onResourceNotFound,
-  finalizeInterview,
+  navigateToFinalize,
 }: {
   uuid: string;
   currentFlowStep?: number;
-  onFlowStepChange: (step: number) => void;
+  navigateToStep: (step: number) => void;
   onResourceNotFound: () => never;
-  finalizeInterview: () => void;
+  navigateToFinalize: () => void;
 }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const { hideForm, showForm } = useCandidateFlowForm();
@@ -197,8 +197,8 @@ export function Interview({
       interviewUuid={interviewRelatedData.interview.uuid}
       answers={interviewRelatedData.answers}
       queryKeyToInvalidateAnswers={interviewRelatedDataQueryOptions.queryKey}
-      onFlowStepChange={onFlowStepChange}
-      finalizeInterview={finalizeInterview}
+      navigateToStep={navigateToStep}
+      navigateToFinalize={navigateToFinalize}
     />
   );
 }
@@ -211,8 +211,8 @@ function InterviewStepContent({
   interviewUuid,
   answers,
   queryKeyToInvalidateAnswers,
-  onFlowStepChange,
-  finalizeInterview,
+  navigateToStep,
+  navigateToFinalize,
 }: {
   currentFlowStep?: number;
   flowSteps: Array<{ uuid: string; position: number; kind: string | null }>;
@@ -223,8 +223,8 @@ function InterviewStepContent({
   queryKeyToInvalidateAnswers: ReturnType<
     typeof orpc.getInterviewRelatedDataByInterviewUuid.queryOptions
   >["queryKey"];
-  onFlowStepChange: (step: number) => void;
-  finalizeInterview: () => void;
+  navigateToStep: (step: number) => void;
+  navigateToFinalize: () => void;
 }) {
   const activeFlowStepPosition = currentFlowStep ?? flowSteps[0].position; // if search param is not yet defined
   const activeFlowStepIndex = flowSteps.findIndex(
@@ -271,8 +271,8 @@ function InterviewStepContent({
           previousFlowStepPosition={previousFlowStep?.position}
           nextFlowStepPosition={nextFlowStep?.position}
           currentFlowStepIsAnswered={currentFlowStepIsAnswered}
-          onFlowStepChange={onFlowStepChange}
-          finalizeInterview={finalizeInterview}
+          navigateToStep={navigateToStep}
+          navigateToFinalize={navigateToFinalize}
         />
         {currentFlowStepKind === "question_block" && (
           <QuestionBlock
@@ -295,8 +295,8 @@ function InterviewStepContent({
           previousFlowStepPosition={previousFlowStep?.position}
           nextFlowStepPosition={nextFlowStep?.position}
           currentFlowStepIsAnswered={currentFlowStepIsAnswered}
-          onFlowStepChange={onFlowStepChange}
-          finalizeInterview={finalizeInterview}
+          navigateToStep={navigateToStep}
+          navigateToFinalize={navigateToFinalize}
         />
       </div>
     </div>
@@ -307,14 +307,14 @@ function InterviewNavigation({
   previousFlowStepPosition,
   nextFlowStepPosition,
   currentFlowStepIsAnswered,
-  onFlowStepChange,
-  finalizeInterview,
+  navigateToStep,
+  navigateToFinalize,
 }: {
   previousFlowStepPosition?: number;
   nextFlowStepPosition?: number;
   currentFlowStepIsAnswered: boolean;
-  onFlowStepChange: (step: number) => void;
-  finalizeInterview: () => void;
+  navigateToStep: (step: number) => void;
+  navigateToFinalize: () => void;
 }) {
   return (
     <div className="flex justify-between">
@@ -323,7 +323,7 @@ function InterviewNavigation({
         variant="outline"
         onClick={() => {
           if (previousFlowStepPosition === undefined) return;
-          onFlowStepChange(previousFlowStepPosition);
+          navigateToStep(previousFlowStepPosition);
         }}
         disabled={previousFlowStepPosition === undefined}
       >
@@ -334,8 +334,8 @@ function InterviewNavigation({
         variant="outline"
         onClick={() => {
           if (!currentFlowStepIsAnswered) return;
-          if (nextFlowStepPosition === undefined) return finalizeInterview();
-          onFlowStepChange(nextFlowStepPosition);
+          if (nextFlowStepPosition === undefined) return navigateToFinalize();
+          navigateToStep(nextFlowStepPosition);
         }}
         disabled={!currentFlowStepIsAnswered}
       >

@@ -52,7 +52,7 @@ function RouteComponent() {
     throw notFound({ routeId: Route.id, data: { uuid } });
   };
 
-  const handleFlowStepChange = (step: number) => {
+  const navigateToStep = (step: number) => {
     void navigate({
       search: (previousSearch) => ({
         ...previousSearch,
@@ -61,7 +61,7 @@ function RouteComponent() {
     });
   };
 
-  const finalizeInterview = () => {
+  const navigateToFinalize = () => {
     void navigate({
       search: (previousSearch) => ({
         ...previousSearch,
@@ -82,9 +82,9 @@ function RouteComponent() {
         <Interview
           uuid={uuid}
           currentFlowStep={search.step}
-          onFlowStepChange={handleFlowStepChange}
+          navigateToStep={navigateToStep}
           onResourceNotFound={handleResourceNotFound}
-          finalizeInterview={finalizeInterview}
+          navigateToFinalize={navigateToFinalize}
         />
       )}
     </Suspense>
