@@ -37,6 +37,8 @@ const PDF_MIME_TYPE = "application/pdf";
 
 // NOTE implement option that you can get a mail later to upload your documents, if you currently do not have them
 
+// TODO maybe use shadcn progress bar instead
+
 export const documentQuestionBehavior: QuestionBehavior = {
   getFormDefaultValue: getDocumentQuestionFormDefaultValue,
   isAnswered: ({ question, answer, questionUuidsWithUploadingDocuments }) =>

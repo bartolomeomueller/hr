@@ -30,6 +30,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 // TODO add support for skipping each question, if the admins allow it, make each question optional on admin request
 
+// TODO maybe use https://ui.shadcn.com/docs/components/radix/radio-group instead, not so bulky
+
 export const singleChoiceQuestionBehavior: QuestionBehavior = {
   getFormDefaultValue: getSingleChoiceQuestionFormDefaultValue,
   isAnswered: ({ answer }) => isSingleChoiceQuestionAnswered(answer),

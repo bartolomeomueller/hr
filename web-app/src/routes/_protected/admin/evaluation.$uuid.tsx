@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { FileText } from "lucide-react";
 import { Suspense } from "react";
 import { DocumentDownloadButton } from "@/components/admin/DocumentDownloadButton";
+import { EvaluationScoreForm } from "@/components/admin/EvaluationScoreForm";
 import { ShakaPlayer } from "@/components/admin/ShakaPlayer";
 import { GenericLoader } from "@/components/layout/GenericLoader";
 import { Bold, H1, Muted, Small } from "@/components/ui/typography";
@@ -20,6 +21,7 @@ import {
   VideoQuestionPayloadType,
 } from "@/db/payload-types";
 import { orpc } from "@/orpc/client";
+import { Separator } from "@/components/ui/separator";
 
 export const Route = createFileRoute("/_protected/admin/evaluation/$uuid")({
   loader: ({ params, context }) => {
@@ -41,6 +43,7 @@ function RouteComponent() {
 }
 
 function Evaluation({ uuid }: { uuid: string }) {
+  const { user } = Route.useRouteContext();
   const evaluationRelatedDataQuery = useSuspenseQuery(
     orpc.getEvaluationRelatedDataByInterviewUuid.queryOptions({
       input: { uuid },
@@ -65,6 +68,9 @@ function Evaluation({ uuid }: { uuid: string }) {
       ? cvAnswerPayload.data.documents[0]
       : undefined;
   const otherQuestions = questions.filter((question) => !question.isCv);
+  const usersEvaluation = evaluationRelatedData.evaluations.find(
+    (candidateEvaluation) => candidateEvaluation.userId === user.id,
+  );
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-6">
@@ -106,6 +112,13 @@ function Evaluation({ uuid }: { uuid: string }) {
           </section>
         ))}
       </div>
+
+      <Separator></Separator>
+
+      <EvaluationScoreForm
+        interviewUuid={interview.uuid}
+        initialValues={usersEvaluation}
+      />
     </main>
   );
 }

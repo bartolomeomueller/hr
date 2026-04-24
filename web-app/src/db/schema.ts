@@ -140,23 +140,32 @@ export const Answer = pgTable(
   ],
 );
 
-export const Evaluation = pgTable("evaluation", {
-  uuid: uuid()
-    .default(sql`uuidv7()`)
-    .primaryKey(),
-  interviewUuid: uuid("interview_uuid")
-    .notNull()
-    .references(() => Interview.uuid, { onDelete: "cascade" }),
-  userId: text("user_id")
-    .notNull()
-    .references(() => User.id, { onDelete: "cascade" }),
-  hardSkillsScore: integer("hard_skills_score").notNull(),
-  softSkillsScore: integer("soft_skills_score").notNull(),
-  culturalAddScore: integer("cultural_add_score").notNull(),
-  potentialScore: integer("potential_score").notNull(),
-  finalScore: integer("final_score").notNull(),
-  notes: text("notes").notNull().default(""),
-});
+export const Evaluation = pgTable(
+  "evaluation",
+  {
+    uuid: uuid()
+      .default(sql`uuidv7()`)
+      .primaryKey(),
+    interviewUuid: uuid("interview_uuid")
+      .notNull()
+      .references(() => Interview.uuid, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => User.id, { onDelete: "cascade" }),
+    hardSkillsScore: integer("hard_skills_score").notNull(),
+    softSkillsScore: integer("soft_skills_score").notNull(),
+    culturalAddScore: integer("cultural_add_score").notNull(),
+    potentialScore: integer("potential_score").notNull(),
+    finalScore: integer("final_score").notNull(),
+    notes: text("notes").notNull().default(""),
+  },
+  (table) => [
+    unique("evaluation_interview_user_unique").on(
+      table.interviewUuid,
+      table.userId,
+    ),
+  ],
+);
 
 export const roleRelations = relations(Role, ({ one, many }) => ({
   team: one(Team, {

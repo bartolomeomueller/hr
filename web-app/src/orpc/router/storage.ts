@@ -1,11 +1,10 @@
 import { getLogger } from "@orpc/experimental-pino";
 import { ORPCError } from "@orpc/server";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import z from "zod";
 import { db } from "@/db";
-import { TeamMember } from "@/db/auth-schema";
 import { DocumentAnswerPayloadType } from "@/db/payload-types";
-import { Answer, FlowVersion, Interview, Role } from "@/db/schema";
+import { Answer, Interview } from "@/db/schema";
 import {
   completeMultipartUploadForVideo,
   createPresignedDownloadUrl,
@@ -14,6 +13,7 @@ import {
   getObjectKeyForDocumentUuid,
   initiateMultipartUploadForVideo,
 } from "@/lib/s3.server";
+import { canUserAccessInterview } from "../auth-helper";
 import { base } from "../base";
 import { authMiddleware, debugMiddleware } from "../middlewares";
 import { AnswerSelectSchema } from "../schema";
@@ -233,18 +233,23 @@ async function assertDocumentBelongsToInterviewForTeamMember({
   userId: string;
   logger: ReturnType<typeof getLogger>;
 }) {
+  if (
+    !(await canUserAccessInterview({
+      interviewUuid,
+      userId,
+    }))
+  ) {
+    logger?.warn(
+      `User ${userId} cannot access interview ${interviewUuid} for document ${documentUuid}.`,
+    );
+    throw new ORPCError("FORBIDDEN");
+  }
+
   const answerCandidates = await db
     .select({
       answerPayload: Answer.answerPayload,
     })
     .from(Answer)
-    .innerJoin(Interview, eq(Interview.uuid, Answer.interviewUuid))
-    .innerJoin(FlowVersion, eq(FlowVersion.uuid, Interview.flowVersionUuid))
-    .innerJoin(Role, eq(Role.uuid, FlowVersion.roleUuid))
-    .innerJoin(
-      TeamMember,
-      and(eq(TeamMember.teamId, Role.teamId), eq(TeamMember.userId, userId)),
-    )
     .where(eq(Answer.interviewUuid, interviewUuid));
 
   for (const answerCandidate of answerCandidates) {

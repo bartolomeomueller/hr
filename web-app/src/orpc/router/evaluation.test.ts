@@ -51,7 +51,7 @@ describe("getEvaluationRelatedDataByInterviewUuid", () => {
     candidateUuid: string | null;
     interviewUuid: string;
     answerUuid: string;
-    evaluationUuid: string;
+    evaluationUuid: string | null;
   }> = [];
 
   beforeEach(() => {
@@ -60,9 +60,11 @@ describe("getEvaluationRelatedDataByInterviewUuid", () => {
 
   afterEach(async () => {
     for (const record of createdRecords.splice(0).reverse()) {
-      await db
-        .delete(schema.Evaluation)
-        .where(eq(schema.Evaluation.uuid, record.evaluationUuid));
+      if (record.evaluationUuid) {
+        await db
+          .delete(schema.Evaluation)
+          .where(eq(schema.Evaluation.uuid, record.evaluationUuid));
+      }
       await db
         .delete(schema.Answer)
         .where(eq(schema.Answer.uuid, record.answerUuid));
@@ -161,7 +163,7 @@ describe("getEvaluationRelatedDataByInterviewUuid", () => {
     ).rejects.toThrow("Forbidden");
   });
 
-  it("returns null when the interview does not exist", async () => {
+  it("rejects when the interview does not exist", async () => {
     getSessionMock.mockResolvedValue({
       session: { id: "session-id" },
       user: { id: uuidv7() },
@@ -171,7 +173,7 @@ describe("getEvaluationRelatedDataByInterviewUuid", () => {
       client.getEvaluationRelatedDataByInterviewUuid({
         uuid: uuidv7(),
       }),
-    ).resolves.toBeNull();
+    ).rejects.toThrow("Forbidden");
   });
 
   it("returns null when the interview has no candidate", async () => {
@@ -192,9 +194,152 @@ describe("getEvaluationRelatedDataByInterviewUuid", () => {
   });
 });
 
+describe("createEvaluation", () => {
+  const createdRecords: Array<{
+    userId: string;
+    organizationId: string;
+    teamId: string;
+    teamMemberId: string;
+    roleUuid: string;
+    flowVersionUuid: string;
+    flowStepUuids: string[];
+    questionUuids: string[];
+    candidateUuid: string | null;
+    interviewUuid: string;
+    answerUuid: string;
+    evaluationUuid: string | null;
+  }> = [];
+
+  beforeEach(() => {
+    getSessionMock.mockReset();
+  });
+
+  afterEach(async () => {
+    for (const record of createdRecords.splice(0).reverse()) {
+      await db
+        .delete(schema.Evaluation)
+        .where(eq(schema.Evaluation.interviewUuid, record.interviewUuid));
+      await db
+        .delete(schema.Answer)
+        .where(eq(schema.Answer.uuid, record.answerUuid));
+      await db
+        .delete(schema.Interview)
+        .where(eq(schema.Interview.uuid, record.interviewUuid));
+      if (record.candidateUuid) {
+        await db
+          .delete(schema.Candidate)
+          .where(eq(schema.Candidate.uuid, record.candidateUuid));
+      }
+      for (const questionUuid of record.questionUuids) {
+        await db
+          .delete(schema.Question)
+          .where(eq(schema.Question.uuid, questionUuid));
+      }
+      for (const flowStepUuid of record.flowStepUuids) {
+        await db
+          .delete(schema.FlowStep)
+          .where(eq(schema.FlowStep.uuid, flowStepUuid));
+      }
+      await db
+        .delete(schema.FlowVersion)
+        .where(eq(schema.FlowVersion.uuid, record.flowVersionUuid));
+      await db.delete(schema.Role).where(eq(schema.Role.uuid, record.roleUuid));
+      await db.delete(TeamMember).where(eq(TeamMember.id, record.teamMemberId));
+      await db.delete(Team).where(eq(Team.id, record.teamId));
+      await db.delete(User).where(eq(User.id, record.userId));
+      await db
+        .delete(Organization)
+        .where(eq(Organization.id, record.organizationId));
+    }
+  });
+
+  it("creates an evaluation for the current user with the provided final score", async () => {
+    const fixture = await createEvaluationRelatedDataFixture({
+      withEvaluation: false,
+    });
+    createdRecords.push(fixture);
+    getSessionMock.mockResolvedValue({
+      session: { id: "session-id" },
+      user: { id: fixture.userId },
+    });
+
+    const result = await client.createEvaluation({
+      interviewUuid: fixture.interviewUuid,
+      hardSkillsScore: 1,
+      softSkillsScore: 2,
+      culturalAddScore: 3,
+      potentialScore: 4,
+      finalScore: 11,
+    });
+
+    expect(result).toMatchObject({
+      interviewUuid: fixture.interviewUuid,
+      userId: fixture.userId,
+      hardSkillsScore: 1,
+      softSkillsScore: 2,
+      culturalAddScore: 3,
+      potentialScore: 4,
+      finalScore: 11,
+    });
+  });
+
+  it("rejects when the current user is not on the role's team", async () => {
+    const fixture = await createEvaluationRelatedDataFixture({
+      withEvaluation: false,
+    });
+    createdRecords.push(fixture);
+    getSessionMock.mockResolvedValue({
+      session: { id: "session-id" },
+      user: { id: uuidv7() },
+    });
+
+    await expect(
+      client.createEvaluation({
+        interviewUuid: fixture.interviewUuid,
+        hardSkillsScore: 1,
+        softSkillsScore: 2,
+        culturalAddScore: 3,
+        potentialScore: 4,
+        finalScore: 10,
+      }),
+    ).rejects.toThrow("Forbidden");
+  });
+
+  it("updates the current user's existing evaluation for the interview", async () => {
+    const fixture = await createEvaluationRelatedDataFixture();
+    createdRecords.push(fixture);
+    getSessionMock.mockResolvedValue({
+      session: { id: "session-id" },
+      user: { id: fixture.userId },
+    });
+
+    const result = await client.createEvaluation({
+      interviewUuid: fixture.interviewUuid,
+      hardSkillsScore: 5,
+      softSkillsScore: 4,
+      culturalAddScore: 3,
+      potentialScore: 2,
+      finalScore: 13,
+    });
+
+    expect(result).toMatchObject({
+      uuid: fixture.evaluationUuid,
+      interviewUuid: fixture.interviewUuid,
+      userId: fixture.userId,
+      hardSkillsScore: 5,
+      softSkillsScore: 4,
+      culturalAddScore: 3,
+      potentialScore: 2,
+      finalScore: 13,
+    });
+  });
+});
+
 async function createEvaluationRelatedDataFixture(
-  options: { withCandidate: boolean } = { withCandidate: true },
+  options: { withCandidate?: boolean; withEvaluation?: boolean } = {},
 ) {
+  const withCandidate = options.withCandidate ?? true;
+  const withEvaluation = options.withEvaluation ?? true;
   const userId = uuidv7();
   const organizationId = uuidv7();
   const teamId = uuidv7();
@@ -291,7 +436,7 @@ async function createEvaluationRelatedDataFixture(
     })
     .returning({ uuid: schema.Question.uuid });
 
-  const candidate = options.withCandidate
+  const candidate = withCandidate
     ? (
         await db
           .insert(schema.Candidate)
@@ -321,19 +466,23 @@ async function createEvaluationRelatedDataFixture(
     })
     .returning({ uuid: schema.Answer.uuid });
 
-  const [evaluation] = await db
-    .insert(schema.Evaluation)
-    .values({
-      interviewUuid: interview.uuid,
-      userId: user.id,
-      hardSkillsScore: 4,
-      softSkillsScore: 5,
-      culturalAddScore: 4,
-      potentialScore: 5,
-      finalScore: 5,
-      notes: "Strong candidate.",
-    })
-    .returning({ uuid: schema.Evaluation.uuid });
+  const evaluation = withEvaluation
+    ? (
+        await db
+          .insert(schema.Evaluation)
+          .values({
+            interviewUuid: interview.uuid,
+            userId: user.id,
+            hardSkillsScore: 4,
+            softSkillsScore: 5,
+            culturalAddScore: 4,
+            potentialScore: 5,
+            finalScore: 5,
+            notes: "Strong candidate.",
+          })
+          .returning({ uuid: schema.Evaluation.uuid })
+      )[0]
+    : null;
 
   return {
     userId: user.id,
@@ -347,6 +496,6 @@ async function createEvaluationRelatedDataFixture(
     candidateUuid: candidate?.uuid ?? null,
     interviewUuid: interview.uuid,
     answerUuid: answer.uuid,
-    evaluationUuid: evaluation.uuid,
+    evaluationUuid: evaluation?.uuid ?? null,
   };
 }

@@ -162,7 +162,7 @@ describe("createPresignedS3DocumentDownloadUrlByUuidForAdmin", () => {
       session: { id: "session-id" },
       user: { id: userId },
     });
-    mockDocumentAnswerCandidates([
+    mockAccessibleDocumentAnswerCandidates([
       {
         answerPayload: {
           kind: "documents",
@@ -213,7 +213,7 @@ describe("createPresignedS3DocumentDownloadUrlByUuidForAdmin", () => {
       session: { id: "session-id" },
       user: { id: uuidv7() },
     });
-    mockDocumentAnswerCandidates([]);
+    mockAccessibleDocumentAnswerCandidates([], false);
 
     await expect(
       client.createPresignedS3DocumentDownloadUrlByUuidForAdmin({
@@ -240,4 +240,32 @@ function mockDocumentAnswerCandidates(
   selectMock.mockReturnValueOnce({
     from: query.from,
   });
+}
+
+function mockAccessibleDocumentAnswerCandidates(
+  answerCandidates: Array<{
+    answerPayload: unknown;
+    interviewIsFinished: boolean;
+  }>,
+  canAccess = true,
+) {
+  const accessQuery = {
+    from: vi.fn(() => accessQuery),
+    innerJoin: vi.fn(() => accessQuery),
+    where: vi.fn(() => accessQuery),
+    limit: vi.fn().mockResolvedValue(canAccess ? [{ uuid: uuidv7() }] : []),
+  };
+
+  const answerQuery = {
+    from: vi.fn(() => answerQuery),
+    where: vi.fn().mockResolvedValue(answerCandidates),
+  };
+
+  selectMock
+    .mockReturnValueOnce({
+      from: accessQuery.from,
+    })
+    .mockReturnValueOnce({
+      from: answerQuery.from,
+    });
 }

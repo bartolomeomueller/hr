@@ -4,7 +4,10 @@ import {
   deleteDocumentFromObjectStorageAndFromAnswer,
   saveAnswer,
 } from "./answer";
-import { getEvaluationRelatedDataByInterviewUuid } from "./evaluation";
+import {
+  createEvaluation,
+  getEvaluationRelatedDataByInterviewUuid,
+} from "./evaluation";
 import {
   addParticipantToInterview,
   createInterviewForRoleUuid,
@@ -49,4 +52,5 @@ export default {
   getAllFinishedInterviewsForRoleByRoleSlug,
   getEvaluationRelatedDataByInterviewUuid,
   createPresignedS3DocumentDownloadUrlByUuidForAdmin,
+  createEvaluation,
 };

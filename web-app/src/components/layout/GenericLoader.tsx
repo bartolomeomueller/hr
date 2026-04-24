@@ -1,3 +1,7 @@
+// TODO maybe uzse shadcn skeleton component for this
+
+// TODO maybe add shadcn spinner to buttons that do not use optimistic updates
+
 export function GenericLoader() {
   // Use css fade-in animation with delay so no js needs to run.
   // Suspense with SSR will not run any fallback component code.

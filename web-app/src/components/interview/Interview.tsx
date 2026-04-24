@@ -21,6 +21,8 @@ import type { AnswerSelectSchema, QuestionSelectSchema } from "@/orpc/schema";
 
 // TODO think about what to do with the questions that have not been answered by a applicant, should they get an empty answer or no answer
 
+// TODO use shadcn pagination compoenent for next and previous buttons
+
 // TODO think about how to lock down an interview
 // a finished interview should not be accessible anymore
 // a unfinished interview should promt a email, if the candidate would like to continue his interview, or if should be deleted
