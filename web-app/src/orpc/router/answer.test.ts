@@ -3,9 +3,6 @@ import { eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DocumentAnswerPayloadType } from "@/db/payload-types";
-import { setupIntegrationTestDatabase } from "@/test/integration-test-database";
-
-await setupIntegrationTestDatabase();
 
 const [{ Organization, Team }, { db }, schema, { default: router }] =
   await Promise.all([

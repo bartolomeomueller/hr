@@ -5,17 +5,16 @@ import { Pool } from "pg";
 
 config({ path: [".env.local", ".env"] });
 
-let setupPromise: Promise<void> | null = null;
+export function getIntegrationTestDatabaseUrl(
+  databaseUrl = process.env.DATABASE_URL,
+) {
+  return getTestDatabaseUrl(databaseUrl);
+}
 
-export async function setupIntegrationTestDatabase() {
-  const testDatabaseUrl = getTestDatabaseUrl(process.env.DATABASE_URL);
+export function setIntegrationTestDatabaseUrlEnvironment() {
+  const testDatabaseUrl = getIntegrationTestDatabaseUrl();
   process.env.DATABASE_URL = testDatabaseUrl;
-
-  if (!setupPromise) {
-    setupPromise = ensureTestDatabaseIsReady(testDatabaseUrl);
-  }
-
-  await setupPromise;
+  return testDatabaseUrl;
 }
 
 function getTestDatabaseUrl(databaseUrl: string | undefined) {
@@ -36,7 +35,7 @@ function getTestDatabaseUrl(databaseUrl: string | undefined) {
   return parsedDatabaseUrl.toString();
 }
 
-async function ensureTestDatabaseIsReady(testDatabaseUrl: string) {
+export async function ensureTestDatabaseIsReady(testDatabaseUrl: string) {
   const adminPool = new Pool({
     connectionString: getAdminDatabaseUrl(testDatabaseUrl),
   });

@@ -2,7 +2,6 @@ import { createRouterClient } from "@orpc/server";
 import { eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setupIntegrationTestDatabase } from "@/test/integration-test-database";
 
 const { getSessionMock } = vi.hoisted(() => ({
   getSessionMock: vi.fn(),
@@ -20,8 +19,6 @@ vi.mock("@/lib/bullmq.server", () => ({
   enqueueVideoProcessingJob: vi.fn(),
   cancelVideoProcessingJob: vi.fn(),
 }));
-
-await setupIntegrationTestDatabase();
 
 const [
   { Organization, Team, TeamMember, User },
