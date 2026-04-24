@@ -19,6 +19,7 @@ import {
 } from "./role";
 import {
   createPresignedS3DocumentDownloadUrlByUuid,
+  createPresignedS3DocumentDownloadUrlByUuidForAdmin,
   createPresignedS3DocumentUploadUrl,
   createPresignedS3RecordingMultipartUploadUrl,
   finishMultipartUploadForRecording,
@@ -47,4 +48,5 @@ export default {
   getAllRolesForCurrentUser,
   getAllFinishedInterviewsForRoleByRoleSlug,
   getEvaluationRelatedDataByInterviewUuid,
+  createPresignedS3DocumentDownloadUrlByUuidForAdmin,
 };

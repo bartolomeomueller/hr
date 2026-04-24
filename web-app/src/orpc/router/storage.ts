@@ -1,10 +1,11 @@
 import { getLogger } from "@orpc/experimental-pino";
 import { ORPCError } from "@orpc/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import z from "zod";
 import { db } from "@/db";
+import { TeamMember } from "@/db/auth-schema";
 import { DocumentAnswerPayloadType } from "@/db/payload-types";
-import { Answer, Interview } from "@/db/schema";
+import { Answer, FlowVersion, Interview, Role } from "@/db/schema";
 import {
   completeMultipartUploadForVideo,
   createPresignedDownloadUrl,
@@ -14,7 +15,7 @@ import {
   initiateMultipartUploadForVideo,
 } from "@/lib/s3.server";
 import { base } from "../base";
-import { debugMiddleware } from "../middlewares";
+import { authMiddleware, debugMiddleware } from "../middlewares";
 import { AnswerSelectSchema } from "../schema";
 import { saveAnswerAndHandleVideoEffects } from "./answer";
 
@@ -194,6 +195,74 @@ async function assertDocumentBelongsToInterview({
 
   logger?.warn(
     `Document ${documentUuid} does not belong to interview ${interviewUuid}.`,
+  );
+  throw new ORPCError("FORBIDDEN");
+}
+
+export const createPresignedS3DocumentDownloadUrlByUuidForAdmin = base
+  .use(authMiddleware)
+  .use(debugMiddleware)
+  .input(
+    z.object({
+      interviewUuid: z.uuidv7(),
+      documentUuid: z.uuidv7(),
+    }),
+  )
+  .output(z.object({ downloadUrl: z.url() }))
+  .handler(async ({ input, context }) => {
+    await assertDocumentBelongsToInterviewForTeamMember({
+      interviewUuid: input.interviewUuid,
+      documentUuid: input.documentUuid,
+      userId: context.user.id,
+      logger: getLogger(context),
+    });
+
+    return await createPresignedDownloadUrl(
+      getObjectKeyForDocumentUuid(input.documentUuid),
+    );
+  });
+
+async function assertDocumentBelongsToInterviewForTeamMember({
+  interviewUuid,
+  documentUuid,
+  userId,
+  logger,
+}: {
+  interviewUuid: string;
+  documentUuid: string;
+  userId: string;
+  logger: ReturnType<typeof getLogger>;
+}) {
+  const answerCandidates = await db
+    .select({
+      answerPayload: Answer.answerPayload,
+    })
+    .from(Answer)
+    .innerJoin(Interview, eq(Interview.uuid, Answer.interviewUuid))
+    .innerJoin(FlowVersion, eq(FlowVersion.uuid, Interview.flowVersionUuid))
+    .innerJoin(Role, eq(Role.uuid, FlowVersion.roleUuid))
+    .innerJoin(
+      TeamMember,
+      and(eq(TeamMember.teamId, Role.teamId), eq(TeamMember.userId, userId)),
+    )
+    .where(eq(Answer.interviewUuid, interviewUuid));
+
+  for (const answerCandidate of answerCandidates) {
+    const parseResult = DocumentAnswerPayloadType.safeParse(
+      answerCandidate.answerPayload,
+    );
+    if (!parseResult.success || parseResult.data.kind !== "documents") {
+      continue;
+    }
+
+    const matchingDocument = parseResult.data.documents.find(
+      (document) => document.documentUuid === documentUuid,
+    );
+    if (matchingDocument) return;
+  }
+
+  logger?.warn(
+    `Document ${documentUuid} does not belong to interview ${interviewUuid} in a team accessible by user ${userId}.`,
   );
   throw new ORPCError("FORBIDDEN");
 }

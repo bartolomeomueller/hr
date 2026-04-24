@@ -3,10 +3,12 @@ import { v7 as uuidv7 } from "uuid";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import router from "@/orpc/router";
 
-const { selectMock, createPresignedDownloadUrlMock } = vi.hoisted(() => ({
-  selectMock: vi.fn(),
-  createPresignedDownloadUrlMock: vi.fn(),
-}));
+const { selectMock, createPresignedDownloadUrlMock, getSessionMock } =
+  vi.hoisted(() => ({
+    selectMock: vi.fn(),
+    createPresignedDownloadUrlMock: vi.fn(),
+    getSessionMock: vi.fn(),
+  }));
 
 vi.mock("@/db", () => ({
   db: {
@@ -31,7 +33,7 @@ vi.mock("@/lib/bullmq.server", () => ({
 vi.mock("@/lib/auth.server", () => ({
   auth: {
     api: {
-      getSession: vi.fn(),
+      getSession: getSessionMock,
     },
   },
 }));
@@ -46,6 +48,7 @@ describe("createPresignedS3DocumentDownloadUrlByUuid", () => {
   beforeEach(() => {
     selectMock.mockReset();
     createPresignedDownloadUrlMock.mockReset();
+    getSessionMock.mockReset();
   });
 
   it("returns a download url when the document belongs to the interview", async () => {
@@ -144,17 +147,97 @@ describe("createPresignedS3DocumentDownloadUrlByUuid", () => {
   });
 });
 
+describe("createPresignedS3DocumentDownloadUrlByUuidForAdmin", () => {
+  beforeEach(() => {
+    selectMock.mockReset();
+    createPresignedDownloadUrlMock.mockReset();
+    getSessionMock.mockReset();
+  });
+
+  it("returns a download url for a team member when the document belongs to a finished interview", async () => {
+    const interviewUuid = uuidv7();
+    const documentUuid = uuidv7();
+    const userId = uuidv7();
+    getSessionMock.mockResolvedValue({
+      session: { id: "session-id" },
+      user: { id: userId },
+    });
+    mockDocumentAnswerCandidates([
+      {
+        answerPayload: {
+          kind: "documents",
+          documents: [
+            {
+              documentUuid,
+              fileName: "resume.pdf",
+              mimeType: "application/pdf",
+            },
+          ],
+        },
+        interviewIsFinished: true,
+      },
+    ]);
+    createPresignedDownloadUrlMock.mockResolvedValueOnce({
+      downloadUrl: "https://example.com/resume.pdf",
+    });
+
+    await expect(
+      client.createPresignedS3DocumentDownloadUrlByUuidForAdmin({
+        interviewUuid,
+        documentUuid,
+      }),
+    ).resolves.toEqual({
+      downloadUrl: "https://example.com/resume.pdf",
+    });
+    expect(createPresignedDownloadUrlMock).toHaveBeenCalledWith(documentUuid);
+  });
+
+  it("rejects when there is no authenticated user", async () => {
+    const interviewUuid = uuidv7();
+    const documentUuid = uuidv7();
+    getSessionMock.mockResolvedValue(null);
+
+    await expect(
+      client.createPresignedS3DocumentDownloadUrlByUuidForAdmin({
+        interviewUuid,
+        documentUuid,
+      }),
+    ).rejects.toThrow("Unauthorized");
+    expect(createPresignedDownloadUrlMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the document is not accessible to the current user's team", async () => {
+    const interviewUuid = uuidv7();
+    const documentUuid = uuidv7();
+    getSessionMock.mockResolvedValue({
+      session: { id: "session-id" },
+      user: { id: uuidv7() },
+    });
+    mockDocumentAnswerCandidates([]);
+
+    await expect(
+      client.createPresignedS3DocumentDownloadUrlByUuidForAdmin({
+        interviewUuid,
+        documentUuid,
+      }),
+    ).rejects.toThrow("Forbidden");
+    expect(createPresignedDownloadUrlMock).not.toHaveBeenCalled();
+  });
+});
+
 function mockDocumentAnswerCandidates(
   answerCandidates: Array<{
     answerPayload: unknown;
     interviewIsFinished: boolean;
   }>,
 ) {
+  const query = {
+    from: vi.fn(() => query),
+    innerJoin: vi.fn(() => query),
+    where: vi.fn().mockResolvedValue(answerCandidates),
+  };
+
   selectMock.mockReturnValueOnce({
-    from: vi.fn().mockReturnValue({
-      innerJoin: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue(answerCandidates),
-      }),
-    }),
+    from: query.from,
   });
 }
