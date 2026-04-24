@@ -1,3 +1,4 @@
+import "shaka-player/dist/controls.css";
 import { useEffect, useRef } from "react";
 
 type ShakaNamespace =
@@ -89,16 +90,8 @@ export function ShakaPlayer({ manifestUrl }: { manifestUrl: string }) {
   }, [manifestUrl]);
 
   return (
-    <div
-      ref={containerRef}
-      className="overflow-hidden rounded-3xl border border-white/10 bg-black shadow-[0_32px_80px_rgba(0,0,0,0.45)]"
-    >
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        className="aspect-video w-full bg-black"
-      >
+    <div ref={containerRef} className="overflow-hidden rounded-xl shadow">
+      <video ref={videoRef} playsInline>
         <track kind="captions" />
       </video>
     </div>

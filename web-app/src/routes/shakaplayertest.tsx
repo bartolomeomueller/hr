@@ -1,7 +1,6 @@
-import "shaka-player/dist/controls.css"; // Styles for Shaka Player UI
 import { createFileRoute } from "@tanstack/react-router";
 import z from "zod";
-import { ShakaPlayer } from "@/components/ShakaPlayer";
+import { ShakaPlayer } from "@/components/admin/ShakaPlayer";
 
 const ShakaPlayerSearch = z.object({
   videoUuid: z.string().optional(),

@@ -4,6 +4,7 @@ import {
   DeleteObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
+  type GetObjectCommandOutput,
   PutObjectCommand,
   paginateListObjectsV2,
   S3Client,
@@ -98,13 +99,9 @@ async function createPresignedUploadUrl(
   });
 
   // Does only local math, does not communicate with the bucket
-  return await dependencies.getSignedUrl(
-    dependencies.client,
-    uploadCommand,
-    {
-      expiresIn: 300, // URL expires in 5 minutes
-    },
-  );
+  return await dependencies.getSignedUrl(dependencies.client, uploadCommand, {
+    expiresIn: 300, // URL expires in 5 minutes
+  });
 }
 
 export async function createPresignedDownloadUrl(
@@ -182,13 +179,9 @@ export async function createPresignedUploadUrlForVideoPart(
     PartNumber: partNumber,
   });
 
-  return await dependencies.getSignedUrl(
-    dependencies.client,
-    command,
-    {
-      expiresIn: expiresInSeconds,
-    },
-  );
+  return await dependencies.getSignedUrl(dependencies.client, command, {
+    expiresIn: expiresInSeconds,
+  });
 }
 
 export async function completeMultipartUploadForVideo(
@@ -269,4 +262,75 @@ export function getObjectKeyForVideoUuid(videoUuid: string) {
 
 export function getObjectKeyForProcessedVideoUuid(videoUuid: string) {
   return `videos/processed/${videoUuid}`;
+}
+
+export async function createObjectDownloadResponse(
+  {
+    objectKey,
+    range,
+  }: {
+    objectKey: string;
+    range: string | null;
+  },
+  dependencies = getDefaultS3Dependencies(),
+) {
+  const downloadCommand = new GetObjectCommand({
+    Bucket: dependencies.config.bucketName,
+    Key: objectKey,
+    Range: range ?? undefined,
+  });
+
+  const object = await dependencies.client.send(downloadCommand);
+  const body = getResponseBodyStream(object);
+
+  return new Response(body, {
+    status: object.ContentRange ? 206 : 200,
+    headers: getObjectDownloadHeaders(object, objectKey),
+  });
+}
+
+function getResponseBodyStream(object: GetObjectCommandOutput) {
+  const body = object.Body;
+  if (!body) {
+    throw new Error("Object download response did not include a body.");
+  }
+
+  if (
+    typeof body === "object" &&
+    "transformToWebStream" in body &&
+    typeof body.transformToWebStream === "function"
+  ) {
+    return body.transformToWebStream();
+  }
+
+  throw new Error("Object download response body is not a web stream.");
+}
+
+function getObjectDownloadHeaders(
+  object: GetObjectCommandOutput,
+  objectKey: string,
+) {
+  const headers = new Headers({
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "private, no-store",
+    "Content-Type": object.ContentType ?? getContentTypeForObjectKey(objectKey),
+  });
+
+  if (object.ContentLength !== undefined) {
+    headers.set("Content-Length", String(object.ContentLength));
+  }
+
+  if (object.ContentRange) {
+    headers.set("Content-Range", object.ContentRange);
+  }
+
+  return headers;
+}
+
+function getContentTypeForObjectKey(objectKey: string) {
+  if (objectKey.endsWith(".mpd")) return "application/dash+xml";
+  if (objectKey.endsWith(".webm")) return "video/webm";
+  if (objectKey.endsWith(".mp4")) return "video/mp4";
+  if (objectKey.endsWith(".m4s")) return "video/iso.segment";
+  return "application/octet-stream";
 }

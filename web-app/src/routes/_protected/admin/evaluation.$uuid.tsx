@@ -3,8 +3,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { FileText } from "lucide-react";
 import { Suspense } from "react";
 import { DocumentDownloadButton } from "@/components/admin/DocumentDownloadButton";
+import { ShakaPlayer } from "@/components/admin/ShakaPlayer";
 import { GenericLoader } from "@/components/layout/GenericLoader";
-import { Bold, H1, Large, Muted, Small } from "@/components/ui/typography";
+import { Bold, H1, Muted, Small } from "@/components/ui/typography";
 import {
   DocumentAnswerPayloadType,
   DocumentQuestionPayloadType,
@@ -162,6 +163,13 @@ function renderAnswer(
   switch (questionType) {
     case QuestionType.video: {
       const parseResult = VideoAnswerPayloadType.safeParse(answerPayload);
+      if (parseResult.success && parseResult.data.status === "processed") {
+        return (
+          <ShakaPlayer
+            manifestUrl={`/api/v1/media/admin/videos/${parseResult.data.videoUuid}/manifest.mpd`}
+          />
+        );
+      }
       if (parseResult.success) return <Bold>{parseResult.data.status}</Bold>;
       break;
     }
