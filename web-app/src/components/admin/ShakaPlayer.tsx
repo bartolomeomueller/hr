@@ -26,6 +26,7 @@ export function ShakaPlayer({ manifestUrl }: { manifestUrl: string }) {
       onError(event.detail ?? event);
     };
 
+    // React may unmount, while this function runs.
     const initPlayer = async () => {
       let overlay: ShakaOverlay | null = null;
 
@@ -36,6 +37,7 @@ export function ShakaPlayer({ manifestUrl }: { manifestUrl: string }) {
 
         const shaka = (await import("shaka-player/dist/shaka-player.ui.js"))
           .default as ShakaNamespace;
+        if (!isMounted) return;
 
         shaka.polyfill.installAll();
 
@@ -46,30 +48,29 @@ export function ShakaPlayer({ manifestUrl }: { manifestUrl: string }) {
 
         const player = new shaka.Player();
         overlay = new shaka.ui.Overlay(player, container, video);
+        overlayRef.current = overlay;
+        // The overlayRef might be updated by this function running again, so we need to use the local variable.
 
         await player.attach(video);
 
-        if (!isMounted) {
-          await overlay.destroy();
-          return;
-        }
+        if (!isMounted) return;
 
         const controls = overlay.getControls();
         const overlayPlayer = controls?.getPlayer();
 
         if (!controls || !overlayPlayer) {
+          overlayRef.current = null;
           await overlay.destroy();
           return;
         }
 
-        overlayRef.current = overlay;
         controls.addEventListener("error", onErrorEvent);
         overlayPlayer.addEventListener("error", onErrorEvent);
 
-        console.log("Loading video manifest:", manifestUrl);
         await overlayPlayer.load(manifestUrl);
       } catch (error) {
-        if (overlay && overlayRef.current !== overlay) {
+        if (overlay && overlayRef.current === overlay) {
+          overlayRef.current = null;
           await overlay.destroy();
         }
         onError(error);
@@ -80,9 +81,10 @@ export function ShakaPlayer({ manifestUrl }: { manifestUrl: string }) {
 
     return () => {
       isMounted = false;
+
+      // Synchronously set the overlayRef to null and then asynchronously destroy it via a local reference
       const overlay = overlayRef.current;
       overlayRef.current = null;
-
       if (overlay) {
         void overlay.destroy();
       }
