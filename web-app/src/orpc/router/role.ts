@@ -4,7 +4,7 @@ import z from "zod";
 import { db } from "@/db";
 import { Team, TeamMember } from "@/db/auth-schema";
 import { DocumentAnswerPayloadType } from "@/db/payload-types";
-import { Answer, FlowVersion, Interview, Question, Role } from "@/db/schema";
+import { FlowVersion, Interview, Question, Role } from "@/db/schema";
 import {
   CandidateSelectSchema,
   EvaluationSelectSchema,

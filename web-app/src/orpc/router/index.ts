@@ -4,6 +4,7 @@ import {
   deleteDocumentFromObjectStorageAndFromAnswer,
   saveAnswer,
 } from "./answer";
+import { getEvaluationRelatedDataByInterviewUuid } from "./evaluation";
 import {
   addParticipantToInterview,
   createInterviewForRoleUuid,
@@ -45,4 +46,5 @@ export default {
   // Admin
   getAllRolesForCurrentUser,
   getAllFinishedInterviewsForRoleByRoleSlug,
+  getEvaluationRelatedDataByInterviewUuid,
 };
