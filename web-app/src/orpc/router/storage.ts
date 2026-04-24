@@ -1,8 +1,10 @@
+import { getLogger } from "@orpc/experimental-pino";
+import { ORPCError } from "@orpc/server";
 import { eq } from "drizzle-orm";
 import z from "zod";
 import { db } from "@/db";
 import { DocumentAnswerPayloadType } from "@/db/payload-types";
-import { Answer } from "@/db/schema";
+import { Answer, Interview } from "@/db/schema";
 import {
   completeMultipartUploadForVideo,
   createPresignedDownloadUrl,
@@ -118,10 +120,11 @@ export const createPresignedS3DocumentDownloadUrlByUuid = base
     }),
   )
   .output(z.object({ downloadUrl: z.url() }))
-  .handler(async ({ input }) => {
+  .handler(async ({ input, context }) => {
     await assertDocumentBelongsToInterview({
       interviewUuid: input.interviewUuid,
       documentUuid: input.documentUuid,
+      logger: getLogger(context),
     });
 
     return await createPresignedDownloadUrl(
@@ -151,15 +154,19 @@ export const createPresignedS3DocumentUploadUrl = base
 async function assertDocumentBelongsToInterview({
   interviewUuid,
   documentUuid,
+  logger,
 }: {
   interviewUuid: string;
   documentUuid: string;
+  logger: ReturnType<typeof getLogger>;
 }) {
   const answerCandidates = await db
     .select({
       answerPayload: Answer.answerPayload,
+      interviewIsFinished: Interview.isFinished,
     })
     .from(Answer)
+    .innerJoin(Interview, eq(Interview.uuid, Answer.interviewUuid))
     .where(eq(Answer.interviewUuid, interviewUuid));
 
   for (const answerCandidate of answerCandidates) {
@@ -174,11 +181,19 @@ async function assertDocumentBelongsToInterview({
       (document) => document.documentUuid === documentUuid,
     );
     if (matchingDocument) {
+      if (answerCandidate.interviewIsFinished) {
+        logger?.warn(
+          `Document ${documentUuid} belongs to finished interview ${interviewUuid}.`,
+        );
+        throw new ORPCError("FORBIDDEN");
+      }
+
       return;
     }
   }
 
-  throw new Error(
+  logger?.warn(
     `Document ${documentUuid} does not belong to interview ${interviewUuid}.`,
   );
+  throw new ORPCError("FORBIDDEN");
 }

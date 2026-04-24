@@ -52,24 +52,21 @@ describe("createPresignedS3DocumentDownloadUrlByUuid", () => {
     const interviewUuid = uuidv7();
     const documentUuid = uuidv7();
 
-    selectMock.mockReturnValueOnce({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([
-          {
-            answerPayload: {
-              kind: "documents",
-              documents: [
-                {
-                  documentUuid,
-                  fileName: "resume.pdf",
-                  mimeType: "application/pdf",
-                },
-              ],
+    mockDocumentAnswerCandidates([
+      {
+        answerPayload: {
+          kind: "documents",
+          documents: [
+            {
+              documentUuid,
+              fileName: "resume.pdf",
+              mimeType: "application/pdf",
             },
-          },
-        ]),
-      }),
-    });
+          ],
+        },
+        interviewIsFinished: false,
+      },
+    ]);
     createPresignedDownloadUrlMock.mockResolvedValueOnce({
       downloadUrl: "https://example.com/resume.pdf",
     });
@@ -89,23 +86,52 @@ describe("createPresignedS3DocumentDownloadUrlByUuid", () => {
     const interviewUuid = uuidv7();
     const documentUuid = uuidv7();
 
-    selectMock.mockReturnValueOnce({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue([
-          {
-            answerPayload: {
-              kind: "documents",
-              documents: [
-                {
-                  documentUuid: uuidv7(),
-                  fileName: "resume.pdf",
-                  mimeType: "application/pdf",
-                },
-              ],
+    mockDocumentAnswerCandidates([
+      {
+        answerPayload: {
+          kind: "documents",
+          documents: [
+            {
+              documentUuid: uuidv7(),
+              fileName: "resume.pdf",
+              mimeType: "application/pdf",
             },
-          },
-        ]),
+          ],
+        },
+        interviewIsFinished: false,
+      },
+    ]);
+
+    await expect(
+      client.createPresignedS3DocumentDownloadUrlByUuid({
+        interviewUuid,
+        documentUuid,
       }),
+    ).rejects.toThrow("Forbidden");
+    expect(createPresignedDownloadUrlMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the document belongs to a finished interview", async () => {
+    const interviewUuid = uuidv7();
+    const documentUuid = uuidv7();
+
+    mockDocumentAnswerCandidates([
+      {
+        answerPayload: {
+          kind: "documents",
+          documents: [
+            {
+              documentUuid,
+              fileName: "resume.pdf",
+              mimeType: "application/pdf",
+            },
+          ],
+        },
+        interviewIsFinished: true,
+      },
+    ]);
+    createPresignedDownloadUrlMock.mockResolvedValueOnce({
+      downloadUrl: "https://example.com/resume.pdf",
     });
 
     await expect(
@@ -113,9 +139,22 @@ describe("createPresignedS3DocumentDownloadUrlByUuid", () => {
         interviewUuid,
         documentUuid,
       }),
-    ).rejects.toThrow(
-      `Document ${documentUuid} does not belong to interview ${interviewUuid}.`,
-    );
+    ).rejects.toThrow("Forbidden");
     expect(createPresignedDownloadUrlMock).not.toHaveBeenCalled();
   });
 });
+
+function mockDocumentAnswerCandidates(
+  answerCandidates: Array<{
+    answerPayload: unknown;
+    interviewIsFinished: boolean;
+  }>,
+) {
+  selectMock.mockReturnValueOnce({
+    from: vi.fn().mockReturnValue({
+      innerJoin: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(answerCandidates),
+      }),
+    }),
+  });
+}
