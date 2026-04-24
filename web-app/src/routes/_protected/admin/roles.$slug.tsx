@@ -1,12 +1,12 @@
-import { useMutation, useSuspenseQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
 import { FileText } from "lucide-react";
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
 import { DataTable, SortingHeader } from "@/components/admin/DataTable";
+import { DocumentDownloadButton } from "@/components/admin/DocumentDownloadButton";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { isPreSignedURLStillValid } from "@/lib/utils";
 import { orpc } from "@/orpc/client";
 
 export const Route = createFileRoute("/_protected/admin/roles/$slug")({
@@ -77,10 +77,16 @@ export function RoleTable({ roleSlug }: { roleSlug: string }) {
       meta: { label: "Lebenslauf", align: "center" },
       header: "Lebenslauf",
       cell: ({ row }) => (
-        <CvButton
+        <DocumentDownloadButton
           documentUuid={row.original.cvDocument.documentUuid}
           interviewUuid={row.original.interview.uuid}
-        />
+          variant="ghost"
+          size="icon-sm"
+          aria-label="CV ansehen"
+          title="CV ansehen"
+        >
+          <FileText className="size-4" />
+        </DocumentDownloadButton>
       ),
       enableSorting: false,
       enableHiding: false,
@@ -89,9 +95,12 @@ export function RoleTable({ roleSlug }: { roleSlug: string }) {
     {
       id: "evaluate",
       meta: { label: "Bewerten", align: "right" },
-      cell: () => (
+      cell: ({ row }) => (
         <Button asChild>
-          <Link to="/admin/roles/$slug" params={{ slug: roleSlug }}>
+          <Link
+            to="/admin/evaluation/$uuid"
+            params={{ uuid: row.original.interview.uuid }}
+          >
             Kandidat bewerten
           </Link>
         </Button>
@@ -105,72 +114,5 @@ export function RoleTable({ roleSlug }: { roleSlug: string }) {
     <div className="m-4">
       <DataTable columns={columns} data={data} />
     </div>
-  );
-}
-
-function CvButton({
-  documentUuid,
-  interviewUuid,
-}: {
-  documentUuid: string;
-  interviewUuid: string;
-}) {
-  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
-  const [shouldOpenWhenReady, setShouldOpenWhenReady] = useState(false);
-  const { mutate, isPending } = useMutation({
-    ...orpc.createPresignedS3DocumentDownloadUrlByUuid.mutationOptions(),
-    onSuccess: (data) => {
-      setDownloadUrl(data.downloadUrl);
-
-      if (!shouldOpenWhenReady) return;
-
-      window.open(data.downloadUrl, "_blank");
-      setShouldOpenWhenReady(false);
-    },
-    onError: () => {
-      setShouldOpenWhenReady(false);
-    },
-  });
-
-  const hasFreshDownloadUrl =
-    downloadUrl !== null && isPreSignedURLStillValid(downloadUrl);
-  const openCv = () => {
-    if (hasFreshDownloadUrl) {
-      window.open(downloadUrl, "_blank");
-      return;
-    }
-
-    setShouldOpenWhenReady(true);
-    mutate({
-      documentUuid,
-      interviewUuid,
-    });
-  };
-
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-sm"
-      aria-label="CV ansehen"
-      title="CV ansehen"
-      onMouseEnter={() => {
-        if (hasFreshDownloadUrl || isPending) return;
-
-        mutate({
-          documentUuid,
-          interviewUuid,
-        });
-      }}
-      onClick={openCv}
-      onAuxClick={(event) => {
-        if (event.button !== 1) return;
-
-        event.preventDefault();
-        openCv();
-      }}
-    >
-      <FileText className="size-4" />
-    </Button>
   );
 }
