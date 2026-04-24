@@ -51,7 +51,7 @@ describe("getEvaluationRelatedDataByInterviewUuid", () => {
     flowVersionUuid: string;
     flowStepUuids: string[];
     questionUuids: string[];
-    candidateUuid: string;
+    candidateUuid: string | null;
     interviewUuid: string;
     answerUuid: string;
     evaluationUuid: string;
@@ -72,9 +72,11 @@ describe("getEvaluationRelatedDataByInterviewUuid", () => {
       await db
         .delete(schema.Interview)
         .where(eq(schema.Interview.uuid, record.interviewUuid));
-      await db
-        .delete(schema.Candidate)
-        .where(eq(schema.Candidate.uuid, record.candidateUuid));
+      if (record.candidateUuid) {
+        await db
+          .delete(schema.Candidate)
+          .where(eq(schema.Candidate.uuid, record.candidateUuid));
+      }
       for (const questionUuid of record.questionUuids) {
         await db
           .delete(schema.Question)
@@ -126,7 +128,7 @@ describe("getEvaluationRelatedDataByInterviewUuid", () => {
       fixture.questionUuids,
     );
     expect(result.interview.uuid).toBe(fixture.interviewUuid);
-    expect(result.candidate?.uuid).toBe(fixture.candidateUuid);
+    expect(result.candidate.uuid).toBe(fixture.candidateUuid);
     expect(result.answers.map((answer) => answer.uuid)).toEqual([
       fixture.answerUuid,
     ]);
@@ -174,9 +176,28 @@ describe("getEvaluationRelatedDataByInterviewUuid", () => {
       }),
     ).resolves.toBeNull();
   });
+
+  it("returns null when the interview has no candidate", async () => {
+    const fixture = await createEvaluationRelatedDataFixture({
+      withCandidate: false,
+    });
+    createdRecords.push(fixture);
+    getSessionMock.mockResolvedValue({
+      session: { id: "session-id" },
+      user: { id: fixture.userId },
+    });
+
+    await expect(
+      client.getEvaluationRelatedDataByInterviewUuid({
+        uuid: fixture.interviewUuid,
+      }),
+    ).resolves.toBeNull();
+  });
 });
 
-async function createEvaluationRelatedDataFixture() {
+async function createEvaluationRelatedDataFixture(
+  options: { withCandidate: boolean } = { withCandidate: true },
+) {
   const userId = uuidv7();
   const organizationId = uuidv7();
   const teamId = uuidv7();
@@ -273,19 +294,23 @@ async function createEvaluationRelatedDataFixture() {
     })
     .returning({ uuid: schema.Question.uuid });
 
-  const [candidate] = await db
-    .insert(schema.Candidate)
-    .values({
-      name: "Evaluation Candidate",
-      email: `evaluation-candidate-${uuidv7()}@example.com`,
-    })
-    .returning({ uuid: schema.Candidate.uuid });
+  const candidate = options.withCandidate
+    ? (
+        await db
+          .insert(schema.Candidate)
+          .values({
+            name: "Evaluation Candidate",
+            email: `evaluation-candidate-${uuidv7()}@example.com`,
+          })
+          .returning({ uuid: schema.Candidate.uuid })
+      )[0]
+    : null;
 
   const [interview] = await db
     .insert(schema.Interview)
     .values({
       flowVersionUuid: flowVersion.uuid,
-      candidateUuid: candidate.uuid,
+      candidateUuid: candidate?.uuid,
       isFinished: true,
     })
     .returning({ uuid: schema.Interview.uuid });
@@ -322,7 +347,7 @@ async function createEvaluationRelatedDataFixture() {
     flowVersionUuid: flowVersion.uuid,
     flowStepUuids: [firstFlowStep.uuid, secondFlowStep.uuid],
     questionUuids: [firstQuestion.uuid, secondQuestion.uuid],
-    candidateUuid: candidate.uuid,
+    candidateUuid: candidate?.uuid ?? null,
     interviewUuid: interview.uuid,
     answerUuid: answer.uuid,
     evaluationUuid: evaluation.uuid,

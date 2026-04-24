@@ -155,6 +155,18 @@ export function Large({
   );
 }
 
+export function Bold({
+  className,
+  children,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div className={cn("text-base font-medium", className)} {...props}>
+      {children}
+    </div>
+  );
+}
+
 export function Small({
   className,
   children,

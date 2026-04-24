@@ -20,7 +20,7 @@ export function DocumentDownloadButton({
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [shouldOpenWhenReady, setShouldOpenWhenReady] = useState(false);
   const { mutate, isPending } = useMutation({
-    ...orpc.createPresignedS3DocumentDownloadUrlByUuid.mutationOptions(),
+    ...orpc.createPresignedS3DocumentDownloadUrlByUuidForAdmin.mutationOptions(),
     onSuccess: (data) => {
       setDownloadUrl(data.downloadUrl);
 

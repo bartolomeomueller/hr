@@ -28,7 +28,7 @@ export const getEvaluationRelatedDataByInterviewUuid = base
         flowSteps: z.array(FlowStepSelectSchema),
         questions: z.array(QuestionSelectSchema),
         interview: InterviewSelectSchema,
-        candidate: CandidateSelectSchema.nullable(),
+        candidate: CandidateSelectSchema,
         answers: z.array(AnswerSelectSchema),
         evaluations: z.array(EvaluationSelectSchema),
       })
@@ -79,6 +79,8 @@ export const getEvaluationRelatedDataByInterviewUuid = base
     ) {
       throw new ORPCError("FORBIDDEN");
     }
+
+    if (!candidate) return null;
 
     return {
       role: roleData,
