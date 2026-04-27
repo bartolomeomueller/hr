@@ -1,6 +1,7 @@
 import { relations, sql } from "drizzle-orm";
 import {
   boolean,
+  decimal,
   integer,
   jsonb,
   pgEnum,
@@ -156,7 +157,7 @@ export const Evaluation = pgTable(
     softSkillsScore: integer("soft_skills_score").notNull(),
     culturalAddScore: integer("cultural_add_score").notNull(),
     potentialScore: integer("potential_score").notNull(),
-    finalScore: integer("final_score").notNull(),
+    finalScore: decimal("final_score", { precision: 3, scale: 1 }).notNull(),
     notes: text("notes").notNull().default(""),
   },
   (table) => [

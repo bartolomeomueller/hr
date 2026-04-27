@@ -68,10 +68,10 @@ describe("EvaluationScoreForm", () => {
     expect(screen.getByLabelText<HTMLInputElement>("Gesamt").value).toBe("2.5");
 
     fireEvent.change(screen.getByLabelText("Hard Skills"), {
-      target: { value: "5" },
+      target: { value: "6" },
     });
 
-    expect(screen.getByLabelText<HTMLInputElement>("Gesamt").value).toBe("3.5");
+    expect(screen.getByLabelText<HTMLInputElement>("Gesamt").value).toBe("3.8");
   });
 
   it("creates the evaluation with the score fields", async () => {
@@ -96,7 +96,7 @@ describe("EvaluationScoreForm", () => {
         softSkillsScore: 2,
         culturalAddScore: 3,
         potentialScore: 4,
-        finalScore: 2.5,
+        finalScore: "2.5",
       });
     });
   });
@@ -126,9 +126,89 @@ describe("EvaluationScoreForm", () => {
         softSkillsScore: 2,
         culturalAddScore: 3,
         potentialScore: 4,
-        finalScore: 9,
+        finalScore: "9",
       });
     });
+  });
+
+  it("allows final scores up to 10 with one decimal place", async () => {
+    render(
+      <EvaluationScoreForm
+        interviewUuid="interview-uuid"
+        initialValues={{
+          hardSkillsScore: 1,
+          softSkillsScore: 2,
+          culturalAddScore: 3,
+          potentialScore: 4,
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Gesamt"), {
+      target: { value: "9.9" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Speichern" }));
+
+    await waitFor(() => {
+      expect(mutateMock).toHaveBeenCalledWith({
+        interviewUuid: "interview-uuid",
+        hardSkillsScore: 1,
+        softSkillsScore: 2,
+        culturalAddScore: 3,
+        potentialScore: 4,
+        finalScore: "9.9",
+      });
+    });
+  });
+
+  it("does not submit final scores above 10", async () => {
+    render(
+      <EvaluationScoreForm
+        interviewUuid="interview-uuid"
+        initialValues={{
+          hardSkillsScore: 1,
+          softSkillsScore: 2,
+          culturalAddScore: 3,
+          potentialScore: 4,
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Gesamt"), {
+      target: { value: "10.1" },
+    });
+    fireEvent.blur(screen.getByLabelText("Gesamt"));
+    fireEvent.click(screen.getByRole("button", { name: "Speichern" }));
+
+    expect(
+      await screen.findAllByText("Die Zahl darf maximal 10 sein."),
+    ).not.toHaveLength(0);
+    expect(mutateMock).not.toHaveBeenCalled();
+  });
+
+  it("does not submit final scores with more than one decimal place", async () => {
+    render(
+      <EvaluationScoreForm
+        interviewUuid="interview-uuid"
+        initialValues={{
+          hardSkillsScore: 1,
+          softSkillsScore: 2,
+          culturalAddScore: 3,
+          potentialScore: 4,
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Gesamt"), {
+      target: { value: "9.99" },
+    });
+    fireEvent.blur(screen.getByLabelText("Gesamt"));
+    fireEvent.click(screen.getByRole("button", { name: "Speichern" }));
+
+    expect(
+      await screen.findAllByText("Bitte maximal eine Nachkommastelle nutzen."),
+    ).not.toHaveLength(0);
+    expect(mutateMock).not.toHaveBeenCalled();
   });
 
   it("does not submit scores outside 1 to 10", async () => {

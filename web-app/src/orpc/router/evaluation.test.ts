@@ -269,7 +269,7 @@ describe("createEvaluation", () => {
       softSkillsScore: 2,
       culturalAddScore: 3,
       potentialScore: 4,
-      finalScore: 11,
+      finalScore: "9.5",
     });
 
     expect(result).toMatchObject({
@@ -279,7 +279,7 @@ describe("createEvaluation", () => {
       softSkillsScore: 2,
       culturalAddScore: 3,
       potentialScore: 4,
-      finalScore: 11,
+      finalScore: "9.5",
     });
   });
 
@@ -300,7 +300,7 @@ describe("createEvaluation", () => {
         softSkillsScore: 2,
         culturalAddScore: 3,
         potentialScore: 4,
-        finalScore: 10,
+        finalScore: "10",
       }),
     ).rejects.toThrow("Forbidden");
   });
@@ -319,7 +319,7 @@ describe("createEvaluation", () => {
       softSkillsScore: 4,
       culturalAddScore: 3,
       potentialScore: 2,
-      finalScore: 13,
+      finalScore: "9.5",
     });
 
     expect(result).toMatchObject({
@@ -330,7 +330,7 @@ describe("createEvaluation", () => {
       softSkillsScore: 4,
       culturalAddScore: 3,
       potentialScore: 2,
-      finalScore: 13,
+      finalScore: "9.5",
     });
   });
 });
@@ -477,7 +477,7 @@ async function createEvaluationRelatedDataFixture(
             softSkillsScore: 5,
             culturalAddScore: 4,
             potentialScore: 5,
-            finalScore: 5,
+            finalScore: "5",
             notes: "Strong candidate.",
           })
           .returning({ uuid: schema.Evaluation.uuid })

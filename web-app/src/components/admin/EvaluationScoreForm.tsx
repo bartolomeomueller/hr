@@ -42,17 +42,6 @@ const scoreFields = [
   ["potentialScore", "Potential"],
 ] as const;
 
-const evaluationScoreValuesSchema = z.object({
-  hardSkillsScore: z.number(),
-  softSkillsScore: z.number(),
-  culturalAddScore: z.number(),
-  potentialScore: z.number(),
-  finalScore: z.number(),
-});
-const evaluationScoreFieldsSchema = evaluationScoreValuesSchema.omit({
-  finalScore: true,
-});
-
 export function EvaluationScoreForm({
   interviewUuid,
   initialValues,
@@ -90,7 +79,7 @@ export function EvaluationScoreForm({
         softSkillsScore: scoreValues.softSkillsScore,
         culturalAddScore: scoreValues.culturalAddScore,
         potentialScore: scoreValues.potentialScore,
-        finalScore: scoreValues.finalScore,
+        finalScore: scoreValues.finalScore.toString(),
       });
     },
   });
@@ -164,7 +153,12 @@ export function EvaluationScoreForm({
                 onChange: z
                   .number()
                   .min(1, "Bitte mindestens 1 nutzen.")
-                  .max(10, "Die Zahl darf maximal 10 sein."),
+                  .max(10, "Die Zahl darf maximal 10 sein.")
+                  .refine(
+                    (score) =>
+                      (score.toString().split(".")[1]?.length ?? 0) <= 1,
+                    "Bitte maximal eine Nachkommastelle nutzen.",
+                  ),
               }}
               children={(field) => {
                 const isInvalid =
@@ -191,6 +185,9 @@ export function EvaluationScoreForm({
                         onBlur={field.handleBlur}
                         aria-invalid={isInvalid}
                         type="number"
+                        min={1}
+                        max={10}
+                        step={0.1}
                       />
                     </Field>
                     <FieldError errors={field.state.meta.errors} />
@@ -217,6 +214,18 @@ export function EvaluationScoreForm({
   );
 }
 
+// These schemas only exist for parsing from strings to numbers.
+const evaluationScoreValuesSchema = z.object({
+  hardSkillsScore: z.number(),
+  softSkillsScore: z.number(),
+  culturalAddScore: z.number(),
+  potentialScore: z.number(),
+  finalScore: z.number(),
+});
+const evaluationScoreFieldsSchema = evaluationScoreValuesSchema.omit({
+  finalScore: true,
+});
+
 function getFinalScore({
   hardSkillsScore,
   softSkillsScore,
@@ -235,13 +244,14 @@ function getFinalScore({
   }
 
   const scores = result.data;
-  return (
+  const average =
     (scores.hardSkillsScore +
       scores.softSkillsScore +
       scores.culturalAddScore +
       scores.potentialScore) /
-    4
-  );
+    4;
+
+  return Math.round(average * 10) / 10;
 }
 
 function parseScoreValues(
