@@ -137,7 +137,10 @@ export function EvaluationScoreForm({
                           onBlur={field.handleBlur}
                           aria-invalid={isInvalid}
                           type="number"
+                          min={1}
+                          max={10}
                           step={1}
+                          className="w-24!"
                         />
                       </Field>
                       <FieldError errors={field.state.meta.errors} />
@@ -188,6 +191,7 @@ export function EvaluationScoreForm({
                         min={1}
                         max={10}
                         step={0.1}
+                        className="w-24!"
                       />
                     </Field>
                     <FieldError errors={field.state.meta.errors} />
