@@ -11,6 +11,7 @@ import {
   FlowVersionSelectSchema,
   InterviewSelectSchema,
   RoleSelectSchema,
+  UserSelectSchema,
 } from "@/orpc/schema";
 import { base } from "../base";
 import { authMiddleware, debugMiddleware } from "../middlewares";
@@ -69,7 +70,11 @@ export const getAllFinishedInterviewsForRoleByRoleSlug = base
         candidate: CandidateSelectSchema,
         cvDocument:
           DocumentAnswerPayloadType.options[0].shape.documents.element,
-        evaluations: z.array(EvaluationSelectSchema),
+        evaluations: z.array(
+          EvaluationSelectSchema.extend({
+            user: UserSelectSchema.pick({ name: true }),
+          }),
+        ),
       }),
     ),
   )
@@ -95,7 +100,15 @@ export const getAllFinishedInterviewsForRoleByRoleSlug = base
           where: eq(Interview.isFinished, true),
           with: {
             candidate: true,
-            evaluations: true,
+            evaluations: {
+              with: {
+                user: {
+                  columns: {
+                    name: true,
+                  },
+                },
+              },
+            },
             answers: {
               where: (answer, { and, eq }) =>
                 exists(

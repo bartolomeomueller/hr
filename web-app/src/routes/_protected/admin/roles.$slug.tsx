@@ -5,8 +5,15 @@ import { FileText } from "lucide-react";
 import { Suspense } from "react";
 import { DataTable, SortingHeader } from "@/components/admin/DataTable";
 import { DocumentDownloadButton } from "@/components/admin/DocumentDownloadButton";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import { Muted } from "@/components/ui/typography";
 import { orpc } from "@/orpc/client";
 
 export const Route = createFileRoute("/_protected/admin/roles/$slug")({
@@ -21,8 +28,6 @@ function RouteComponent() {
   );
 }
 
-// Add the evaluations of the candidates to the table
-
 export function RoleTable({ roleSlug }: { roleSlug: string }) {
   const { data } = useSuspenseQuery(
     orpc.getAllFinishedInterviewsForRoleByRoleSlug.queryOptions({
@@ -33,6 +38,15 @@ export function RoleTable({ roleSlug }: { roleSlug: string }) {
     interview: { uuid: string };
     candidate: { name: string };
     cvDocument: { documentUuid: string };
+    evaluations: {
+      uuid: string;
+      hardSkillsScore: number;
+      softSkillsScore: number;
+      culturalAddScore: number;
+      potentialScore: number;
+      finalScore: string;
+      user: { name: string };
+    }[];
   }>[] = [
     {
       id: "select",
@@ -91,6 +105,14 @@ export function RoleTable({ roleSlug }: { roleSlug: string }) {
       enableSorting: false,
       enableHiding: false,
     },
+    {
+      id: "evaluations",
+      meta: { label: "Bewertungen", align: "right" },
+      header: "Bewertungen",
+      cell: ({ row }) => (
+        <EvaluationSummary evaluations={row.original.evaluations} />
+      ),
+    },
     // TODO if the user already has evaluated the candidate, show "change evaluation" button
     {
       id: "evaluate",
@@ -113,6 +135,90 @@ export function RoleTable({ roleSlug }: { roleSlug: string }) {
   return (
     <div className="m-4">
       <DataTable columns={columns} data={data} />
+    </div>
+  );
+}
+
+function EvaluationSummary({
+  evaluations,
+}: {
+  evaluations: {
+    uuid: string;
+    hardSkillsScore: number;
+    softSkillsScore: number;
+    culturalAddScore: number;
+    potentialScore: number;
+    finalScore: string;
+    user: { name: string };
+  }[];
+}) {
+  if (evaluations.length === 0) {
+    return <Muted>Keine Bewertung</Muted>;
+  }
+
+  const averageFinalScore = (
+    evaluations.reduce(
+      (sum, evaluation) => sum + Number(evaluation.finalScore),
+      0,
+    ) / evaluations.length
+  ).toFixed(1);
+
+  return (
+    <HoverCard openDelay={0}>
+      <HoverCardTrigger asChild>
+        <Badge variant="outline" tabIndex={0} className="font-mono">
+          {averageFinalScore}
+        </Badge>
+      </HoverCardTrigger>
+      <HoverCardContent align="end">
+        <div className="flex flex-col gap-3">
+          {evaluations.map((evaluation) => (
+            <div key={evaluation.uuid} className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium">
+                  {evaluation.user.name}
+                </span>
+                <Badge variant="secondary" className="font-mono">
+                  {evaluation.finalScore}
+                </Badge>
+              </div>
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                <EvaluationScoreDetail
+                  label="Hard Skills"
+                  score={evaluation.hardSkillsScore}
+                />
+                <EvaluationScoreDetail
+                  label="Soft Skills"
+                  score={evaluation.softSkillsScore}
+                />
+                <EvaluationScoreDetail
+                  label="Cultural Add"
+                  score={evaluation.culturalAddScore}
+                />
+                <EvaluationScoreDetail
+                  label="Potential"
+                  score={evaluation.potentialScore}
+                />
+              </dl>
+            </div>
+          ))}
+        </div>
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
+function EvaluationScoreDetail({
+  label,
+  score,
+}: {
+  label: string;
+  score: number;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="font-mono">{score}</dd>
     </div>
   );
 }
