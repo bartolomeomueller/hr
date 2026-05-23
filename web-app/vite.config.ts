@@ -15,7 +15,11 @@ const config = defineConfig(({ mode }) => ({
     mode === "test" ? undefined : devtools(),
     mode === "test"
       ? undefined
-      : nitro({ rollupConfig: { external: [/^@sentry\//] } }),
+      : nitro({
+          rollupConfig: {
+            external: [/^@sentry\//, /^msgpackr($|\/)/, /^uuid($|\/)/],
+          },
+        }),
     tsconfigPaths({ projects: ["./tsconfig.json"] }),
     tailwindcss(),
     mode === "test" ? undefined : tanstackStart(),
