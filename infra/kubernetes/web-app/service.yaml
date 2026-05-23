@@ -5,6 +5,7 @@ metadata:
   namespace: web-app
 spec:
   type: LoadBalancer
+  loadBalancerIP: 195.154.196.22
   selector:
     app.kubernetes.io/name: web-app
   ports:

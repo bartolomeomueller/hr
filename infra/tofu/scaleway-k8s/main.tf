@@ -42,6 +42,10 @@ resource "scaleway_registry_namespace" "main" {
   is_public   = false
 }
 
+resource "scaleway_lb_ip" "web_app" {
+  zone = "fr-par-1"
+}
+
 resource "scaleway_iam_application" "registry_puller" {
   name = "hierphant-k8s-image-puller"
 }
@@ -73,6 +77,10 @@ output "kubeconfig" {
 
 output "registry_endpoint" {
   value = scaleway_registry_namespace.main.endpoint
+}
+
+output "web_app_load_balancer_ip" {
+  value = scaleway_lb_ip.web_app.ip_address
 }
 
 output "registry_puller_access_key" {
